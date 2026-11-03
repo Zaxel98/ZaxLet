@@ -1,0 +1,33 @@
+# Keep the working folder intact; only publish project code and selected docs.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/THIRD_PARTY_NOTICES.md
+!/src/
+!/android/
+!/installer/
+!/native/
+!/tests/
+!/tools/
+!/docs/
+
+# Build output, local toolchains and generated files.
+**/bin/
+**/obj/
+**/out/
+**/.vs/
+*.apk
+*.idsig
+*.pdb
+
+# Signing keys and credentials: never publish.
+*.keystore
+*.pfx
+*.p12
+*.pem
+*.key
+**/.env*
+
+# one-off patch scripts from development
+tools/*.pl
