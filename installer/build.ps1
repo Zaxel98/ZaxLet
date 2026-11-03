@@ -16,6 +16,14 @@ foreach ($f in Get-ChildItem $dist -Recurse -File | Where-Object { $_.Extension 
 }
 $za.Dispose()
 
+# arsip pembaruan otomatis: isinya sama dengan muatan pemasang, ditambah berkas hash. Unggah keduanya ke GitHub Release
+# bersama ZaxLetSetup.exe (nama aset harus persis ZaxLet-update.zip dan ZaxLet-update.zip.sha256).
+$upd = Join-Path $out 'ZaxLet-update.zip'
+Copy-Item $zip $upd -Force
+$hash = (Get-FileHash $upd -Algorithm SHA256).Hash.ToLowerInvariant()
+Set-Content "$upd.sha256" "$hash  ZaxLet-update.zip" -Encoding ASCII
+"{0}  sha256 {1}" -f $upd, $hash
+
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $exe = Join-Path $out 'ZaxLetSetup.exe'
 & $csc /nologo /target:winexe /optimize+ /out:$exe `

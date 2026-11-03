@@ -69,22 +69,23 @@ public sealed class ShelfView : TabView
     void RefreshCam()
     {
         _camChip.Visibility = _flipChip.Visibility = _phone ? Visibility.Visible : Visibility.Collapsed;
-        _camText.Text = PhoneCam.Active ? "Matikan kamera" : "Nyalakan kamera";
-        _flipText.Text = (Settings.Cur.CamFront ? "Depan" : "Belakang") + " ⇄";
+        _camText.Text = L.T(PhoneCam.Active ? "Matikan kamera" : "Nyalakan kamera");
+        _flipText.Text = L.T(Settings.Cur.CamFront ? "Depan" : "Belakang") + " ⇄";
         _camChip.Background = PhoneCam.Active ? UI.AccentBg : UI.CardOn;
     }
 
     void TogglePhone()
     {
         _phone = !_phone;
-        if (_phone) ShareServer.I.Start(); else ShareServer.I.Stop();
+        if (_phone) { ShareServer.I.Start(); PhoneGuide.Show(false); }   // pertama kali dinyalakan: panduan sambung HP tampil sendiri
+        else ShareServer.I.Stop();
         Render();
     }
 
     void Render()
     {
-        _title.Text = $"Shelf · {Shelf.Items.Count} file";
-        _chipText.Text = _phone ? "Putuskan HP" : "Sambung HP";
+        _title.Text = L.F("Shelf · {0} file", Shelf.Items.Count);
+        _chipText.Text = L.T(_phone ? "Putuskan HP" : "Sambung HP");
         _chip.Background = _phone ? UI.AccentBg : UI.CardOn;
         RefreshCam();
         _body.Children.Clear();
@@ -114,18 +115,13 @@ public sealed class ShelfView : TabView
         _body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = files };
         _body.Children.Add(sv);
-        var qr = new StackPanel { Margin = new Thickness(8), VerticalAlignment = VerticalAlignment.Center };
-        qr.Children.Add(new Image { Source = Qr(ShareServer.I.Url), Width = 104, Height = 104, SnapsToDevicePixels = true });
-        bool online = Settings.Cur.ShareQr == "tailscale" && ShareServer.I.TailUrl != null;
-        var cap = UI.Btn(UI.T(online ? "Online (Tailscale) ⇄" : "Satu Wi-Fi ⇄", 10.5, UI.Dim), () =>
-        {
-            Settings.Cur.ShareQr = online ? "lan" : "tailscale";
-            Settings.Save();
-            Render();
-        }, Brushes.Transparent, 8, new Thickness(4, 1, 4, 1));
-        cap.HorizontalAlignment = HorizontalAlignment.Center;
-        cap.ToolTip = "Ketuk untuk ganti: QR ke jaringan yang sama / lewat Tailscale";
-        qr.Children.Add(cap);
+        // QR halaman web dihapus: sambungan HP lewat aplikasi (unduh + pairing), jadi di sini cukup status dan panduannya
+        var qr = new StackPanel { Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center, Width = 150 };
+        var (ok, state) = PhoneGuide.State();
+        qr.Children.Add(GuideWindow.Status(ok, state));
+        var guide = UI.Btn(UI.T("Panduan sambung HP", 11.5, UI.Fg, true), () => PhoneGuide.Show(true), UI.AccentBg, 10, new Thickness(10, 5, 10, 5));
+        guide.Margin = new Thickness(0, 8, 0, 0); guide.HorizontalAlignment = HorizontalAlignment.Left;
+        qr.Children.Add(guide);
         Grid.SetColumn(qr, 1);
         _body.Children.Add(qr);
     }
@@ -141,8 +137,8 @@ public sealed class ShelfView : TabView
         var b = UI.Btn(sp, () => Open(path), UI.Card, 10, new Thickness(8, 5, 8, 5));
         b.Margin = new Thickness(0, 0, 0, 5);
         b.HorizontalAlignment = HorizontalAlignment.Stretch;
-        b.ToolTip = path + "\nKlik: buka · seret: keluarkan · klik kanan: hapus";
-        b.MouseRightButtonUp += (_, _) => Shelf.Remove(path);
+        b.ToolTip = path + L.T("\nKlik: buka · seret: keluarkan · klik kanan: hapus");
+        b.MouseRightButtonUp += (_, e) => { e.Handled = true; Shelf.Remove(path); };
         Point? down = null;
         b.PreviewMouseLeftButtonDown += (_, e) => down = e.GetPosition(b);
         b.MouseMove += (_, e) =>

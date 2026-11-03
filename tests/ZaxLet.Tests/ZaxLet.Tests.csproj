@@ -16,6 +16,18 @@
     <Compile Include="..\..\src\ZaxLet\Services\Dsp.cs" Link="Dsp.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\VocalModel.cs" Link="VocalModel.cs" />
     <Compile Include="..\..\src\ZaxLet\Core\DurText.cs" Link="DurText.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\Translit.cs" Link="Translit.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\TrackId.cs" Link="TrackId.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\YtChapters.cs" Link="YtChapters.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\SongId.cs" Link="SongId.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\DesktopUsage.cs" Link="DesktopUsage.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\Ical.cs" Link="Ical.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\DownloadWatch.cs" Link="DownloadWatch.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\UpdateCheck.cs" Link="UpdateCheck.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\SettingsBackup.cs" Link="SettingsBackup.cs" />
+    <Compile Include="..\..\src\ZaxLet\Core\L.cs" Link="L.cs" />
+    <Compile Include="..\..\src\ZaxLet\Core\Strings.cs" Link="Strings.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\PinyinPack.cs" Link="PinyinPack.cs" />
   </ItemGroup>
 
 </Project>

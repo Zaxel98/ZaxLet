@@ -27,7 +27,7 @@ public static class Romaji
         lock (Cache)
             foreach (var l in lines)
                 if (IsJapanese(l) && !Cache.ContainsKey(l) && !todo.Contains(l)) todo.Add(l);
-        if (todo.Count == 0 || !RomajiPack.Installed || System.Threading.Interlocked.Exchange(ref _busy, 1) == 1) return;
+        if (todo.Count == 0 || !RomajiPack.KanjiInstalled || System.Threading.Interlocked.Exchange(ref _busy, 1) == 1) return;
         System.Threading.Tasks.Task.Run(() =>
         {
             try

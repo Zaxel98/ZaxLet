@@ -69,9 +69,9 @@ public sealed class TimerView : TabView
         _go.Text = _t.Running ? "" : "";
         _sub.Text = _t.Mode switch
         {
-            TMode.Pomodoro => (_t.PomoBreak ? "Istirahat " : "Fokus ") + $"· {Settings.Cur.PomoWork}/{Settings.Cur.PomoBreak} menit",
-            TMode.Timer => "Hitung mundur",
-            _ => "Hitung maju"
+            TMode.Pomodoro => L.T(_t.PomoBreak ? "Istirahat " : "Fokus ") + L.F("· {0}/{1} menit", Settings.Cur.PomoWork, Settings.Cur.PomoBreak),
+            TMode.Timer => L.T("Hitung mundur"),
+            _ => L.T("Hitung maju")
         };
         _presets.Visibility = _t.Mode == TMode.Timer ? Visibility.Visible : Visibility.Hidden;
         foreach (Border b in _modes.Children) b.Background = (TMode)b.Tag == _t.Mode ? UI.CardOn : UI.Card;

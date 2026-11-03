@@ -28,22 +28,37 @@ public static class RomajiPack
 
     public static string Dir => Path.Combine(Settings.Dir, "romaji");
     static string DicDir => Path.Combine(Dir, "IpaDic");
-    public static bool Installed => File.Exists(Path.Combine(Dir, "LibNMeCab.dll")) && File.Exists(Path.Combine(DicDir, "sys.dic"));
+    public static string PinyinFile => Path.Combine(Dir, "pinyin.gz");
+    public static bool KanjiInstalled => File.Exists(Path.Combine(Dir, "LibNMeCab.dll")) && File.Exists(Path.Combine(DicDir, "sys.dic"));
+    public static bool PinyinInstalled => File.Exists(PinyinFile);
+    /// <summary>Paket lengkap: kamus kanji Jepang dan tabel pinyin Mandarin. Kamus kanji sendiri yang dipakai untuk membaca lirik Jepang (<see cref="KanjiInstalled"/>).</summary>
+    public static bool Installed => KanjiInstalled && PinyinInstalled;
     public static bool Busy;
     public static string Status = "";
 
-    /// <summary>Unduh dan pasang. progress dipanggil dari thread latar. Melempar bila gagal (berkas parsial dibersihkan).</summary>
+    /// <summary>Unduh dan pasang bagian yang belum ada. progress dipanggil dari thread latar. Melempar bila gagal (berkas parsial dibersihkan).</summary>
     public static async Task DownloadAsync(Action progress)
     {
         if (Busy) return;
         Busy = true;
+        bool hadKanji = KanjiInstalled;
         try
         {
             Directory.CreateDirectory(Dir);
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-            foreach (var p in Pkgs)
+            if (!PinyinInstalled)
             {
-                Status = $"Mengunduh {p.Id}…"; progress();
+                Status = L.F("Mengunduh {0}…", "pinyin"); progress();
+                var txt = await http.GetByteArrayAsync(PinyinPack.Url);
+                if (!Convert.ToHexString(SHA256.HashData(txt)).Equals(PinyinPack.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Sidik jari pinyin tidak cocok; unduhan dibatalkan.");
+                Status = L.F("Memasang {0}…", "pinyin"); progress();
+                File.WriteAllBytes(PinyinFile, PinyinPack.Convert(Encoding.UTF8.GetString(txt)));
+                Translit.ResetPinyin();
+            }
+            foreach (var p in hadKanji ? Array.Empty<(string Id, string Ver, string Sha256, string Entry)>() : Pkgs)
+            {
+                Status = L.F("Mengunduh {0}…", p.Id); progress();
                 using var resp = await http.GetAsync($"{Feed}{p.Id}/{p.Ver}/{p.Id}.{p.Ver}.nupkg", HttpCompletionOption.ResponseHeadersRead);
                 resp.EnsureSuccessStatusCode();
                 long total = resp.Content.Headers.ContentLength ?? 0;
@@ -55,14 +70,14 @@ public static class RomajiPack
                     {
                         ms.Write(buf, 0, n);
                         int pct = total > 0 ? (int)(ms.Length * 100 / total) : 0;
-                        if (pct != lastPct) { lastPct = pct; Status = $"Mengunduh {p.Id}… {pct}%"; progress(); }
+                        if (pct != lastPct) { lastPct = pct; Status = L.F("Mengunduh {0}… {1}%", p.Id, pct); progress(); }
                     }
                 }
                 ms.Position = 0;
                 if (!Convert.ToHexString(SHA256.HashData(ms.ToArray())).Equals(p.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException($"Sidik jari {p.Id} tidak cocok; unduhan dibatalkan.");
                 ms.Position = 0;
-                Status = $"Memasang {p.Id}…"; progress();
+                Status = L.F("Memasang {0}…", p.Id); progress();
                 using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
                 foreach (var e in zip.Entries)
                 {
@@ -74,12 +89,14 @@ public static class RomajiPack
                     e.ExtractToFile(dest, true);
                 }
             }
-            if (!Installed) throw new FileNotFoundException("Berkas romaji tidak lengkap setelah dipasang.");
+            if (!Installed) throw new FileNotFoundException("Berkas paket tulisan Latin tidak lengkap setelah dipasang.");
             Status = "";
         }
         catch
         {
-            try { Directory.Delete(Dir, true); } catch { }
+            // bagian yang sudah terpasang sebelumnya tidak ikut dihapus
+            try { if (!hadKanji) Directory.Delete(Dir, true); else File.Delete(PinyinFile); } catch { }
+            Translit.ResetPinyin();
             Status = "";
             throw;
         }
@@ -88,7 +105,7 @@ public static class RomajiPack
 
     public static void Remove()
     {
-        try { Directory.Delete(Dir, true); } catch (Exception ex) { App.Log(ex); }
+        try { Directory.Delete(Dir, true); Translit.ResetPinyin(); } catch (Exception ex) { App.Log(ex); }
     }
 
     /// <summary>

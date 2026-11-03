@@ -68,6 +68,9 @@ public sealed class AudioFlow
     int _on;
     long _frames;
 
+    /// <summary>Menerima tiap bingkai mono keluaran PC (buffer dipakai ulang: salin bila perlu). Dipakai pengenal lagu, hanya selama menangkap cuplikan.</summary>
+    public event Action<float[], int> Tap;
+
     public bool Active => _run;
     /// <summary>Ada data audio dalam ±0,35 dtk terakhir (loopback tidak mengirim apa pun saat hening total).</summary>
     public bool Fresh => _run && Stopwatch.GetTimestamp() - Interlocked.Read(ref _lastData) < Stopwatch.Frequency * 0.35;
@@ -153,7 +156,7 @@ public sealed class AudioFlow
                             s /= ch;
                         }
                         buf[fill++] = s;
-                        if (fill == Frame) { Analyze(buf, win, rate, silent); fill = 0; }
+                        if (fill == Frame) { Tap?.Invoke(buf, rate); Analyze(buf, win, rate, silent); fill = 0; }
                     }
                     Ok(cap.ReleaseBuffer(frames));
                 }

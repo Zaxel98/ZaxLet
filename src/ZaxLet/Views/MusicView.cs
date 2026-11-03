@@ -33,7 +33,7 @@ public sealed class MusicView : TabView
     readonly TranslateTransform _slide = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(250) };
     int _lastIdx = -2;
-    DateTime _lastFull = DateTime.MinValue;
+    DateTime _lastFull = DateTime.MinValue, _lastPoll = DateTime.MinValue;
 
     public MusicView()
     {
@@ -41,7 +41,7 @@ public sealed class MusicView : TabView
         _empty = new Grid { Visibility = Visibility.Collapsed };
         var es = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         es.Children.Add(UI.Icon("", 34, UI.Faint));
-        es.Children.Add(new TextBlock { Text = "Tidak ada musik yang diputar", Foreground = UI.Dim, FontSize = 13, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center });
+        es.Children.Add(new TextBlock { Text = L.T("Tidak ada musik yang diputar"), Foreground = UI.Dim, FontSize = 13, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center });
         _empty.Children.Add(es);
 
         // kiri: sampul + judul, progres, kontrol
@@ -59,13 +59,25 @@ public sealed class MusicView : TabView
         var prog = UI.Cols(0, -1, 0);
         prog.Margin = new Thickness(0, 10, 0, 0);
         prog.Children.Add(_pos);
-        prog.Children.Add(_bar.At(0, 1));
+        // area sentuh lebih tinggi dari bar 5 px supaya mudah diklik; klik atau seret untuk maju/mundur (YouTube di peramban juga)
+        var hit = new Grid { Background = Brushes.Transparent, Cursor = Cursors.Hand, Margin = new Thickness(8, 0, 8, 0) };
+        _bar.Margin = new Thickness(0, 9, 0, 9);
+        hit.Children.Add(_bar);
+        prog.Children.Add(hit.At(0, 1));
         prog.Children.Add(_rem.At(0, 2));
-        _bar.MouseLeftButtonDown += (_, e) =>
+        var lastDragSeek = DateTime.MinValue;
+        void SeekFrom(MouseEventArgs e, bool force)
         {
-            if (_m.Duration <= TimeSpan.Zero || _bar.ActualWidth <= 0) return;
-            _m.Seek(TimeSpan.FromSeconds(_m.Duration.TotalSeconds * e.GetPosition(_bar).X / _bar.ActualWidth));
-        };
+            if (!_m.CanSeek || _bar.ActualWidth <= 0) return;   // CanSeek = ada durasi lagu (pada video bersegmen: durasi segmen)
+            if (!force && (DateTime.Now - lastDragSeek).TotalMilliseconds < 120) return;   // jangan membanjiri peramban saat menyeret
+            lastDragSeek = DateTime.Now;
+            double f = Math.Clamp(e.GetPosition(_bar).X / _bar.ActualWidth, 0, 1);
+            _m.Seek(TimeSpan.FromSeconds(_m.Duration.TotalSeconds * f));
+            Render();
+        }
+        hit.MouseLeftButtonDown += (_, e) => { if (_m.CanSeek) { hit.CaptureMouse(); SeekFrom(e, true); } };
+        hit.MouseMove += (_, e) => { if (hit.IsMouseCaptured) SeekFrom(e, false); };
+        hit.MouseLeftButtonUp += (_, e) => { if (hit.IsMouseCaptured) { SeekFrom(e, true); hit.ReleaseMouseCapture(); } };
         left.Children.Add(prog);
 
         var ctl = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) };
@@ -86,6 +98,10 @@ public sealed class MusicView : TabView
         if (kids[0] is FrameworkElement lyrBtn) { lyrBtn.HorizontalAlignment = HorizontalAlignment.Left; lyrBtn.VerticalAlignment = VerticalAlignment.Center; }
         ctlRow.Children.Add(kids[0]);
         ctlRow.Children.Add(trio);
+        // tombol kenali lagu (seperti Shazam) di tepi kanan, seimbang dengan tombol lirik di kiri
+        var idBtn = UI.IconBtn("", () => _ = _m.Identify(), 15);
+        idBtn.HorizontalAlignment = HorizontalAlignment.Right; idBtn.VerticalAlignment = VerticalAlignment.Center; idBtn.ToolTip = L.T("Kenali lagu");
+        ctlRow.Children.Add(idBtn.At(0, 2));
         left.Children.Add(ctlRow);
 
         // kanan: lirik karaoke (tadi, sekarang, berikutnya) + sinkron cepat
@@ -139,7 +155,7 @@ public sealed class MusicView : TabView
         _m.Seek(_m.Lyrics[k].At - TimeSpan.FromMilliseconds(Settings.Cur.LyricOffsetMs));
     }
 
-    void UpdateOffsetLabel() => _off.Text = (Settings.Cur.LyricOffsetMs / 1000.0).ToString("+0.0;-0.0;0.0", System.Globalization.CultureInfo.InvariantCulture) + " dtk";
+    void UpdateOffsetLabel() => _off.Text = (Settings.Cur.LyricOffsetMs / 1000.0).ToString("+0.0;-0.0;0.0", System.Globalization.CultureInfo.InvariantCulture) + " " + L.T("dtk");
 
     static bool RomajiOnly => Settings.Cur.LyricRomaji && Settings.Cur.RomajiOnly;
 
@@ -167,6 +183,7 @@ public sealed class MusicView : TabView
         var want = TimeSpan.FromMilliseconds(fast ? 33 : 250);
         if (_t.Interval != want) _t.Interval = want;
         SyncFlow(true);
+        if ((DateTime.Now - _lastPoll).TotalSeconds >= 1) { _lastPoll = DateTime.Now; _m.PollTimeline(); }
         if ((DateTime.Now - _lastFull).TotalMilliseconds >= 250) Render();
         PaintLyrics();
     }
@@ -205,7 +222,11 @@ public sealed class MusicView : TabView
         if (L.Count == 0)
         {
             _prev.Set(""); _next.Set(""); SetRomaji("");
-            _cur.Set(_m.LyricState switch { "loading" => "Mencari lirik…", "retry" => "Server lirik sibuk, mencoba lagi…", _ => "Lirik tidak tersedia" });
+            _cur.Set(ZaxLet.L.T(_m.LyricState switch
+            {
+                "loading" => "Mencari lirik…", "retry" => "Server lirik sibuk, mencoba lagi…", "listen" => "Mendengarkan…",
+                "norec" => "Lagu tidak dikenali", "notoken" => "Isi token pengenal lagu di Pengaturan > Musik", _ => "Lirik tidak tersedia"
+            }));   // L = daftar lirik di metode ini
             _cur.Paint(-1);
             _lastIdx = -2;
             return;
@@ -216,7 +237,7 @@ public sealed class MusicView : TabView
         {
             _lastIdx = i;
             // "hanya romaji": baris Jepang diganti romajinya; baris/lagu non-Jepang (Romaji.Of = null) tetap tampil apa adanya
-            string T(int k) => k >= 0 && k < L.Count ? (string.IsNullOrWhiteSpace(L[k].Text) ? "♪" : RomajiOnly ? Romaji.Of(L[k].Text) ?? L[k].Text : L[k].Text) : "";
+            string T(int k) => k >= 0 && k < L.Count ? (string.IsNullOrWhiteSpace(L[k].Text) ? "♪" : RomajiOnly ? Translit.Of(L[k].Text) ?? L[k].Text : L[k].Text) : "";
             if (i < 0) { _prev.Set(""); _cur.Set("♪"); _next.Set(T(0)); SetRomaji(""); }
             else { _prev.Set(T(i - 1)); _cur.Set(T(i)); _next.Set(T(i + 1)); SetRomaji(L[i].Text); }
             _prev.Paint(-1); _next.Paint(-1);
@@ -230,7 +251,7 @@ public sealed class MusicView : TabView
 
     void SetRomaji(string line)
     {
-        var r = Settings.Cur.LyricRomaji && !RomajiOnly ? Romaji.Of(line) : null;   // mode hanya romaji: teks utama sudah romaji
+        var r = Settings.Cur.LyricRomaji && !RomajiOnly ? Translit.Of(line) : null;   // mode hanya romaji: teks utama sudah romaji
         _rom.Text = r ?? "";
         _rom.Visibility = string.IsNullOrEmpty(r) ? Visibility.Collapsed : Visibility.Visible;
     }

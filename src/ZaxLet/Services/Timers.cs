@@ -75,12 +75,12 @@ public sealed class TimerService
             if (Mode == TMode.Pomodoro)
             {
                 PomoBreak = !PomoBreak;
-                IslandWindow.Instance?.Alert(PomoBreak ? $"Pomodoro selesai · istirahat {Settings.Cur.PomoBreak} menit" : "Istirahat selesai · fokus lagi", 10);
+                IslandWindow.Instance?.Alert(PomoBreak ? L.F("Pomodoro selesai · istirahat {0} menit", Settings.Cur.PomoBreak) : L.T("Istirahat selesai · fokus lagi"), 10);
                 _left = Duration();
                 Start();
                 return;
             }
-            IslandWindow.Instance?.Alert("Timer selesai", 10);
+            IslandWindow.Instance?.Alert(L.T("Timer selesai"), 10);
             _left = Duration();
         }
         Tick?.Invoke();
@@ -104,7 +104,7 @@ public sealed class EyeService
         _t.Start();
     }
 
-    public void BreakNow() => IslandWindow.Instance?.Alert("Istirahat mata · lihat jauh 20 detik", 20);
+    public void BreakNow() => IslandWindow.Instance?.Alert(L.T("Istirahat mata · lihat jauh 20 detik"), 20);
 
     void Check()
     {
@@ -147,7 +147,8 @@ public static class PrayerAlerts
                 if (now >= at && now < at.AddMinutes(2) && key != _last)
                 {
                     _last = key;
-                    IslandWindow.Instance?.Alert($"Waktu {name} · {at:HH.mm}", 30);
+                    bool adhan = Settings.Cur.AdhanOn && AdhanPlayer.Play(Settings.Cur.AdhanFile);
+                    IslandWindow.Instance?.Alert(L.F("Waktu {0} · {1}", L.T(name), at.ToString("HH.mm")) + (adhan ? " · " + L.T("klik untuk hentikan adzan") : ""), 30);
                     if (Settings.Cur.PrayerPauseMusic && MediaService.I.Playing) MediaService.I.PlayPause();
                 }
             }

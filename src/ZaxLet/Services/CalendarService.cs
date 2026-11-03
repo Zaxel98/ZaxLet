@@ -49,6 +49,48 @@ public sealed class CalendarService
         finally { _loading = false; }
     }
 
+    // ---------- agenda dari kalender iCal pribadi (Pengaturan > Kalender) ----------
+    public Dictionary<DateOnly, List<Ical.Ev>> Agenda = new();
+    public string AgendaStatus = "";
+    bool _agLoading;
+
+    static string AgendaPath(string url) => Path.Combine(Settings.Dir, "agenda-" + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(url)))[..8] + ".ics");
+
+    /// <summary>Ambil (atau pakai cache ≤ 30 menit) kalender iCal dan urai 7 hari ke belakang sampai 400 hari ke depan. Gagal ambil = pakai cache lama bila ada.</summary>
+    public async Task LoadAgendaAsync(bool force = false)
+    {
+        if (_agLoading) return;
+        var url = Settings.Cur.IcalUrl?.Trim() ?? "";
+        if (url.Length == 0) { Agenda = new(); AgendaStatus = ""; Changed?.Invoke(); return; }
+        if (!Ical.LooksValidUrl(url)) { Agenda = new(); AgendaStatus = L.T("Tautan harus diawali https:// atau webcal://"); Changed?.Invoke(); return; }
+        _agLoading = true;
+        var path = AgendaPath(url);
+        string ics = File.Exists(path) ? File.ReadAllText(path) : null;
+        try
+        {
+            if (ics == null || force || (DateTime.Now - File.GetLastWriteTime(path)).TotalMinutes > 30)
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                var got = await http.GetStringAsync(Ical.NormalizeUrl(url));
+                if (!Ical.LooksLikeIcal(got)) { AgendaStatus = L.T("Tautan ini bukan kalender iCal"); Changed?.Invoke(); return; }
+                Directory.CreateDirectory(Settings.Dir);
+                File.WriteAllText(path, got);
+                ics = got;
+            }
+            AgendaStatus = "";
+        }
+        catch (Exception ex) { App.Log(ex); AgendaStatus = L.T("Gagal mengambil kalender. Periksa tautan dan koneksi internet."); }
+        finally { _agLoading = false; }
+        if (ics != null)
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var evs = Ical.Parse(ics, today.AddDays(-7), today.AddDays(400));
+            Agenda = evs.GroupBy(e => e.Date).ToDictionary(g => g.Key, g => g.ToList());
+            if (AgendaStatus.Length == 0) AgendaStatus = L.F("{0} acara", evs.Count);
+        }
+        Changed?.Invoke();
+    }
+
     public static Dictionary<DateOnly, string> ParseIcs(string ics)
     {
         var result = new Dictionary<DateOnly, string>();

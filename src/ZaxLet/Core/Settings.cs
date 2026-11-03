@@ -15,6 +15,7 @@ public sealed class Settings
     public DateTime LocAt { get; set; }
 
     // umum
+    public string Lang { get; set; } = "auto";                  // auto (ikut Windows) | id | en; berlaku setelah dimulai ulang
     public bool HoverOpen { get; set; } = true;
     public int CloseDelayMs { get; set; } = 500;
     public bool AutoHideFullscreen { get; set; } = true;
@@ -52,7 +53,27 @@ public sealed class Settings
     public bool TintCover { get; set; } = true;
     public bool LyricKaraoke { get; set; } = true;             // isi per kata mengikuti tempo penyanyi
     public double FlowTolSec { get; set; } = 1.5;              // karaoke vokal boleh menyimpang sejauh ini dari hitungan waktu (detik)
-    public bool LyricFlow { get; set; } = true;               // isi karaoke mengikuti vokal yang terdengar (membaca keluaran audio PC, lokal)
+    // fitur tambahan (referensi: ReyLand)
+    public bool Gestures { get; set; } = true;                 // scroll di island = volume, klik dua kali = putar/jeda, geser horizontal = pindah tab
+    public bool OsdOn { get; set; } = true;                    // popup di island: volume, kecerahan, Caps Lock, Bluetooth, mikrofon
+    public bool PrivacyOn { get; set; } = true;                // tampilkan aplikasi yang memakai mikrofon/kamera
+    public bool DownloadAlert { get; set; } = true;            // unduhan selesai
+    public bool YieldOn { get; set; }                          // island menyingkir bila menutupi tombol aplikasi lain
+    public bool ClipboardOn { get; set; } = true;              // riwayat clipboard (hanya di memori)
+    public bool AdhanOn { get; set; }
+    public string AdhanFile { get; set; } = "";                // berkas suara adzan pilihan pengguna
+    public string IcalUrl { get; set; } = "";                  // https:// atau webcal:// kalender iCal pribadi
+    public bool AutoUpdate { get; set; } = true;
+    public string UpdateRepo { get; set; } = "Zaxel98/ZaxLet";
+    public DateTime UpdateCheckedAt { get; set; }
+    public bool TourDone { get; set; }
+    public List<string> GuidesSeen { get; set; } = new();      // panduan yang sudah tampil otomatis sekali (hp, discord); tombol info membukanya lagi
+    public bool Advanced { get; set; }                         // Pengaturan: tampilkan juga opsi lanjutan
+    public bool YtChapters { get; set; } = true;              // video YouTube panjang: baca daftar lagunya (judul dan lirik mengikuti lagu yang diputar)
+    public bool YtProgress { get; set; } = true;               // posisi YouTube dibaca langsung dari bilah progres di halaman (aksesibilitas Windows, lokal)
+    public string SongIdToken { get; set; } = "";               // token AudD milik pengguna untuk tombol "Kenali lagu"
+    public bool RightClickHide { get; set; } = true;          // klik kanan pill = sembunyikan seperti mode fullscreen
+    public bool LyricFlow { get; set; } = true;              // isi karaoke mengikuti vokal yang terdengar (membaca keluaran audio PC, lokal)
     public string LyricPace { get; set; } = "normal";           // fast | normal | slow
 
     // usage
@@ -144,10 +165,12 @@ public sealed class Settings
 
     public static Settings Cur = new();
     public static event Action Applied;
-    public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ZaxLet");
+    // ZAXLET_DATA_DIR: folder data lain (uji tanpa menyentuh data yang sebenarnya)
+    public static string Dir => Environment.GetEnvironmentVariable("ZAXLET_DATA_DIR") is { Length: > 0 } d ? d
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ZaxLet");
     public static double TzHours => TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalHours;
 
-    public static void Load() { Cur = Store.Load<Settings>("settings.json") ?? new Settings(); UI.SetAccent(Cur.Accent); }
+    public static void Load() { Cur = Store.Load<Settings>("settings.json") ?? new Settings(); UI.SetAccent(Cur.Accent); L.Init(Cur.Lang); }
     public static void Save() => Store.Save("settings.json", Cur);
 
     /// <summary>Simpan lalu beri tahu jendela/tab agar menyegarkan diri.</summary>

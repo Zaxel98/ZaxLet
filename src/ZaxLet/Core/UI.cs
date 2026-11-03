@@ -40,7 +40,7 @@ public static class UI
 
     public static TextBlock T(string s, double size = 13, Brush fg = null, bool bold = false) => new()
     {
-        Text = s, FontSize = size, Foreground = fg ?? Fg,
+        Text = L.T(s), FontSize = size, Foreground = fg ?? Fg,   // semua label lewat sini: terjemahan otomatis bila teksnya ada di Strings
         FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
         VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
     };

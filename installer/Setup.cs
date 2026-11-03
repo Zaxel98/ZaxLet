@@ -1,4 +1,4 @@
-// Pemasang ZaxLet (per-pengguna, tanpa admin). Dikompilasi dengan csc .NET Framework (C# 5) supaya jalan di Windows 10/11 tanpa .NET apa pun.
+﻿// Pemasang ZaxLet (per-pengguna, tanpa admin). Dikompilasi dengan csc .NET Framework (C# 5) supaya jalan di Windows 10/11 tanpa .NET apa pun.
 // Isi aplikasi ada di sumber daya "payload.zip". "Setup.exe /uninstall" (salinan: Uninstall.exe di folder pemasangan) mencopot.
 using System;
 using System.Diagnostics;
@@ -33,6 +33,28 @@ static class Setup
     {
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
     }
+
+    /// <summary>Folder pemasangan yang sudah ada (dari catatan pencopot), atau null bila belum terpasang: pemasang beralih ke mode perbarui.</summary>
+    public static string ExistingDir()
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(UninstKey))
+            {
+                string d = k == null ? null : k.GetValue("InstallLocation") as string;
+                return d != null && File.Exists(Path.Combine(d, "ZaxLet.exe")) ? d : null;
+            }
+        }
+        catch { return null; }
+    }
+
+    public static bool AutostartOn()
+    {
+        try { using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey)) return k != null && k.GetValue(AppName) != null; }
+        catch { return false; }
+    }
+
+    public static bool DesktopLinkExists() { return File.Exists(DesktopLink()); }
 
     public static bool HasRuntime()
     {
@@ -116,6 +138,7 @@ static class Setup
             k.SetValue("DisplayIcon", exe);
             k.SetValue("InstallLocation", dir);
             k.SetValue("Publisher", "ZaxLet");
+            k.SetValue("DisplayVersion", "1.1.0");
             k.SetValue("UninstallString", "\"" + uninst + "\" /uninstall");
             k.SetValue("NoModify", 1, RegistryValueKind.DWord);
             k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
@@ -175,6 +198,7 @@ sealed class InstallForm : Form
     readonly Button _go = new Button();
     readonly ProgressBar _bar = new ProgressBar();
     readonly Label _msg = new Label();
+    bool _update;
 
     public InstallForm()
     {
@@ -189,7 +213,8 @@ sealed class InstallForm : Form
         Label title = new Label { Text = "ZaxLet", Font = new Font("Segoe UI", 18f, FontStyle.Bold), Location = new Point(20, 14), AutoSize = true };
         Label sub = new Label { Text = "Dynamic island untuk Windows 11: musik, usage AI, notifikasi HP, dan lainnya.", Location = new Point(22, 54), Size = new Size(440, 20) };
         Label l1 = new Label { Text = "Folder pemasangan", Location = new Point(22, 90), AutoSize = true };
-        _dir.Text = Setup.DefaultDir();
+        string old = Setup.ExistingDir(); _update = old != null;   // sudah terpasang: mode perbarui (folder dan pilihan lama dipertahankan, pengaturan dan data tidak disentuh)
+        _dir.Text = old ?? Setup.DefaultDir();
         _dir.Location = new Point(22, 110);
         _dir.Width = 360;
         Button browse = new Button { Text = "Pilih…", Location = new Point(388, 108), Size = new Size(70, 27) };
@@ -209,11 +234,20 @@ sealed class InstallForm : Form
         _run.Checked = true;
         _run.Location = new Point(22, 200);
         _run.AutoSize = true;
+        if (old != null)
+        {
+            Text = "Perbarui ZaxLet";
+            sub.Text = "ZaxLet sudah terpasang. Berkas aplikasi diganti ke versi ini; pengaturan dan datamu tetap.";
+            l1.Text = "Terpasang di";
+            _dir.ReadOnly = true; browse.Enabled = false;
+            _auto.Checked = Setup.AutostartOn();
+            _desk.Checked = Setup.DesktopLinkExists();
+        }
         _bar.Location = new Point(22, 232);
         _bar.Size = new Size(436, 8);
         _msg.Location = new Point(22, 246);
         _msg.Size = new Size(300, 36);
-        _go.Text = "Pasang";
+        _go.Text = old != null ? "Perbarui" : "Pasang";
         _go.Location = new Point(368, 250);
         _go.Size = new Size(90, 32);
         _go.Click += OnGo;
@@ -253,7 +287,7 @@ sealed class InstallForm : Form
             if (run) Process.Start(Path.Combine(dir, "ZaxLet.exe"));
             BeginInvoke(new Action(delegate
             {
-                MessageBox.Show("ZaxLet terpasang. Arahkan kursor ke bagian tengah atas layar. Ikon tray: Buka, Pengaturan, Keluar.", "Pasang ZaxLet", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(_update ? "ZaxLet sudah diperbarui." : "ZaxLet terpasang. Arahkan kursor ke bagian tengah atas layar. Ikon tray: Buka, Pengaturan, Keluar.", "Pasang ZaxLet", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 Close();
             }));
         }

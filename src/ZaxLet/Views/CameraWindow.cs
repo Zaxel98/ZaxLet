@@ -39,12 +39,12 @@ public sealed class CameraWindow : Window
         if (VirtualCam.NeedsSetup) { VirtualCam.EnsureSetup(CamOn); return; }   // izin sistem diminta sekali, saat kamera pertama dinyalakan
         var s = Settings.Cur;
         int n = ShareServer.I.Command($"cam on {s.CamRes} {s.CamFps} {(s.CamFront ? "front" : "back")}");
-        if (n == 0) IslandWindow.Instance?.Alert("Tidak ada aplikasi HP yang tersambung", 5);
+        if (n == 0) IslandWindow.Instance?.Alert(L.T("Tidak ada aplikasi HP yang tersambung"), 5);
     }
 
     public CameraWindow()
     {
-        Title = "Kamera HP · ZaxLet";
+        Title = L.T("Kamera HP · ZaxLet");
         Width = 760; Height = 520; MinWidth = 420; MinHeight = 320;
         Background = Brushes.Black;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -56,11 +56,11 @@ public sealed class CameraWindow : Window
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 8, 10, 8) };
         void Add(string text, Action a) { var b = UI.Btn(UI.T(text, 12, UI.Fg), a, UI.Card, 10, new Thickness(10, 4, 10, 4)); b.Margin = new Thickness(0, 0, 6, 0); bar.Children.Add(b); }
-        Add("Nyalakan kamera HP", CamOn);
-        Add("Matikan", () => ShareServer.I.Command("cam off"));
-        Add("Cermin", () => _flip.ScaleX = -_flip.ScaleX);
-        Add("Putar 90°", () => _rot.Angle = (_rot.Angle + 90) % 360);
-        Add("Salin tautan MJPEG (OBS/VLC)", () => Clipboard.SetText(ShareServer.I.MjpegUrl));
+        Add(L.T("Nyalakan kamera HP"), CamOn);
+        Add(L.T("Matikan"), () => ShareServer.I.Command("cam off"));
+        Add(L.T("Cermin"), () => _flip.ScaleX = -_flip.ScaleX);
+        Add(L.T("Putar 90°"), () => _rot.Angle = (_rot.Angle + 90) % 360);
+        Add(L.T("Salin tautan MJPEG (OBS/VLC)"), () => Clipboard.SetText(ShareServer.I.MjpegUrl));
         _status.VerticalAlignment = VerticalAlignment.Center;
         _status.Margin = new Thickness(6, 0, 0, 0);
         bar.Children.Add(_status);
@@ -82,7 +82,7 @@ public sealed class CameraWindow : Window
 
     void Tick()
     {
-        _status.Text = PhoneCam.Active ? $"{PhoneCam.Device} · langsung" : "Menunggu kamera HP… buka halaman ZaxLet di HP → Pakai kamera HP";
+        _status.Text = PhoneCam.Active ? L.F("{0} · langsung", PhoneCam.Device) : L.T("Menunggu kamera HP… buka halaman ZaxLet di HP → Pakai kamera HP");
         var seq = PhoneCam.Seq;
         if (seq == _seq || PhoneCam.Latest is not { } jpg) return;
         _seq = seq;

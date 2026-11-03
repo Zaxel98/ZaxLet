@@ -69,6 +69,12 @@ public sealed class AppsView : TabView
             b.Margin = new Thickness(0, 0, 6, 0);
             _chips.Children.Add(b);
         }
+        if (_sel != "pc:meet")   // tombol info: panduan sambung Discord / sambung HP kapan pun dibutuhkan
+        {
+            var info = UI.IconBtn("", () => { if (_sel == "pc:discord") DiscordGuide.Show(true); else PhoneGuide.Show(true); }, 13);
+            info.ToolTip = L.T("Panduan");
+            _chips.Children.Add(info);
+        }
 
         _body.Children.Clear();
         _body.Children.Add(_sel.StartsWith("pc:") ? PcPanel(_sel[3..]) : ChatPanel(_sel));
@@ -107,18 +113,18 @@ public sealed class AppsView : TabView
             card.Children.Add(msgScroll);
 
             var box = new TextBox { FontSize = 12, Padding = new Thickness(8, 3, 8, 3), Text = _draft.GetValueOrDefault(key, "") };
-            var ph = new TextBlock { Text = "Balas…", Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            var ph = new TextBlock { Text = L.T("Balas…"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             ph.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             var sendText = UI.T("Kirim", 12, UI.Fg, true);
             void Send()
             {
                 var t = box.Text.Trim();
                 if (t.Length == 0) return;
-                if (PhoneNotifs.Reply(key, t) == 0) { sendText.Text = "HP offline"; return; }
+                if (PhoneNotifs.Reply(key, t) == 0) { sendText.Text = L.T("HP offline"); return; }
                 box.Text = ""; _draft.Remove(key);
-                sendText.Text = "Terkirim ✓";
+                sendText.Text = L.T("Terkirim ✓");
             }
-            box.TextChanged += (_, _) => { _draft[key] = box.Text; ph.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; if (box.Text.Length > 0) sendText.Text = "Kirim"; };
+            box.TextChanged += (_, _) => { _draft[key] = box.Text; ph.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; if (box.Text.Length > 0) sendText.Text = L.T("Kirim"); };
             box.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) Send(); };
             var inRow = UI.Cols(-1, 0);
             var wrap = new Grid();
@@ -150,7 +156,7 @@ public sealed class AppsView : TabView
             var b = UI.Btn(inner, () =>
             {
                 var combo = Settings.Cur.AppKeys.GetValueOrDefault(keyName, "");
-                t.Text = send(combo) ? label + " ✓" : "Gagal";
+                t.Text = send(combo) ? L.T(label) + " ✓" : L.T("Gagal");
             }, UI.Card, 14, new Thickness(18, 12, 18, 10));
             b.Margin = new Thickness(0, 0, 8, 0);
             row.Children.Add(b);
@@ -211,10 +217,7 @@ public sealed class AppsView : TabView
     {
         Settings.Cur.DiscordSetupAsked = true;
         Settings.Save();
-        _wizard = true;
-        _lastClip = "";
-        _clip.Start();
-        Render();
+        DiscordGuide.Show(true);   // panduan bertahap di jendela sendiri (menggantikan panel kecil di dalam tab)
     }
 
     /// <summary>Client ID (angka 17-20 digit) dan Secret (32 karakter) dikenali otomatis dari clipboard saat disalin di portal Discord.</summary>
@@ -244,11 +247,11 @@ public sealed class AppsView : TabView
         sp.Children.Add(top);
 
         var steps = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = UI.Dim, Margin = new Thickness(0, 6, 0, 8) };
-        steps.Inlines.Add(new System.Windows.Documents.Run("1. Buka portal, "));
+        steps.Inlines.Add(new System.Windows.Documents.Run(L.T("1. Buka portal, ")));
         steps.Inlines.Add(new System.Windows.Documents.Run("New Application") { Foreground = UI.Fg, FontWeight = FontWeights.SemiBold });
-        steps.Inlines.Add(new System.Windows.Documents.Run(" → menu OAuth2 → tambah Redirect "));
+        steps.Inlines.Add(new System.Windows.Documents.Run(L.T(" → menu OAuth2 → tambah Redirect ")));
         steps.Inlines.Add(new System.Windows.Documents.Run("http://localhost") { Foreground = UI.Fg, FontWeight = FontWeights.SemiBold });
-        steps.Inlines.Add(new System.Windows.Documents.Run(" → Save.  2. Salin Client ID, lalu Reset Secret → salin. ZaxLet membacanya otomatis."));
+        steps.Inlines.Add(new System.Windows.Documents.Run(L.T(" → Save.  2. Salin Client ID, lalu Reset Secret → salin. ZaxLet membacanya otomatis.")));
         sp.Children.Add(steps);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };

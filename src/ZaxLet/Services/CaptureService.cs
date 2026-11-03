@@ -47,7 +47,7 @@ public static class CaptureService
         bmp.Save(file, SDI.ImageFormat.Png);
         if (Settings.Cur.CapClipboard) try { WF.Clipboard.SetImage(bmp); } catch { }
         bmp.Dispose();
-        IslandWindow.Instance?.Alert("Tangkapan tersimpan · " + Path.GetFileName(file), 5);
+        IslandWindow.Instance?.Alert(L.F("Tangkapan tersimpan · {0}", Path.GetFileName(file)), 5);
     }
 
     public static void Full() => IslandWindow.Instance.HideForCapture(() => Finish(Grab(Screen)));
@@ -78,13 +78,13 @@ public static class CaptureService
         if (Recording)
         {
             try { _rec.StandardInput.Write("q"); _rec.StandardInput.Flush(); _rec.WaitForExit(4000); } catch { }
-            IslandWindow.Instance?.Alert("Rekaman tersimpan di Videos\\ZaxLet", 6);
+            IslandWindow.Instance?.Alert(L.T("Rekaman tersimpan di Videos\\ZaxLet"), 6);
             return;
         }
         var ffmpeg = FindFfmpeg();
         if (ffmpeg == null)
         {
-            IslandWindow.Instance?.Alert("Rekam layar butuh ffmpeg (belum ditemukan)", 8);
+            IslandWindow.Instance?.Alert(L.T("Rekam layar butuh ffmpeg (belum ditemukan)"), 8);
             return;
         }
         var file = Path.Combine(Dir("v", "ZaxLet"), $"ZaxLet_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
@@ -93,7 +93,7 @@ public static class CaptureService
         _rec = Process.Start(psi);
         _rec.ErrorDataReceived += (_, _) => { };
         _rec.BeginErrorReadLine();
-        IslandWindow.Instance?.Alert("Merekam layar…", 4);
+        IslandWindow.Instance?.Alert(L.T("Merekam layar…"), 4);
     }
 
     public static string FindFfmpeg()

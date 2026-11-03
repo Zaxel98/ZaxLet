@@ -31,10 +31,10 @@ public static class Addons
     {
         new Addon
         {
-            Id = "romaji", Name = "Romaji untuk kanji", Size = "±14 MB",
-            Desc = "Mengubah kanji di lirik Jepang menjadi romaji (MeCab + kamus IPAdic). Huruf kana sudah berromaji tanpa addon ini.",
+            Id = "romaji", Name = "Paket tulisan Latin (semua bahasa)", Size = "±15 MB",
+            Desc = "Satu-satunya unduhan untuk tulisan Latin: kamus kanji Jepang (MeCab + IPAdic) dan tabel pinyin Mandarin. Kana, Korea, Rusia/Kiril, Yunani, dan Arab sudah ada di aplikasi tanpa unduhan.",
             Installed = () => RomajiPack.Installed,
-            Install = async p => { await RomajiPack.DownloadAsync(p); IslandWindow.Instance?.Dispatcher.BeginInvoke(() => MediaService.I.RefreshRomaji()); },
+            Install = async p => { await RomajiPack.DownloadAsync(p); IslandWindow.Instance?.Dispatcher.BeginInvoke(() => { Translit.ResetPinyin(); MediaService.I.RefreshRomaji(); }); },
             Remove = RomajiPack.Remove,
             Progress = () => RomajiPack.Status,
         },
@@ -64,7 +64,7 @@ public static class FfmpegPack
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
-            Status = "Mengambil sidik jari…"; progress();
+            Status = L.T("Mengambil sidik jari…"); progress();
             var want = (await http.GetStringAsync(Url + ".sha256")).Trim().Split(' ', '\n', '\r')[0];
             if (want.Length != 64) throw new InvalidDataException("Sidik jari ffmpeg tidak terbaca.");
 
@@ -80,15 +80,15 @@ public static class FfmpegPack
                 {
                     f.Write(buf, 0, n); got += n;
                     int pct = total > 0 ? (int)(got * 100 / total) : 0;
-                    if (pct != last) { last = pct; Status = $"Mengunduh ffmpeg… {pct}%"; progress(); }
+                    if (pct != last) { last = pct; Status = L.F("Mengunduh ffmpeg… {0}%", pct); progress(); }
                 }
             }
-            Status = "Memeriksa berkas…"; progress();
+            Status = L.T("Memeriksa berkas…"); progress();
             string have;
             using (var f = File.OpenRead(tmp)) have = Convert.ToHexString(await SHA256.HashDataAsync(f));
             if (!have.Equals(want, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Sidik jari ffmpeg tidak cocok; unduhan dibatalkan.");
 
-            Status = "Memasang ffmpeg…"; progress();
+            Status = L.T("Memasang ffmpeg…"); progress();
             using var zip = ZipFile.OpenRead(tmp);
             var e = zip.Entries.FirstOrDefault(x => x.FullName.EndsWith("/bin/ffmpeg.exe", StringComparison.OrdinalIgnoreCase)) ?? throw new FileNotFoundException("ffmpeg.exe tidak ada di arsip.");
             Directory.CreateDirectory(Settings.Dir);

@@ -36,7 +36,7 @@ public sealed class SettingsWindow : Window
 
     public SettingsWindow()
     {
-        Title = "ZaxLet · Pengaturan";
+        Title = L.T("ZaxLet · Pengaturan");
         Width = 1080; Height = 680; MinWidth = 860; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = UI.B("#FF0E0E11");
@@ -63,7 +63,7 @@ public sealed class SettingsWindow : Window
         _stage.Child = new Viewbox { Stretch = Stretch.Uniform, Child = inner };
         _stage.Height = StageW * TabH / TabW;
         right.Children.Add(_stage);
-        right.Children.Add(new TextBlock { Text = "Klik ikon tab untuk melihat tampilannya. Pill idle di atas mengikuti pill yang sebenarnya.", Foreground = UI.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) });
+        right.Children.Add(new TextBlock { Text = L.T("Klik ikon tab untuk melihat tampilannya. Pill idle di atas mengikuti pill yang sebenarnya."), Foreground = UI.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) });
         g.Children.Add(right.At(0, 2));
         Content = g;
 

@@ -24,9 +24,9 @@ public static class LocationService
         try
         {
             if (s.LocMode == "device" && await FromDevice()) return;
-            await FromIp(s.LocMode == "device" ? "Sensor lokasi tidak tersedia, memakai IP. " : "");
+            await FromIp(s.LocMode == "device" ? L.T("Sensor lokasi tidak tersedia, memakai IP. ") : "");
         }
-        catch (Exception ex) { Status = "Gagal mendeteksi lokasi: " + ex.Message; App.Log(ex); }
+        catch (Exception ex) { Status = L.T("Gagal mendeteksi lokasi: ") + ex.Message; App.Log(ex); }
     }
 
     static async Task FromIp(string prefix)
@@ -77,13 +77,13 @@ public static class LocationService
         {
             var url = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=id&name=" + Uri.EscapeDataString(name);
             using var doc = JsonDocument.Parse(await Http.GetStringAsync(url));
-            if (!doc.RootElement.TryGetProperty("results", out var rs) || rs.GetArrayLength() == 0) { Status = $"Kota \"{name}\" tidak ditemukan"; return false; }
+            if (!doc.RootElement.TryGetProperty("results", out var rs) || rs.GetArrayLength() == 0) { Status = L.F("Kota \"{0}\" tidak ditemukan", name); return false; }
             var r = rs[0];
             var label = r.GetProperty("name").GetString() + (r.TryGetProperty("country", out var c) ? ", " + c.GetString() : "");
             Set(label, r.GetProperty("latitude").GetDouble(), r.GetProperty("longitude").GetDouble(), "dari pencarian");
             return true;
         }
-        catch (Exception ex) { Status = "Pencarian gagal: " + ex.Message; return false; }
+        catch (Exception ex) { Status = L.T("Pencarian gagal: ") + ex.Message; return false; }
     }
 
     static void Set(string city, double lat, double lon, string how)

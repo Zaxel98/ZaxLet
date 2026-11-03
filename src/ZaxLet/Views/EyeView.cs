@@ -55,10 +55,10 @@ public sealed class EyeView : TabView
     void Render()
     {
         var on = Settings.Cur.EyeOn;
-        _toggleText.Text = on ? "Aktif" : "Nonaktif";
+        _toggleText.Text = L.T(on ? "Aktif" : "Nonaktif");
         _toggle.Background = on ? UI.AccentBg : UI.Card;
         _toggleText.Foreground = on ? UI.Accent : UI.Fg;
-        _sub.Text = $"Pengingat tiap {Settings.Cur.EyeMinutes} menit · lihat jauh 20 detik";
+        _sub.Text = L.F("Pengingat tiap {0} menit · lihat jauh 20 detik", Settings.Cur.EyeMinutes);
         _time.Text = on ? UI.Clock(EyeService.I.Next - DateTime.Now < TimeSpan.Zero ? TimeSpan.Zero : EyeService.I.Next - DateTime.Now) : "--:--";
         foreach (Border b in _presets.Children) b.Background = (int)b.Tag == Settings.Cur.EyeMinutes ? UI.CardOn : UI.Card;
     }

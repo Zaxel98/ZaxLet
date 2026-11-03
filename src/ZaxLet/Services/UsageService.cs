@@ -21,6 +21,7 @@ public sealed class QuotaWindow
 public sealed class ProviderUsage
 {
     public string Name, Plan, Error;
+    public string Source = "";   // Claude: "api" (login terminal, real-time) | "desktop" (catatan Claude Desktop) | "" (belum ada sumber)
     public List<QuotaWindow> Windows = new();
     public long TodayTok, WeekTok;
     public double TodayCost, WeekCost;
@@ -64,8 +65,8 @@ public sealed class UsageService
         {
             Claude.Windows = c.Claude; Claude.Plan = c.ClaudePlan;
             Codex.Windows = c.Codex; Codex.Plan = c.CodexPlan;
-            if (c.Claude.Count > 0) Claude.Error = "data lama";
-            if (c.Codex.Count > 0) Codex.Error = "data lama";
+            if (c.Claude.Count > 0) Claude.Error = L.T("data lama");
+            if (c.Codex.Count > 0) Codex.Error = L.T("data lama");
         }
     }
 
@@ -116,14 +117,30 @@ public sealed class UsageService
     // ---------- kuota Claude ----------
     DateTime _renewAt = DateTime.MinValue;
 
+    sealed class UsageException : Exception { public UsageException(string m) : base(m) { } }
+
+    // Alasan yang bisa dipahami pengguna di perangkat lain (tanpa Claude Code / tanpa internet / login berbeda), bukan "gagal" yang buntu
+    static string Why(Exception ex) => ex switch
+    {
+        UsageException u => u.Message,
+        HttpRequestException or TaskCanceledException => L.T("tidak bisa terhubung ke server, cek internet atau proxy"),
+        JsonException => L.T("file login tidak terbaca (formatnya berbeda)"),
+        _ => L.T("gagal membaca kuota") + ": " + ex.GetType().Name,
+    };
+
+    // Claude Code dan Codex mengizinkan folder konfigurasi lain lewat variabel lingkungan
+    static string ClaudeDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".claude");
+    static string CodexDir => Environment.GetEnvironmentVariable("CODEX_HOME") is { Length: > 0 } d ? d : Path.Combine(Home, ".codex");
+
     (string token, bool expired) ReadClaudeToken(string path)
     {
         using var cred = JsonDocument.Parse(File.ReadAllText(path));
-        var o = cred.RootElement.GetProperty("claudeAiOauth");
+        if (!cred.RootElement.TryGetProperty("claudeAiOauth", out var o) || !o.TryGetProperty("accessToken", out var at) || at.ValueKind != JsonValueKind.String)
+            throw new UsageException(L.T("login terminal: claude auth login (login aplikasi Claude Desktop tidak terbaca)"));
         Claude.Plan = o.TryGetProperty("subscriptionType", out var st) && st.ValueKind == JsonValueKind.String ? Cap(st.GetString()) : null;
         bool expired = o.TryGetProperty("expiresAt", out var ex) && ex.TryGetInt64(out var ms)
                        && DateTimeOffset.FromUnixTimeMilliseconds(ms) < DateTimeOffset.UtcNow.AddMinutes(1);
-        return (o.GetProperty("accessToken").GetString(), expired);
+        return (at.GetString(), expired);
     }
 
     Task<HttpResponseMessage> SendUsage(string token)
@@ -160,8 +177,12 @@ public sealed class UsageService
         if (!Settings.Cur.ClaudeOn || DateTime.UtcNow < _claudeNext) return;
         try
         {
-            var path = Path.Combine(Home, ".claude", ".credentials.json");
-            if (!File.Exists(path)) { Claude.Error = "belum login Claude Code"; return; }
+            var path = Path.Combine(ClaudeDir, ".credentials.json");
+            if (!File.Exists(path))
+            {
+                if (!ClaudeFromDesktop()) Claude.Error = L.T("login terminal: claude auth login (login aplikasi Claude Desktop tidak terbaca)");
+                return;
+            }
             var (token, expired) = ReadClaudeToken(path);
             if (expired && await RenewClaudeToken()) (token, expired) = ReadClaudeToken(path);
 
@@ -178,13 +199,14 @@ public sealed class UsageService
                 var wait = res.Headers.RetryAfter?.Delta ?? _claudeBackoff;
                 _claudeNext = DateTime.UtcNow + wait;
                 _claudeBackoff = TimeSpan.FromMinutes(Math.Min(30, _claudeBackoff.TotalMinutes * 2));
-                Claude.Error = $"dibatasi (429), coba lagi {UI.Span(wait)} lagi";
+                Claude.Error = L.F("dibatasi (429), coba lagi {0} lagi", UI.Span(wait));
                 return;
             }
             if (!res.IsSuccessStatusCode)
             {
+                if (res.StatusCode == HttpStatusCode.Unauthorized && ClaudeFromDesktop()) return;   // token kedaluwarsa: angka dari aplikasi Claude Desktop
                 _claudeNext = DateTime.UtcNow.AddMinutes(5);
-                Claude.Error = res.StatusCode == HttpStatusCode.Unauthorized ? "token kedaluwarsa, buka Claude Code sekali" : $"HTTP {(int)res.StatusCode}";
+                Claude.Error = res.StatusCode == HttpStatusCode.Unauthorized ? L.T("token kedaluwarsa, buka Claude Code sekali") : $"HTTP {(int)res.StatusCode}";
                 return;
             }
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
@@ -192,12 +214,94 @@ public sealed class UsageService
             Add(wins, doc.RootElement, "five_hour", "5-hour");
             Add(wins, doc.RootElement, "seven_day", "Weekly");
             Claude.Windows = wins;
+            Claude.Source = "api";
             Claude.Error = null;
             _claudeNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
             _claudeBackoff = TimeSpan.FromMinutes(2);
             SaveCache();
         }
-        catch (Exception ex) { Claude.Error = "gagal membaca kuota"; _claudeNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
+        catch (Exception ex)
+        {
+            if (ex is UsageException && ClaudeFromDesktop()) return;   // file login tanpa akun: pakai angka dari aplikasi Claude Desktop
+            Claude.Error = Why(ex); _claudeNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex);
+        }
+    }
+
+    // ---------- login Claude Code sekali jalan (untuk kuota real-time) ----------
+    public string LoginStatus = "";
+    bool _loginRunning;
+
+    // claude.exe: pemasangan biasa (~/.local/bin), PATH, atau salinan bawaan aplikasi Claude Desktop (terbaru)
+    static string FindClaudeExe()
+    {
+        var own = Path.Combine(Home, ".local", "bin", "claude.exe");
+        if (File.Exists(own)) return own;
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+            try { var p = Path.Combine(dir.Trim(), "claude.exe"); if (File.Exists(p)) return p; } catch { }
+        try
+        {
+            var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Claude-Data");
+            return Directory.EnumerateDirectories(data).SelectMany(d => Directory.EnumerateDirectories(Path.Combine(d, "claude-code")))
+                .SelectMany(v => Directory.EnumerateDirectories(v)).Select(h => Path.Combine(h, "claude.exe")).Where(File.Exists)
+                .OrderByDescending(File.GetLastWriteTime).FirstOrDefault();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Jalankan "claude auth login --claudeai" di jendela terlihat: browser terbuka otomatis, pengguna tinggal masuk. Jendela terlihat supaya bila
+    /// browser gagal terbuka, alamat dan petunjuknya tetap tampak. Setelah berhasil, kuota real-time langsung dibaca.
+    /// </summary>
+    public async Task LoginClaudeAsync()
+    {
+        if (_loginRunning) return;
+        _loginRunning = true;
+        try
+        {
+            var exe = FindClaudeExe();
+            if (exe == null) { LoginStatus = L.T("Claude Code belum terpasang: pasang dari claude.ai/code lalu klik lagi"); return; }
+            LoginStatus = L.T("Browser dibuka: masuk dengan akun Claude-mu, lalu kembali ke sini");
+            Changed?.Invoke();
+            var msg = "ZaxLet: browser akan terbuka. Masuk dengan akun Claude-mu; jendela ini menutup sendiri setelah selesai.";
+            var cmd = "Write-Host '" + msg + "'; & '" + exe.Replace("'", "''") + "' auth login --claudeai; exit $LASTEXITCODE";
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe", "-NoProfile -Command \"" + cmd + "\"") { UseShellExecute = false, WorkingDirectory = Home };
+            using var p = System.Diagnostics.Process.Start(psi);
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            try { await p.WaitForExitAsync(cts.Token); }
+            catch (OperationCanceledException) { try { p.Kill(true); } catch { } LoginStatus = L.T("Login dibatalkan (waktu habis)"); return; }
+            if (p.ExitCode == 0)
+            {
+                LoginStatus = "";
+                _claudeNext = DateTime.MinValue; _claudeBackoff = TimeSpan.FromMinutes(2);
+                await RefreshQuotaAsync();
+            }
+            else LoginStatus = L.T("Login belum selesai atau dibatalkan");
+        }
+        catch (Exception ex) { App.Log(ex); LoginStatus = L.T("Login gagal: ") + ex.Message; }
+        finally { _loginRunning = false; Changed?.Invoke(); }
+    }
+
+    // Tanpa login Claude Code di terminal: angka kuota yang dicatat aplikasi Claude Desktop sendiri (persen saja, tanpa waktu reset)
+    bool ClaudeFromDesktop()
+    {
+        try
+        {
+            var f = DesktopUsage.FindFile();
+            if (f == null || DesktopUsage.ParseLatest(DesktopUsage.ReadAll(f)) is not { } s) return false;
+            var age = DateTimeOffset.Now - DateTimeOffset.FromUnixTimeMilliseconds(s.T);
+            if (age < TimeSpan.Zero) age = TimeSpan.Zero;
+            var wins = new List<QuotaWindow>();
+            if (s.FiveHour >= 0 && age < TimeSpan.FromHours(5)) wins.Add(new QuotaWindow { Label = "5-hour", Pct = s.FiveHour });   // jendela 5 jam yang lebih tua dari 5 jam sudah pasti berganti
+            if (s.Weekly >= 0 && age < TimeSpan.FromDays(7)) wins.Add(new QuotaWindow { Label = "Weekly", Pct = s.Weekly });
+            if (wins.Count == 0) return false;
+            Claude.Windows = wins;
+            Claude.Source = "desktop";
+            Claude.Error = L.F("dari aplikasi Claude Desktop, {0} lalu", UI.Span(age));
+            _claudeNext = DateTime.UtcNow.AddSeconds(30);   // berkasnya lokal dan murah: begitu Claude Desktop menulis catatan baru, langsung tampil
+            SaveCache();
+            return true;
+        }
+        catch (Exception ex) { App.Log(ex); return false; }
     }
 
     static void Add(List<QuotaWindow> into, JsonElement root, string prop, string label)
@@ -215,11 +319,11 @@ public sealed class UsageService
         if (!Settings.Cur.CodexOn || DateTime.UtcNow < _codexNext) return;
         try
         {
-            var path = Path.Combine(Home, ".codex", "auth.json");
-            if (!File.Exists(path)) { Codex.Error = "belum login Codex"; return; }
+            var path = Path.Combine(CodexDir, "auth.json");
+            if (!File.Exists(path)) { Codex.Error = L.T("belum login Codex"); return; }
             using var cred = JsonDocument.Parse(File.ReadAllText(path));
             if (!cred.RootElement.TryGetProperty("tokens", out var tk) || !tk.TryGetProperty("access_token", out var at))
-            { Codex.Error = "login Codex dengan akun ChatGPT"; return; }
+            { Codex.Error = L.T("login Codex dengan akun ChatGPT"); return; }
 
             using var req = new HttpRequestMessage(HttpMethod.Get, "https://chatgpt.com/backend-api/wham/usage");
             req.Headers.Authorization = new("Bearer", at.GetString());
@@ -229,7 +333,7 @@ public sealed class UsageService
             if (!res.IsSuccessStatusCode)
             {
                 _codexNext = DateTime.UtcNow.AddMinutes(5);
-                Codex.Error = res.StatusCode == HttpStatusCode.Unauthorized ? "token kedaluwarsa, buka Codex sekali" : $"HTTP {(int)res.StatusCode}";
+                Codex.Error = res.StatusCode == HttpStatusCode.Unauthorized ? L.T("token kedaluwarsa, buka Codex sekali") : $"HTTP {(int)res.StatusCode}";
                 return;
             }
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
@@ -246,7 +350,7 @@ public sealed class UsageService
             _codexNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
             SaveCache();
         }
-        catch (Exception ex) { Codex.Error = "gagal membaca kuota"; _codexNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
+        catch (Exception ex) { Codex.Error = Why(ex); _codexNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
     }
 
     static void CodexWin(List<QuotaWindow> into, JsonElement rl, string prop)
@@ -275,8 +379,8 @@ public sealed class UsageService
     // ---------- token & biaya dari catatan lokal (inkremental) ----------
     void ScanAll()
     {
-        try { ScanDir(Path.Combine(Home, ".claude", "projects"), true); } catch (Exception ex) { App.Log(ex); }
-        try { ScanDir(Path.Combine(Home, ".codex", "sessions"), false); } catch (Exception ex) { App.Log(ex); }
+        try { ScanDir(Path.Combine(ClaudeDir, "projects"), true); } catch (Exception ex) { App.Log(ex); }
+        try { ScanDir(Path.Combine(CodexDir, "sessions"), false); } catch (Exception ex) { App.Log(ex); }
         var cutoff = DateOnly.FromDateTime(DateTime.Now.AddDays(-8));
         foreach (var d in _cDay.Keys.Where(k => k < cutoff).ToList()) _cDay.Remove(d);
         foreach (var d in _xDay.Keys.Where(k => k < cutoff).ToList()) _xDay.Remove(d);
@@ -394,13 +498,13 @@ public sealed class UsageService
             var r = doc.RootElement;
             if (!r.TryGetProperty("payload", out var p) || !p.TryGetProperty("info", out var info) || info.ValueKind != JsonValueKind.Object) return;
             if (!info.TryGetProperty("total_token_usage", out var tot) || !info.TryGetProperty("last_token_usage", out var last)) return;
-            long total = L(tot, "total_tokens");
+            long total = Lng(tot, "total_tokens");
             if (total <= _codexLast.GetValueOrDefault(file)) return; // event duplikat
             _codexLast[file] = total;
             if (!r.TryGetProperty("timestamp", out var ts) || !DateTimeOffset.TryParse(ts.GetString(), out var when)) return;
-            long inp = L(last, "input_tokens"), cached = L(last, "cached_input_tokens"), outp = L(last, "output_tokens");
+            long inp = Lng(last, "input_tokens"), cached = Lng(last, "cached_input_tokens"), outp = Lng(last, "output_tokens");
             double cost = (Math.Max(0, inp - cached) * 1.25 + cached * 0.125 + outp * 10.0) / 1e6;
-            Bump(_xDay, DateOnly.FromDateTime(when.LocalDateTime), L(last, "total_tokens"), cost);
+            Bump(_xDay, DateOnly.FromDateTime(when.LocalDateTime), Lng(last, "total_tokens"), cost);
         }
         catch { }
     }
@@ -411,7 +515,7 @@ public sealed class UsageService
         d[day] = (cur.Item1 + tok, cur.Item2 + cost);
     }
 
-    static long L(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
+    static long Lng(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
 
     // harga USD per juta token (masuk, keluar, baca cache, tulis cache) dari daftar harga LiteLLM; model baru perlu ditambah di sini.
     static (double In, double Out, double CacheRead, double CacheWrite) ClaudePrice(string model)

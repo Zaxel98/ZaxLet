@@ -84,6 +84,6 @@ public sealed class HydrationService
             if (Today >= expected - s.WaterCupMl / 2.0) return;   // masih sesuai jadwal: tidak perlu mengingatkan
         }
         _lastRemind = now;
-        IslandWindow.Instance?.Alert($"Waktunya minum · {Today}/{Goal} ml", Math.Max(2, s.WaterShowSec));
+        IslandWindow.Instance?.Alert(L.F("Waktunya minum · {0}/{1} ml", Today, Goal), Math.Max(2, s.WaterShowSec));
     }
 }

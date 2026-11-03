@@ -74,7 +74,7 @@ public sealed class UsageView : TabView
         host.Children.Add(head);
 
         if (u.Windows.Count == 0)
-            host.Children.Add(new TextBlock { Text = u.Error ?? "memuat…", Foreground = UI.Dim, FontSize = 12, Margin = new Thickness(0, 12, 0, 8), TextWrapping = TextWrapping.Wrap });
+            host.Children.Add(new TextBlock { Text = u.Error ?? L.T("memuat…"), Foreground = UI.Dim, FontSize = 12, Margin = new Thickness(0, 12, 0, 8), TextWrapping = TextWrapping.Wrap });
         foreach (var w in u.Windows)
         {
             if (u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now) continue; // jendela lama sudah lewat
@@ -93,6 +93,18 @@ public sealed class UsageView : TabView
         }
         if (u.Windows.Count > 0 && u.Error != null)
             host.Children.Add(UI.T(u.Error, 10.5, UI.Warn));
+
+        // Claude tanpa sumber real-time: satu tombol membuka login (browser terbuka otomatis, tinggal masuk)
+        if (u.Name == "Claude" && u.Source != "api")
+        {
+            var us = UsageService.I;
+            var ask = UI.Btn(UI.T("Real-time: masuk Claude", 11, UI.Fg, true), () => _ = us.LoginClaudeAsync(), UI.AccentBg, 9, new Thickness(9, 3, 9, 3));
+            ask.HorizontalAlignment = HorizontalAlignment.Left; ask.Margin = new Thickness(0, 6, 0, 0);
+            host.Children.Add(ask);
+            var hint = UI.T(string.IsNullOrEmpty(us.LoginStatus) ? "Browser terbuka otomatis; cukup masuk dengan akun Claude-mu." : us.LoginStatus, 10, UI.Faint);
+            hint.TextWrapping = TextWrapping.Wrap; hint.Margin = new Thickness(0, 3, 0, 0);
+            host.Children.Add(hint);
+        }
 
         // tabel pemakaian: Total (semua catatan sesi) dan Code (sesi yang dicatat Ponytail)
         var code = u.Name == "Claude" && Settings.Cur.ShowPonytail && PonytailService.Available;

@@ -20,7 +20,7 @@ public sealed class DiscordRpc
     public static readonly DiscordRpc I = new();
     public event Action Changed;
     public bool Connected, InVoice, Muted, Deaf;
-    public string Channel = "", Status = "Belum diatur";
+    public string Channel = "", Status = L.T("Belum diatur");
     public static bool Configured => !string.IsNullOrWhiteSpace(Settings.Cur.DiscordClientId) && !string.IsNullOrWhiteSpace(Settings.Cur.DiscordSecret);
 
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -51,10 +51,10 @@ public sealed class DiscordRpc
         {
             try
             {
-                if (!Configured) { Status = "Isi Client ID dan Secret di Pengaturan > Aplikasi"; Notify(); }
+                if (!Configured) { Status = L.T("Isi Client ID dan Secret di Pengaturan > Aplikasi"); Notify(); }
                 else { await Session(); }
             }
-            catch (Exception ex) { Status = ex is TimeoutException ? "Discord belum terbuka" : ex.Message; }
+            catch (Exception ex) { Status = ex is TimeoutException ? L.T("Discord belum terbuka") : ex.Message; }
             Connected = InVoice = false; Channel = ""; Notify();
             await Task.Delay(5000);
         }
@@ -78,7 +78,7 @@ public sealed class DiscordRpc
         if (tok == null || tok.Expires < DateTime.UtcNow.AddMinutes(5)) tok = await Obtain(tok);
         await Command("AUTHENTICATE", new { access_token = tok.Access });
         foreach (var evt in new[] { "VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE" }) await Command("SUBSCRIBE", new { }, evt);
-        Connected = true; Status = "Tersambung ke Discord";
+        Connected = true; Status = L.T("Tersambung ke Discord");
         await Refresh();
         await reader;   // selesai saat Discord menutup pipa
     }
@@ -94,7 +94,7 @@ public sealed class DiscordRpc
             form = new() { ["grant_type"] = "refresh_token", ["refresh_token"] = old.Refresh };
         else
         {
-            Status = "Setujui dialog \"Authorize\" di Discord"; Notify();
+            Status = L.T("Setujui dialog \"Authorize\" di Discord"); Notify();
             var r = await Command("AUTHORIZE", new { client_id = s.DiscordClientId, scopes = new[] { "rpc", "rpc.voice.read", "rpc.voice.write" } }, null, 120000);
             form = new() { ["grant_type"] = "authorization_code", ["code"] = r.GetProperty("data").GetProperty("code").GetString(), ["redirect_uri"] = Redirect };
         }

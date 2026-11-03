@@ -77,9 +77,9 @@ public sealed class WaterView : TabView
         _amount.Inlines.Clear();
         _amount.Inlines.Add(new System.Windows.Documents.Run(w.Today.ToString()) { FontSize = 24, FontWeight = FontWeights.SemiBold });
         _amount.Inlines.Add(new System.Windows.Documents.Run($" / {w.Goal} ml") { FontSize = 12, Foreground = UI.Dim });
-        _next.Text = !s.WaterOn ? "Pengingat mati"
-            : w.Today >= w.Goal ? "Target tercapai 🎉"
-            : w.NextReminder() is { } n ? $"Pengingat berikutnya {n:HH.mm}" : "Di luar jam aktif";
+        _next.Text = !s.WaterOn ? L.T("Pengingat mati")
+            : w.Today >= w.Goal ? L.T("Target tercapai 🎉")
+            : w.NextReminder() is { } n ? L.F("Pengingat berikutnya {0}", n.ToString("HH.mm")) : L.T("Di luar jam aktif");
 
         _btns.Children.Clear();
         void Add(int ml)

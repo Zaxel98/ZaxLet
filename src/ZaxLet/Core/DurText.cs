@@ -10,11 +10,12 @@ public static class DurText
     public static string Fmt(double sec)
     {
         var inv = CultureInfo.InvariantCulture;
+        string s = L.T("dtk"), mn = L.T("mnt"), hr = L.T("jam");
         if (sec < 1) return Math.Round(sec * 1000) + " ms";
-        if (sec < 60) return Math.Round(sec, 1).ToString("0.#", inv) + " dtk";
-        if (sec < 3600) { int m = (int)(sec / 60), r = (int)Math.Round(sec - m * 60); return r == 0 ? $"{m} mnt" : $"{m} mnt {r} dtk"; }
+        if (sec < 60) return Math.Round(sec, 1).ToString("0.#", inv) + " " + s;
+        if (sec < 3600) { int m = (int)(sec / 60), r = (int)Math.Round(sec - m * 60); return r == 0 ? $"{m} {mn}" : $"{m} {mn} {r} {s}"; }
         int h = (int)(sec / 3600), mm = (int)Math.Round((sec - h * 3600) / 60);
-        return mm == 0 ? $"{h} jam" : $"{h} jam {mm} mnt";
+        return mm == 0 ? $"{h} {hr}" : $"{h} {hr} {mm} {mn}";
     }
 
     /// <summary>Angka tanpa satuan dikali <paramref name="bare"/> detik (1 = detik, 60 = menit). False bila tidak terbaca.</summary>

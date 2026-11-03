@@ -159,7 +159,7 @@ public sealed class ShareServer
             d.Ip = (ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip).ToString();
             d.LastSeen = DateTime.Now;
             if (isNew || !wasOnline) SaveDevices();
-            if (isNew) IslandWindow.Instance?.Alert("HP tersambung · " + d.Name, 5);
+            if (isNew) IslandWindow.Instance?.Alert(L.F("HP tersambung · {0}", d.Name), 5);
             return d;
         }
     }
@@ -513,7 +513,7 @@ public sealed class ShareServer
         }
         catch { try { File.Delete(dest); } catch { } throw; }
         Shelf.Add(dest);
-        IslandWindow.Instance?.Alert("Diterima dari HP · " + Path.GetFileName(dest), 6);
+        IslandWindow.Instance?.Alert(L.F("Diterima dari HP · {0}", Path.GetFileName(dest)), 6);
         await Send(ns, 200, "text/plain", "ok");
     }
 

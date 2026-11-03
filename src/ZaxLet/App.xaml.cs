@@ -18,8 +18,12 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _mutex = new Mutex(true, "ZaxLet.Single.Instance", out bool first);
-        if (!first) { Shutdown(); return; }
+        // ZAXLET_NO_SINGLE=1: izinkan instans kedua (uji di PC yang sudah menjalankan ZaxLet; dipakai bersama ZAXLET_DATA_DIR)
+        if (Environment.GetEnvironmentVariable("ZAXLET_NO_SINGLE") != "1")
+        {
+            _mutex = new Mutex(true, "ZaxLet.Single.Instance", out bool first);
+            if (!first) { Shutdown(); return; }
+        }
         base.OnStartup(e);
         // UI sederhana: render software menghindari driver grafis (puluhan MB RAM) dan GPU tetap bebas
         System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
@@ -29,13 +33,80 @@ public partial class App : Application
 
         MigrateLegacy();
         Settings.Load();
+        Translit.PinyinFile = RomajiPack.PinyinFile;   // tabel pinyin ada di Paket tulisan Latin (opsional), bukan di installer
         var w = new IslandWindow();
         w.Show();
+        // tur pengguna baru dan pemeriksaan pembaruan: tidak untuk pemakaian uji (flag --… atau folder data lain)
+        bool dev = e.Args.Any(x => x.StartsWith("--") && x != "--updated") || Environment.GetEnvironmentVariable("ZAXLET_DATA_DIR") != null;
+        System.Windows.Threading.DispatcherTimer After(double sec, Action act)
+        {
+            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(sec) };
+            t.Tick += (_, _) => { t.Stop(); act(); };
+            t.Start();
+            return t;
+        }
+        if (!dev) { After(4, () => TourWindow.ShowIt()); After(25, () => _ = UpdateService.AutoCheckAsync()); }
+        if (e.Args.Contains("--updated")) After(3, () => w.Alert(L.F("ZaxLet diperbarui ke {0}", UpdateService.Current), 8));
         // `ZaxLet.exe --tab=prayer` membuka dan menahan pill pada satu tab (dipakai untuk uji visual)
         foreach (var a in e.Args)
         {
             if (a.StartsWith("--tab=")) { Settings.Cur.LastTab = a[6..]; w.OpenNow(); w.KeepOpen(true); }
             else if (a == "--shot") CaptureService.Full();
+            else if (a == "--ui-test") UiTest.Run();   // gambar tiap halaman Pengaturan dan langkah panduan -> PNG di ZAXLET_UI_OUT
+            else if (a == "--usage-test")   // kuota Claude/Codex yang berhasil dibaca dan dari sumber mana -> usage-test.txt
+            {
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    await UsageService.I.RefreshQuotaAsync();
+                    // jendela island menjalankan pembacaan yang sama: tunggu sampai sumber Claude jelas (maks. 20 dtk)
+                    for (int i = 0; i < 20 && UsageService.I.Claude.Source == ""; i++) { await System.Threading.Tasks.Task.Delay(1000); await UsageService.I.RefreshQuotaAsync(); }
+                    string F(ProviderUsage u) => $"{u.Name}: sumber={(u.Source == "" ? "-" : u.Source)} catatan={u.Error ?? "-"} jendela=" + string.Join(", ", u.Windows.Select(x => $"{x.Label}={x.Pct}%"));
+                    File.WriteAllText(Path.Combine(Settings.Dir, "usage-test.txt"), F(UsageService.I.Claude) + "\n" + F(UsageService.I.Codex));
+                });
+            }
+            else if (a == "--update-test")   // hasil cek rilis GitHub -> update-test.txt (ZAXLET_UPDATE_URL mengganti alamat)
+            {
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    await UpdateService.CheckAsync();
+                    File.WriteAllText(Path.Combine(Settings.Dir, "update-test.txt"), $"saat ini={UpdateService.Current} tersedia={UpdateService.Available?.Version.ToString() ?? "-"} status={UpdateService.Status}");
+                });
+            }
+            else if (a == "--feat-test")   // sumber OSD/privasi/jaringan yang tersedia di PC ini -> feat-test.txt
+            {
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    var n = NetInfo.Current();
+                    File.WriteAllText(Path.Combine(Settings.Dir, "feat-test.txt"),
+                        $"volume={AudioEndpoint.Volume()?.ToString("0.00") ?? "-"} mute={AudioEndpoint.Muted()?.ToString() ?? "-"} micMute={AudioEndpoint.Muted(AudioEndpoint.Capture)?.ToString() ?? "-"}\n" +
+                        $"kecerahan={Brightness.Get()?.ToString() ?? "-"} mikrofonDipakai=[{string.Join(",", PrivacyWatch.InUse("microphone"))}] kameraDipakai=[{string.Join(",", PrivacyWatch.InUse("webcam"))}]\n" +
+                        $"jaringan={(n == null ? "-" : n.Name + "/" + n.Kind)} firewallPublik={NetInfo.FirewallOpenToPublic()} unduhan={DownloadWatch.DownloadsDir()}");
+                });
+            }
+            else if (a == "--mon-test")   // sumber suhu/GPU yang terbaca -> mon-test.txt (uji tab Monitor di PC lain)
+            {
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    var sm = new SysMon();
+                    for (int i = 0; i < 3; i++) { sm.Sample(); await sm.SampleSlowAsync(); await System.Threading.Tasks.Task.Delay(3200); }
+                    File.WriteAllText(Path.Combine(Settings.Dir, "mon-test.txt"), $"cpuTemp={sm.CpuTemp?.ToString("0.0")} gpuUtil={sm.GpuUtil?.ToString("0.00")} gpuTemp={sm.GpuTemp?.ToString("0.0")} gpuPower={sm.GpuPower?.ToString("0.0")}");
+                });
+            }
+            else if (a.StartsWith("--yt-trace="))   // tiap detik: lagu, posisi, durasi, keadaan lirik -> yt-trace.txt (uji pembacaan posisi YouTube)
+            {
+                int secs = int.Parse(a[11..]);
+                var m = MediaService.I;
+                var tsb = new System.Text.StringBuilder();
+                var t0 = DateTime.Now;
+                var tt = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                tt.Tick += (_, _) =>
+                {
+                    tsb.AppendLine($"{(DateTime.Now - t0).TotalSeconds:0}s | {m.Title} | {m.Artist} | pos {m.Position():h\\:mm\\:ss} / {m.Duration:h\\:mm\\:ss} | lyrics {m.LyricState}/{m.Lyrics.Count}");
+                    File.WriteAllText(Path.Combine(Settings.Dir, "yt-trace.txt"), tsb.ToString());
+                    if ((DateTime.Now - t0).TotalSeconds >= secs) tt.Stop();
+                };
+                tt.Start();
+            }
             else if (a == "--romaji-test")   // uji Kawazu: hasil ditulis ke romaji-test.txt
             {
                 var inFile = Path.Combine(Settings.Dir, "romaji-in.txt");   // opsional: baris uji sendiri, satu per baris
@@ -144,15 +215,26 @@ public partial class App : Application
     void BuildTray()
     {
         var menu = new WF.ContextMenuStrip();
-        menu.Items.Add("Buka", null, (_, _) => IslandWindow.Instance?.OpenNow());
-        menu.Items.Add("Sembunyikan / tampilkan pill", null, (_, _) => IslandWindow.Instance?.ToggleHidden());
-        menu.Items.Add("Pengaturan", null, (_, _) => SettingsWindow.ShowIt());
-        var auto = new WF.ToolStripMenuItem("Mulai bersama Windows") { Checked = IsAutostart(), CheckOnClick = true };
+        menu.Items.Add(L.T("Buka"), null, (_, _) => IslandWindow.Instance?.OpenNow());
+        menu.Items.Add(L.T("Sembunyikan / tampilkan pill"), null, (_, _) => IslandWindow.Instance?.ToggleHidden());
+        menu.Items.Add(L.T("Pengaturan"), null, (_, _) => SettingsWindow.ShowIt());
+        var auto = new WF.ToolStripMenuItem(L.T("Mulai bersama Windows")) { Checked = IsAutostart(), CheckOnClick = true };
         auto.CheckedChanged += (_, _) => SetAutostart(auto.Checked);
         menu.Items.Add(auto);
-        menu.Items.Add("Keluar", null, (_, _) => { _tray.Visible = false; Shutdown(); });
+        menu.Items.Add(L.T("Keluar"), null, (_, _) => { _tray.Visible = false; Shutdown(); });
         _tray = new WF.NotifyIcon { Icon = SD.Icon.ExtractAssociatedIcon(Environment.ProcessPath) ?? SD.SystemIcons.Application, Text = "ZaxLet", Visible = true, ContextMenuStrip = menu };
         _tray.DoubleClick += (_, _) => IslandWindow.Instance?.OpenNow();
+    }
+
+    /// <summary>Mulai ulang (mis. setelah ganti bahasa): proses baru menunggu 2 dtk agar instans ini sempat melepas mutex single-instance.</summary>
+    public static void Restart()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 >nul & start \"\" \"{Environment.ProcessPath}\"") { CreateNoWindow = true, UseShellExecute = false });
+            Current.Shutdown();
+        }
+        catch (Exception ex) { Log(ex); }
     }
 
     public static bool IsAutostart()

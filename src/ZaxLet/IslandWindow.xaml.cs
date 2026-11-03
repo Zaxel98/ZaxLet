@@ -28,7 +28,7 @@ public partial class IslandWindow : Window
         ["settings"] = ("", "Atur"),
         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
     };
-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "shelf", "tools", "timer", "eye", "settings" };
+    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "shelf", "clip", "tools", "timer", "eye", "settings" };
     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
     public static string[] TabOrder
     {
@@ -68,7 +68,7 @@ public partial class IslandWindow : Window
     readonly TextBlock _batText = new() { FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
     readonly Canvas _batIcon = new() { Width = 27, Height = 14, VerticalAlignment = VerticalAlignment.Center };
     readonly System.Windows.Shapes.Ellipse _phoneDot = new() { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
-    readonly System.Windows.Shapes.Ellipse _voiceDot = new() { Width = 9, Height = 9, Fill = UI.B("#FF22D35A"), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed, ToolTip = "Sedang di voice channel Discord" };
+    readonly System.Windows.Shapes.Ellipse _voiceDot = new() { Width = 9, Height = 9, Fill = UI.B("#FF22D35A"), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed, ToolTip = L.T("Sedang di voice channel Discord") };
     readonly Marquee Row2 = new() { Foreground = UI.B("#A6FFFFFF") };
     // notifikasi HP yang sedang tampil di pill: satu baris per notifikasi (key unik), terbaru di atas
     sealed class NotifRow { public PhoneNotif N; public DateTime Until; }
@@ -104,6 +104,7 @@ public partial class IslandWindow : Window
         _make["eye"] = () => new EyeView();
         _make["water"] = () => new WaterView();
         _make["apps"] = () => new AppsView();
+        _make["clip"] = () => new ClipboardView();
         BuildTabBar();
         BuildIdleWidgets();
         _closeT.Interval = TimeSpan.FromMilliseconds(Math.Clamp(Settings.Cur.CloseDelayMs, 50, 600000));
@@ -112,11 +113,22 @@ public partial class IslandWindow : Window
         // kursor yang masuk lewat daftar notifikasi tidak membuka pill, supaya daftar bisa digulir dengan roda mouse
         Pill.MouseEnter += (_, _) => { _closeT.Stop(); if (Settings.Cur.HoverOpen && !OverNotifRows() && !(Settings.Cur.AltGhost && Native.AltDown())) Open(); };
         Pill.MouseLeave += (_, _) => { if (_open) _closeT.Start(); };
-        Pill.MouseLeftButtonUp += (_, _) => Open();
+        Pill.MouseLeftButtonUp += (_, _) => { if (HandleClickAction()) return; Open(); };
+        // klik kanan = mode sembunyi seperti saat fullscreen (kembali lewat pintasan, menu tray, atau sendiri setelah jeda); kolom teks dan item yang menangani klik kanan sendiri dilewati
+        Pill.MouseRightButtonUp += (_, e) =>
+        {
+            if (e.Handled || !Settings.Cur.RightClickHide || e.OriginalSource is DependencyObject src && InTextBox(src)) return;
+            e.Handled = true;
+            // klik kanan bergantian: tampil biasa -> sembunyi (dengan intipan); sedang mengintip (sembunyi atau auto-hide fullscreen) -> tampil terus
+            if (_snooze) SetSnooze(false);
+            else if (_fs) { _fsForceShow = true; CheckFullscreen(); }
+            else SetSnooze(true, peek: true);
+        };
         Pill.RenderTransformOrigin = new Point(.5, 0);
         Pill.RenderTransform = new TransformGroup { Children = { _pillScale, _pillMove } };
         _altT.Tick += (_, _) => AltCheck();
         _altT.Start();
+        InitFeatures();
         _closeT.Tick += (_, _) =>
         {
             // tetap terbuka bila sedang mengetik di kotak teks (to-do, pengaturan) atau kursor masih di atas pill
@@ -172,28 +184,44 @@ public partial class IslandWindow : Window
         HwndSource.FromHwnd(h)?.AddHook((IntPtr _, int msg, IntPtr wp, IntPtr lp, ref bool handled) =>
         {
             if (msg == 0x0312 && wp.ToInt32() == HideHotkeyId) { ToggleHidden(); handled = true; }   // WM_HOTKEY
+            else HookFeatures(msg, wp, lp, ref handled);
             return IntPtr.Zero;
         });
         Hotkey.Register(h, HideHotkeyId, Settings.Cur.HideKey);
+        StartFeatureListeners(h);
+    }
+
+    static bool InTextBox(DependencyObject d)
+    {
+        for (; d != null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is System.Windows.Controls.Primitives.TextBoxBase) return true;
+        return false;
     }
 
     /// <summary>Sembunyikan pill sementara (atau tampilkan lagi). Notifikasi baru tetap memunculkannya sebentar.</summary>
     public void ToggleHidden() => SetSnooze(!_snooze);
 
-    void SetSnooze(bool on)
+    /// <param name="peek">Sembunyi lewat klik kanan: pill muncul lagi (jam dan baterai saja) saat kursor diarahkan ke tepi atas, persis seperti saat fullscreen.</param>
+    void SetSnooze(bool on, bool peek = false)
     {
         _snooze = on;
+        _snoozePeek = on && peek;
         _snoozeUntil = on && Settings.Cur.SnoozeMin > 0 ? DateTime.Now.AddMinutes(Settings.Cur.SnoozeMin) : DateTime.MaxValue;
         if (on) { _closeT.Stop(); Close_(); }
+        if (_snoozePeek) { _peek = false; _peekT.Start(); }
+        else if (!_fs) { _peekT.Stop(); _peek = false; }
         _idleKey = "";
         RefreshIdle();
     }
 
-    // Jendela tampil kecuali: fullscreen (tanpa intipan kursor) atau disembunyikan pengguna; notifikasi yang sedang tampil memaksanya muncul.
+    bool _snoozePeek, _fsForceShow;
+
+    // Jendela tampil kecuali: fullscreen atau disembunyikan pengguna (keduanya tanpa intipan kursor); notifikasi yang sedang tampil memaksanya muncul.
     void SyncVisible()
     {
         bool forced = (_fs || _snooze) && Settings.Cur.NotifFullscreen && _rows.Count > 0;
-        bool want = !_ghost && (forced || !((_fs && !_peek) || _snooze));
+        bool hidden = _fs && !_peek || _snooze && !(_snoozePeek && _peek);
+        bool want = !_ghost && (forced || !hidden);
         if (want == _shown) return;
         _shown = want;
         if (want) Show();
@@ -411,7 +439,10 @@ public partial class IslandWindow : Window
     // ---------- auto-hide saat fullscreen ----------
     void CheckFullscreen()
     {
-        bool fs = Settings.Cur.AutoHideFullscreen && Native.ForegroundFullscreenOnPrimary();
+        // "real": ada alasan menyembunyikan pill (aplikasi fullscreen, atau jendela depan punya tombol yang tertutup island)
+        bool real = (Settings.Cur.AutoHideFullscreen && Native.ForegroundFullscreenOnPrimary()) || (Settings.Cur.YieldOn && _yield.Blocked);
+        if (!real) _fsForceShow = false;   // pilihan "tampil terus" berlaku selama aplikasi fullscreen yang sama berjalan
+        bool fs = real && !_fsForceShow;
         if (fs == _fs) return;
         _fs = fs;
         if (fs)
@@ -423,7 +454,7 @@ public partial class IslandWindow : Window
         }
         else
         {
-            _peekT.Stop();
+            if (!_snoozePeek) _peekT.Stop();   // sembunyi lewat klik kanan masih memakai intipan
             _peek = false;
         }
         _idleKey = "";
@@ -442,15 +473,18 @@ public partial class IslandWindow : Window
     }
 
     // ---------- idle ----------
-    public void Alert(string text, double seconds = 7)
+    /// <param name="onClick">Dijalankan bila pill diklik selagi pesan tampil (mis. buka berkas unduhan, perbarui).</param>
+    /// <param name="sound">False untuk popup OSD yang tidak perlu bunyi.</param>
+    public void Alert(string text, double seconds = 7, Action onClick = null, bool sound = true)
     {
         Dispatcher.BeginInvoke(() =>
         {
             _alert = text;
+            _alertAction = onClick;
             _alertUntil = DateTime.Now.AddSeconds(seconds);
             RefreshIdle();
         });
-        SystemSounds.Asterisk.Play();
+        if (sound) SystemSounds.Asterisk.Play();
     }
 
     void Tick()
@@ -524,7 +558,7 @@ public partial class IslandWindow : Window
         if (!_fs && text == null && shownRows == 0 && s.MusicLyrics && s.IdleLyrics && ms.Playing && ms.Lyrics.Count > 0)   // lirik dimatikan = idle ikut mati
         {
             var l = ms.CurrentLine();
-            text = string.IsNullOrWhiteSpace(l) ? "♪" : s.IdleRomaji ? Romaji.Of(l) ?? l : l;
+            text = string.IsNullOrWhiteSpace(l) ? "♪" : s.IdleRomaji ? Translit.Of(l) ?? l : l;
         }
         Row2.Visibility = text != null ? Visibility.Visible : Visibility.Collapsed;
         if (Row2.Text != (text ?? "")) Row2.Text = text ?? "";
@@ -602,7 +636,7 @@ public partial class IslandWindow : Window
         _phoneDot.Fill = on ? c : Brushes.Transparent;
         _phoneDot.Stroke = on ? c : UI.B("#99FFFFFF");
         _phoneDot.StrokeThickness = 1.4;
-        _phoneDot.ToolTip = on ? "HP tersambung" : "HP tidak tersambung";
+        _phoneDot.ToolTip = L.T(on ? "HP tersambung" : "HP tidak tersambung");
         _phoneDot.Visibility = Visibility.Visible;
     }
 

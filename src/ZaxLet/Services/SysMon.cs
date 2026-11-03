@@ -134,8 +134,30 @@ public sealed class SysMon
         return Paths[name] = path;
     }
 
+    bool _noNvidia = Environment.GetEnvironmentVariable("ZAXLET_NO_NVIDIA") == "1";   // uji jalur cadangan (laptop tanpa NVIDIA) di PC ber-NVIDIA
+    PdhQuery _gpuQ;
+    int _gpuIdx = -2;
+
+    // GPU non-NVIDIA (Intel/AMD) atau tanpa nvidia-smi: beban dari penghitung "GPU Engine" Windows (semua merek); suhu hanya NVIDIA
+    void SampleGpuCounters()
+    {
+        _gpuQ ??= new PdhQuery();
+        if (_gpuIdx == -2) _gpuIdx = _gpuQ.Add(@"\GPU Engine(*)\Utilization Percentage");
+        if (!_gpuQ.Collect()) return;
+        var perEngine = new Dictionary<string, double>();   // jumlahkan semua proses per mesin (adapter + mesin), seperti Task Manager
+        foreach (var (name, v) in _gpuQ.Read(_gpuIdx))
+        {
+            int a = name.IndexOf("_luid_", StringComparison.Ordinal);
+            if (a < 0) continue;
+            var key = name[a..];
+            perEngine[key] = perEngine.GetValueOrDefault(key) + v;
+        }
+        if (perEngine.Count > 0) GpuUtil = Math.Min(1, perEngine.Values.Max() / 100);
+    }
+
     void SampleGpu()
     {
+        if (_noNvidia) { SampleGpuCounters(); return; }
         try
         {
             var psi = new ProcessStartInfo("nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits")
@@ -151,20 +173,43 @@ public sealed class SysMon
                 GpuPower = double.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var w) ? w : null;
             }
         }
+        catch (System.ComponentModel.Win32Exception) { GpuUtil = GpuTemp = GpuPower = null; _noNvidia = true; SampleGpuCounters(); }   // nvidia-smi tidak ada
         catch { GpuUtil = GpuTemp = GpuPower = null; }
     }
 
-    // suhu CPU: hanya jika LibreHardwareMonitor sedang berjalan dengan remote web server (port 8085)
+    // suhu CPU: LibreHardwareMonitor (remote web server port 8085) bila sedang berjalan, selain itu suhu zona termal ACPI dari Windows
+    bool _lhmOk;
+    PdhQuery _tzQ;
+    int _tzHp = -2, _tzK = -2;
+
     async Task SampleCpuTemp()
     {
-        if (_lhmTried && CpuTemp == null && (DateTime.Now.Second % 30) != 0) return;
-        _lhmTried = true;
-        try
+        double? t = null;
+        if (!_lhmTried || _lhmOk || (DateTime.Now.Second % 30) == 0)   // LHM yang gagal dicoba lagi tiap ±30 dtk saja
         {
-            using var doc = JsonDocument.Parse(await Http.GetStringAsync("http://localhost:8085/data.json"));
-            CpuTemp = FindTemp(doc.RootElement);
+            _lhmTried = true;
+            try
+            {
+                using var doc = JsonDocument.Parse(await Http.GetStringAsync("http://localhost:8085/data.json"));
+                t = FindTemp(doc.RootElement);
+            }
+            catch { }
+            _lhmOk = t != null;
         }
-        catch { CpuTemp = null; }
+        CpuTemp = t ?? ThermalZoneC();
+    }
+
+    // "Thermal Zone Information" (tanpa admin): suhu zona ACPI tertinggi. Bukan sensor inti CPU, tetapi pada laptop mendekati suhu paket CPU.
+    double? ThermalZoneC()
+    {
+        _tzQ ??= new PdhQuery();
+        if (_tzHp == -2) { _tzHp = _tzQ.Add(@"\Thermal Zone Information(*)\High Precision Temperature"); _tzK = _tzQ.Add(@"\Thermal Zone Information(*)\Temperature"); }
+        if (!_tzQ.Collect()) return null;
+        double? best = null;
+        foreach (var (_, v) in _tzQ.Read(_tzHp)) { var c = v / 10 - 273.15; if (c is > 15 and < 120 && (best == null || c > best)) best = c; }   // persepuluh Kelvin
+        if (best == null)
+            foreach (var (_, v) in _tzQ.Read(_tzK)) { var c = v - 273.15; if (c is > 15 and < 120 && (best == null || c > best)) best = c; }
+        return best;
     }
 
     static double? FindTemp(JsonElement n)

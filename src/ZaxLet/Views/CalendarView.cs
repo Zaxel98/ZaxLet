@@ -14,9 +14,12 @@ public sealed class CalendarView : TabView
     public override string Label => "Hari ini";
     public override bool CenterV => false;
 
-    static readonly string[] Days = { "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu" };
-    static readonly string[] Short = { "Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min" };
-    static readonly string[] Months = { "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember" };
+    static readonly string[] Days = L.English ? new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
+        : new[] { "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu" };
+    static readonly string[] Short = L.English ? new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }
+        : new[] { "Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min" };
+    static readonly string[] Months = L.English ? new[] { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" }
+        : new[] { "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember" };
 
     static readonly Brush TaskRed = UI.B("#CCE5484D"), DoneRed = UI.B("#55E5484D");   // tugas belum selesai = merah pekat, semua selesai = merah redup
     readonly CalendarService _c = CalendarService.I;
@@ -66,7 +69,7 @@ public sealed class CalendarView : TabView
             _input.Text = "";
         };
         var hint = UI.Rows(0);
-        var ph = new TextBlock { Text = "Tambah tugas…", Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var ph = new TextBlock { Text = L.T("Tambah tugas…"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         _input.TextChanged += (_, _) => ph.Visibility = _input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         hint.Children.Add(_input);
         hint.Children.Add(ph);
@@ -81,6 +84,7 @@ public sealed class CalendarView : TabView
         _sel = DateOnly.FromDateTime(DateTime.Now);
         _first = new DateTime(_sel.Year, _sel.Month, 1);
         _ = _c.LoadHolidaysAsync();
+        _ = _c.LoadAgendaAsync();
         Render();
     }
 
@@ -137,11 +141,16 @@ public sealed class CalendarView : TabView
         _head.Text = LongDate(_sel);
         _city.Text = st.City;
         bool hol = st.ShowHolidays;
-        var info = hol && _c.Holidays.TryGetValue(_sel, out var hn) ? $"Libur: {hn}" : "Tidak ada acara.";
+        var info = hol && _c.Holidays.TryGetValue(_sel, out var hn) ? L.F("Libur: {0}", hn) : L.T("Tidak ada acara.");
         if (hol && !_c.Holidays.ContainsKey(_sel) && _c.NextHoliday(_sel) is { } nx)
         {
             int days = nx.Date.DayNumber - today.DayNumber;
-            info += $" Libur: {nx.Name} · {Short[((int)nx.Date.DayOfWeek + 6) % 7]}, {nx.Date.Day} {Months[nx.Date.Month - 1][..3]}" + (days > 0 ? $" ({days} hari lagi)" : "");
+            info += L.F(" Libur: {0} · {1}, {2} {3}", nx.Name, Short[((int)nx.Date.DayOfWeek + 6) % 7], nx.Date.Day, Months[nx.Date.Month - 1][..3]) + (days > 0 ? L.F(" ({0} hari lagi)", days) : "");
+        }
+        if (_c.Agenda.TryGetValue(_sel, out var evs))   // acara dari kalender iCal pribadi
+        {
+            foreach (var ev in evs.Take(3)) info += "\n• " + (ev.Time.Length > 0 ? ev.Time + " " : "") + ev.Title;
+            if (evs.Count > 3) info += "\n" + L.F("+{0} acara lagi", evs.Count - 3);
         }
         _info.Text = info;
 

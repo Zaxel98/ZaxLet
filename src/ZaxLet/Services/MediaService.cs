@@ -26,7 +26,9 @@ public sealed class MediaService
     public string Title = "", Artist = "", Album = "";
     public BitmapSource Cover;
     public Color? CoverColor;
-    public TimeSpan Duration;
+    public TimeSpan RawDuration;
+    /// <summary>Durasi lagu yang sedang diputar; pada video kompilasi bersegmen = panjang segmen, bukan seluruh video.</summary>
+    public TimeSpan Duration => _chap != null && _chapIdx >= 0 ? _chapEnd == TimeSpan.MaxValue ? TimeSpan.Zero : _chapEnd - _chapAt : RawDuration;
     public List<LyricLine> Lyrics = new();
     public string LyricState = "";   // "", "loading", "none", "ok"
 
@@ -34,8 +36,14 @@ public sealed class MediaService
     GlobalSystemMediaTransportControlsSession _s;
     TimeSpan _pos;
     DateTimeOffset _posAt;
-    string _key = "";
+    string _key = "", _rawTitle = "", _rawArtist = "", _baseKey = "", _vidTitle = "", _vidArtist = "";
     int _coverTries, _propTries;
+    List<YtChapters.Chapter> _chap;          // segmen video kompilasi (null = video biasa)
+    int _chapIdx = -1;
+    TimeSpan _chapAt, _chapEnd;
+    bool _chapOpen;                          // lagu hasil pengenalan: panjangnya tidak diketahui
+    DateTime _seekAt = DateTime.MinValue;
+    static bool _packHinted;
 
     static readonly HttpClient Http = MakeHttp();
     static HttpClient MakeHttp()
@@ -50,7 +58,7 @@ public sealed class MediaService
     /// <summary>Dipanggil saat lirik dinyalakan lagi di tengah lagu: cari lirik lagu yang sedang diputar.</summary>
     public void EnsureLyrics()
     {
-        if (!Settings.Cur.MusicLyrics || !HasSession || Lyrics.Count > 0 || LyricState is "loading" or "retry" || string.IsNullOrWhiteSpace(Title)) return;
+        if (!Settings.Cur.MusicLyrics || !HasSession || Lyrics.Count > 0 || LyricState is "loading" or "retry" or "listen" || string.IsNullOrWhiteSpace(Title)) return;
         LyricState = "loading";
         _ = LoadLyrics(_key, Title, Artist, Album);
     }
@@ -63,6 +71,7 @@ public sealed class MediaService
             _mgr = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
             _mgr.CurrentSessionChanged += (_, _) => Ui(async () => await RefreshAll());
             await RefreshAll();
+            _uiaT = new System.Threading.Timer(_ => PollYouTube(), null, 2000, 2000);
         }
         catch (Exception ex) { App.Log(ex); }
     }
@@ -125,19 +134,26 @@ public sealed class MediaService
             return;
         }
         var key = $"{p.Artist}|{p.Title}";
-        bool newTrack = key != _key;
-        Title = p.Title ?? ""; Artist = p.Artist ?? ""; Album = p.AlbumTitle ?? "";
+        bool newTrack = key != _baseKey;
+        if (newTrack) { _vidTitle = p.Title ?? ""; _vidArtist = p.Artist ?? ""; _chap = null; _chapIdx = -1; _chapOpen = false; _goodTimeline = false; }
+        if (_chapIdx < 0)   // pada video bersegmen, judul dan artis mengikuti segmen yang sedang diputar
+        {
+            _rawTitle = _vidTitle; _rawArtist = _vidArtist;
+            var shown = TrackId.Parse(_rawTitle, _rawArtist).Show;   // judul YouTube "Artis - Judul (Audio)" + kanal "artisVEVO" -> pasangan yang rapi
+            Title = shown.Title; Artist = shown.Artist; Album = p.AlbumTitle ?? "";
+        }
         if (newTrack)
         {
-            _key = key;
+            _baseKey = _key = key;
+            Translit.Begin(Array.Empty<string>());
             _coverTries = 0;
             Lyrics = new(); LyricState = "loading";
             Cover = null; CoverColor = null;
-            if (Settings.Cur.MusicLyrics) _ = LoadLyrics(key, Title, Artist, Album); else LyricState = "off";   // lirik dimatikan: tidak mengunduh
+            _ = BeginTrack(key);
         }
         // sebagian pemutar mengirim sampul terlambat: coba lagi beberapa kali selama lagunya sama
         if (p.Thumbnail == null && Cover == null && _coverTries++ < 3)
-            _ = Task.Delay(1500).ContinueWith(_ => Ui(async () => { if (key == _key) { await RefreshProps(); Changed?.Invoke(); } }));
+            _ = Task.Delay(1500).ContinueWith(_ => Ui(async () => { if (key == _baseKey) { await RefreshProps(); Changed?.Invoke(); } }));
         if (p.Thumbnail != null && Cover == null)
         {
             try
@@ -166,21 +182,137 @@ public sealed class MediaService
         Playing = i.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
     }
 
+    /// <summary>Baca ulang durasi/posisi dari Windows. Peramban (YouTube) sering terlambat atau tidak mengirim event timeline, jadi dipanggil berkala.</summary>
+    public void PollTimeline()
+    {
+        if ((DateTime.Now - _seekAt).TotalSeconds < 1.5) return;   // beri waktu peramban menerapkan lompatan sebelum pembacaan menimpa posisi baru
+        try { RefreshTimeline(); } catch (Exception ex) { App.Log(ex); }
+    }
+
+    /// <summary>Pemutar mengizinkan lompat posisi (YouTube di peramban mengizinkan bila halamannya mengirim durasi).</summary>
+    public bool CanSeek => _s != null && Duration > TimeSpan.Zero;
+
+    /// <summary>
+    /// Kenali lagu yang sedang terdengar (seperti Shazam) saat judulnya tidak ada atau salah: tangkap ±12 dtk keluaran suara PC, kirim ke AudD
+    /// dengan token pengguna, lalu jadikan hasilnya lagu yang sedang diputar (judul, lirik, dan penyelarasan posisi lirik).
+    /// </summary>
+    public async Task Identify()
+    {
+        if (!HasSession || LyricState is "listen" or "ident") return;
+        var token = Settings.Cur.SongIdToken;
+        string baseKey = _baseKey;
+        void State(string s) { LyricState = s; Lyrics = new(); Ui(() => Changed?.Invoke()); }
+        if (string.IsNullOrWhiteSpace(token)) { State("notoken"); return; }
+        State("listen");
+        try
+        {
+            var (hit, endPos) = await SongId.RecognizeAsync(token, RawPosition);
+            if (baseKey != _baseKey) return;   // ganti lagu selagi mendengarkan
+            if (hit == null) { State("norec"); return; }
+            // posisi awal lagu itu di dalam aliran: akhir cuplikan dikurangi (menit di lagu + panjang cuplikan)
+            var start = endPos - TimeSpan.FromSeconds(hit.At + SongId.Seconds);
+            _chapOpen = true;
+            _chap = new List<YtChapters.Chapter> { new(start < TimeSpan.Zero ? TimeSpan.Zero : start, hit.Artist + " · " + hit.Title) };
+            _chapIdx = -1;
+            SyncChapter(RawPosition());
+        }
+        catch (Exception ex) { App.Log(ex); State("norec"); }
+    }
+
     void RefreshTimeline()
     {
         if (_s == null) return;
+        if ((DateTime.Now - _uiaAt).TotalSeconds < 6) return;   // posisi dari halaman YouTube sedang segar: lebih tepercaya daripada laporan peramban
         var t = _s.GetTimelineProperties();
-        Duration = t.EndTime - t.StartTime;
+        var len = t.EndTime - t.StartTime;
+        // peramban kadang melaporkan timeline kosong (posisi 0, durasi 0) di tengah lagu, mis. saat halaman mengosongkan state media:
+        // abaikan, lanjutkan dari perkiraan terakhir yang sah daripada melompat ke awal
+        if (len <= TimeSpan.Zero && _goodTimeline) return;
+        if (len > TimeSpan.Zero) _goodTimeline = true;
+        RawDuration = len;
         _pos = t.Position - t.StartTime;
         _posAt = t.LastUpdatedTime;
     }
 
-    public TimeSpan Position()
+    bool _goodTimeline;
+
+    // ---------- posisi asli dari halaman YouTube ----------
+    DateTime _uiaAt = DateTime.MinValue;
+    int _uiaBusy;
+    System.Threading.Timer _uiaT;
+
+    /// <summary>Tiap 2 dtk baca bilah progres YouTube (bila tab videonya aktif) dan jadikan itu posisi sebenarnya; juga mengisi durasi yang tidak dikirim peramban.</summary>
+    void PollYouTube()
+    {
+        if (!Settings.Cur.YtProgress || !HasSession || string.IsNullOrEmpty(_vidTitle) || Interlocked.Exchange(ref _uiaBusy, 1) == 1) return;
+        try
+        {
+            var r = YtProgress.Read(_vidTitle, RawDuration.TotalSeconds);
+            if (r == null || (DateTime.Now - _seekAt).TotalSeconds < 2) return;   // setelah lompatan kita, tunggu halaman menerapkannya
+            _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bilah memuat detik yang dibulatkan ke bawah
+            _posAt = DateTimeOffset.Now; _uiaAt = DateTime.Now; _goodTimeline = true;
+            if (RawDuration <= TimeSpan.Zero) RawDuration = TimeSpan.FromSeconds(r.Max);
+        }
+        catch (Exception ex) { App.Log(ex); }
+        finally { Volatile.Write(ref _uiaBusy, 0); }
+    }
+
+    TimeSpan RawPosition()
     {
         var p = _pos;
         if (Playing) p += DateTimeOffset.Now - _posAt;
-        if (Duration > TimeSpan.Zero && p > Duration) p = Duration;
+        if (RawDuration > TimeSpan.Zero && p > RawDuration) p = RawDuration;
         return p < TimeSpan.Zero ? TimeSpan.Zero : p;
+    }
+
+    /// <summary>Posisi di lagu yang sedang diputar (pada video bersegmen: sejak awal segmen).</summary>
+    public TimeSpan Position()
+    {
+        var p = RawPosition();
+        if (_chap == null) return p;
+        SyncChapter(p);
+        return p > _chapAt ? p - _chapAt : TimeSpan.Zero;
+    }
+
+    // ---------- segmen video kompilasi ----------
+    /// <summary>
+    /// Awal lagu baru: video panjang (≥ 8 menit) dicari daftar segmennya di YouTube; bila ada, tiap segmen diperlakukan sebagai lagu sendiri
+    /// (judul, lirik, bilah progres, lompat sebelumnya/berikutnya). Tanpa itu, lirik dicari untuk judul videonya seperti biasa.
+    /// </summary>
+    async Task BeginTrack(string key)
+    {
+        await Task.Delay(700);   // beri waktu agar durasi terisi
+        // peramban kadang tidak mengirim durasi sama sekali: beri waktu pembacaan langsung dari halaman YouTube mengisinya
+        for (int i = 0; i < 10 && key == _key && Settings.Cur.YtChapters && RawDuration <= TimeSpan.Zero; i++) await Task.Delay(300);
+        if (key != _key) return;
+        if (Settings.Cur.YtChapters && RawDuration >= TimeSpan.FromMinutes(8))
+        {
+            try
+            {
+                var ch = await YtChapters.FetchAsync(_vidTitle, _vidArtist, RawDuration.TotalSeconds);
+                if (key == _key && ch != null) { _chap = ch; SyncChapter(RawPosition()); return; }
+            }
+            catch (Exception ex) { App.Log(ex); }
+        }
+        if (key != _key) return;
+        if (Settings.Cur.MusicLyrics) await LoadLyrics(key, Title, Artist, Album); else LyricState = "off";   // lirik dimatikan: tidak mengunduh
+    }
+
+    void SyncChapter(TimeSpan p)
+    {
+        var chap = _chap;
+        if (chap == null || _chapIdx >= 0 && p >= _chapAt && p < _chapEnd) return;
+        int i = Math.Max(0, chap.FindLastIndex(c => c.At <= p));
+        if (i == _chapIdx) return;
+        _chapIdx = i; _chapAt = chap[i].At;
+        _chapEnd = i + 1 < chap.Count ? chap[i + 1].At : _chapOpen ? TimeSpan.MaxValue : RawDuration > _chapAt ? RawDuration : _chapAt + TimeSpan.FromMinutes(5);
+        _rawTitle = chap[i].Text; _rawArtist = "";
+        var shown = TrackId.Parse(_rawTitle, "").Show;   // "Artis · Judul"
+        Title = shown.Title; Artist = shown.Artist; Album = "";
+        Lyrics = new(); Translit.Begin(Array.Empty<string>());
+        _key = _baseKey + "#" + i;
+        if (Settings.Cur.MusicLyrics) { LyricState = "loading"; _ = LoadLyrics(_key, Title, Artist, ""); } else LyricState = "off";
+        Ui(() => Changed?.Invoke());
     }
 
     public string CurrentLine()
@@ -320,12 +452,34 @@ public sealed class MediaService
 
     // ---------- kontrol ----------
     public void PlayPause() => _ = _s?.TryTogglePlayPauseAsync();
-    public void Next() => _ = _s?.TrySkipNextAsync();
-    public void Prev() => _ = _s?.TrySkipPreviousAsync();
+    // pada video bersegmen, berikutnya/sebelumnya melompat antar segmen (lagu), bukan antar video
+    public void Next()
+    {
+        if (_chap != null && _chapIdx >= 0 && _chapIdx + 1 < _chap.Count) SeekAbs(_chap[_chapIdx + 1].At);
+        else _ = _s?.TrySkipNextAsync();
+    }
+
+    public void Prev()
+    {
+        if (_chap != null && _chapIdx >= 0)
+        {
+            if (_chapIdx == 0 || RawPosition() - _chapAt > TimeSpan.FromSeconds(3)) SeekAbs(_chapAt);   // seperti pemutar biasa: ulang lagu dulu
+            else SeekAbs(_chap[_chapIdx - 1].At);
+        }
+        else _ = _s?.TrySkipPreviousAsync();
+    }
+
+    /// <summary>Lompat ke posisi di lagu yang sedang diputar (pada video bersegmen: relatif terhadap awal segmen).</summary>
     public void Seek(TimeSpan to)
     {
+        if (Duration > TimeSpan.Zero) to = to > Duration ? Duration : to < TimeSpan.Zero ? TimeSpan.Zero : to;
+        SeekAbs(_chap != null && _chapIdx >= 0 ? _chapAt + to : to);
+    }
+
+    void SeekAbs(TimeSpan to)
+    {
         if (_s == null) return;
-        _pos = to; _posAt = DateTimeOffset.Now;
+        _pos = to; _posAt = DateTimeOffset.Now; _seekAt = DateTime.Now;
         _ = _s.TryChangePlaybackPositionAsync(to.Ticks);
     }
 
@@ -347,7 +501,7 @@ public sealed class MediaService
             // cache lama yang tidak wajar (cap waktu palsu dari versi sebelumnya) diabaikan dan dicari ulang
             if (File.Exists(cache) && LrcSane(File.ReadAllText(cache), Duration > TimeSpan.Zero ? (int)Duration.TotalSeconds : 0) && Lrc.Parse(File.ReadAllText(cache)) is { Count: > 0 } cached && key == _key)
             {
-                Lyrics = cached; LyricState = "ok";
+                Lyrics = StripHeader(cached, title); LyricState = "ok";
                 PrefetchRomaji();
                 Ui(() => Changed?.Invoke());
                 return;
@@ -366,14 +520,22 @@ public sealed class MediaService
         for (int attempt = 0; attempt < 3; attempt++)
         {
             if (key != _key) return;
-            bool error = false;
+            bool error = false, answered = false;
             string synced = null;
-            try { synced = await Fetch(title, artist, album, () => error = true); }
-            catch (Exception ex) { error = true; App.Log(ex); }
+            // kandidat judul/artis dari pengenalan judul (YouTube sering "Artis - Judul"); yang pertama mendapat lirik dipakai
+            var cands = TrackId.Parse(_rawTitle, _rawArtist).Search;
+            for (int ci = 0; ci < cands.Count && synced == null && key == _key; ci++)
+            {
+                bool bad = false;
+                try { synced = await Fetch(cands[ci].Title, cands[ci].Artist, ci == 0 ? album : null, () => bad = true); }
+                catch (Exception ex) { bad = true; App.Log(ex); }
+                if (bad) error = true; else answered = true;
+            }
+            error = error && !answered;   // satu kandidat yang dijawab sumber (walau kosong) berarti lagunya memang tidak ketemu, bukan server sibuk
             if (key != _key) return;
             if (synced != null)
             {
-                Lyrics = Lrc.Parse(synced);
+                Lyrics = StripHeader(Lrc.Parse(synced), title);
                 LyricState = Lyrics.Count > 0 ? "ok" : "none";
                 PrefetchRomaji();
                 if (Lyrics.Count > 0)
@@ -395,7 +557,15 @@ public sealed class MediaService
 
     void PrefetchRomaji()
     {
-        if (Settings.Cur.LyricRomaji || Settings.Cur.IdleRomaji) Romaji.Prefetch(Lyrics.Select(l => l.Text).ToList());
+        var lines = Lyrics.Select(l => l.Text).ToList();
+        Translit.Begin(lines, Title, Artist);   // Jepang atau Mandarin ditentukan per lagu: keduanya memakai aksara Han
+        if ((Settings.Cur.LyricRomaji || Settings.Cur.IdleRomaji) && Translit.Lang == "ja") Romaji.Prefetch(lines);
+        // lirik yang butuh paket unduhan (kanji Jepang, atau Mandarin): beri tahu sekali per sesi, jangan diam-diam tanpa tulisan Latin
+        if (Settings.Cur.LyricRomaji && !_packHinted && lines.Count > 0 && (Translit.Lang == "zh" && !Translit.PinyinReady || Translit.Lang == "ja" && !RomajiPack.KanjiInstalled && lines.Any(Translit.HasHan)))
+        {
+            _packHinted = true;
+            IslandWindow.Instance?.Alert(L.T("Tulisan Latin untuk lirik ini butuh Paket tulisan Latin: Pengaturan > Addon"), 8, null, false);
+        }
     }
 
     /// <summary>
@@ -600,6 +770,14 @@ public sealed class MediaService
     }
 
     volatile int _durTol = 6;   // toleransi durasi kandidat (detik); dilonggarkan hanya pada putaran terakhir
+
+    /// <summary>Baris pertama "Artis - Judul" yang dipasang sumber lirik sebagai kepala bukan bagian lagu: buang.</summary>
+    static List<LyricLine> StripHeader(List<LyricLine> l, string title)
+    {
+        var key = Norm(title);
+        if (l.Count > 3 && key.Length > 1 && l[0].At < TimeSpan.FromSeconds(8) && l[0].Text.Contains(" - ") && Norm(l[0].Text).Contains(key)) l.RemoveAt(0);
+        return l;
+    }
 
     static string Norm(string s) => System.Text.RegularExpressions.Regex.Replace((s ?? "").ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
 
