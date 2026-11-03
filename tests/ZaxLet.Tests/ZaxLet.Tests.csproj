@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <DefineConstants>$(DefineConstants);NOKANJI</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\ZaxLet\Services\PrayerCalc.cs" Link="PrayerCalc.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\Lrc.cs" Link="Lrc.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\Romaji.cs" Link="Romaji.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\Dsp.cs" Link="Dsp.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\VocalModel.cs" Link="VocalModel.cs" />
+    <Compile Include="..\..\src\ZaxLet\Core\DurText.cs" Link="DurText.cs" />
+  </ItemGroup>
+
+</Project>
