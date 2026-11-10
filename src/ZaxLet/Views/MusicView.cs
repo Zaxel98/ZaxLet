@@ -18,7 +18,7 @@ public sealed class MusicView : TabView
     public override bool CenterV => false;
 
     readonly MediaService _m = MediaService.I;
-    readonly Grid _player, _empty;
+    readonly Grid _player;
     readonly StackPanel _left;
     readonly Border _divider;
     readonly Image _cover = new() { Stretch = Stretch.UniformToFill };
@@ -32,22 +32,25 @@ public sealed class MusicView : TabView
     readonly TextBlock _rom = new() { Foreground = UI.Dim, FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 5), Visibility = Visibility.Collapsed };   // romaji baris yang sedang dinyanyikan
     readonly TranslateTransform _slide = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    readonly Grid _recap = new() { Visibility = Visibility.Collapsed };   // rekap lagu dan artis teratas (ala Spotify Wrapped mingguan)
+    bool _recapOn, _recapDirty = true, _recapHasData;
+    int _recapDays = 7;
+    TextBlock _wrongT;
+    StackPanel _syncRow;   // sinkron + cari ulang: tidak berlaku untuk iklan
+    Border _shufBtn;
+    readonly Bar _vol = new(4);
+    readonly TextBlock _volPct = UI.T("", 11, UI.Dim);
+    TextBlock _volIcon;
+    bool _volDrag;
     int _lastIdx = -2;
     DateTime _lastFull = DateTime.MinValue, _lastPoll = DateTime.MinValue;
 
     public MusicView()
     {
-        // kosong
-        _empty = new Grid { Visibility = Visibility.Collapsed };
-        var es = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        es.Children.Add(UI.Icon("", 34, UI.Faint));
-        es.Children.Add(new TextBlock { Text = L.T("Tidak ada musik yang diputar"), Foreground = UI.Dim, FontSize = 13, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center });
-        _empty.Children.Add(es);
-
         // kiri: sampul + judul, progres, kontrol
         _left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 18, 0) };   // jarak ke pembatas lirik
         var left = _left;
-        var head = UI.Cols(72, -1);
+        var head = UI.Cols(72, -1, 0);
         var coverBox = new Border { Width = 58, Height = 58, CornerRadius = new CornerRadius(11), Background = UI.Card, ClipToBounds = true, HorizontalAlignment = HorizontalAlignment.Left, Child = _cover };
         head.Children.Add(coverBox);
         var txt = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -96,13 +99,40 @@ public sealed class MusicView : TabView
         for (int k = 1; k < kids.Count; k++) trio.Children.Add(kids[k]);
         Grid.SetColumn(trio, 1);
         if (kids[0] is FrameworkElement lyrBtn) { lyrBtn.HorizontalAlignment = HorizontalAlignment.Left; lyrBtn.VerticalAlignment = VerticalAlignment.Center; }
+        // kiri: lirik; kanan: acak, seimbang di kedua sisi trio
+        _shufBtn = UI.IconBtn("", _m.ToggleShuffle, 15); _shufBtn.ToolTip = L.T("Acak");
         ctlRow.Children.Add(kids[0]);
         ctlRow.Children.Add(trio);
-        // tombol kenali lagu (seperti Shazam) di tepi kanan, seimbang dengan tombol lirik di kiri
-        var idBtn = UI.IconBtn("", () => _ = _m.Identify(), 15);
-        idBtn.HorizontalAlignment = HorizontalAlignment.Right; idBtn.VerticalAlignment = VerticalAlignment.Center; idBtn.ToolTip = L.T("Kenali lagu");
-        ctlRow.Children.Add(idBtn.At(0, 2));
+        _shufBtn.HorizontalAlignment = HorizontalAlignment.Right; _shufBtn.VerticalAlignment = VerticalAlignment.Center;
+        ctlRow.Children.Add(_shufBtn.At(0, 2));
         left.Children.Add(ctlRow);
+
+        // volume: volume utama Windows (perangkat keluaran bawaan); klik ikon = bisukan, klik atau seret bar = atur
+        var volRow = UI.Cols(0, 0, 0);
+        volRow.HorizontalAlignment = HorizontalAlignment.Left; volRow.Margin = new Thickness(0, 9, 0, 0);   // sepertiga lebar bar lagu, tetap di kiri; margin atas meratakan jarak ke tombol transport (atas) dan garis tab (bawah)
+        _volIcon = UI.Icon("", 13, UI.Dim);
+        var volBtn = UI.Btn(_volIcon, () => { AudioEndpoint.SetMuted(!(AudioEndpoint.Muted() ?? false)); PollVolume(); }, Brushes.Transparent, 999, new Thickness(4));
+        volBtn.ToolTip = L.T("Bisukan");
+        volRow.Children.Add(volBtn);
+        var volHit = new Grid { Background = Brushes.Transparent, Cursor = Cursors.Hand, Margin = new Thickness(4, 0, 4, 0), Width = 90 };
+        _vol.Margin = new Thickness(0, 8, 0, 8);
+        volHit.Children.Add(_vol);
+        volRow.Children.Add(volHit.At(0, 1));
+        _volPct.MinWidth = 32; _volPct.TextAlignment = TextAlignment.Right;
+        volRow.Children.Add(_volPct.At(0, 2));
+        var lastVol = DateTime.MinValue;
+        void VolFrom(MouseEventArgs e, bool force)
+        {
+            if (_vol.ActualWidth <= 0 || !force && (DateTime.Now - lastVol).TotalMilliseconds < 60) return;
+            lastVol = DateTime.Now;
+            double f = Math.Clamp(e.GetPosition(_vol).X / _vol.ActualWidth, 0, 1);
+            AudioEndpoint.SetVolume((float)f);
+            _vol.Set(f); _volPct.Text = Math.Round(f * 100) + "%";
+        }
+        volHit.MouseLeftButtonDown += (_, e) => { _volDrag = true; volHit.CaptureMouse(); VolFrom(e, true); };
+        volHit.MouseMove += (_, e) => { if (volHit.IsMouseCaptured) VolFrom(e, false); };
+        volHit.MouseLeftButtonUp += (_, e) => { if (volHit.IsMouseCaptured) { VolFrom(e, true); volHit.ReleaseMouseCapture(); } _volDrag = false; };
+        left.Children.Add(volRow);
 
         // kanan: lirik karaoke (tadi, sekarang, berikutnya) + sinkron cepat
         _lyrics.RenderTransform = _slide;
@@ -128,34 +158,53 @@ public sealed class MusicView : TabView
         _off.MinWidth = 54; _off.TextAlignment = TextAlignment.Center;
         sync.Children.Add(_off);
         sync.Children.Add(UI.Btn(UI.T("+", 13), () => Nudge(200), UI.Card, 9, new Thickness(9, 1, 9, 2)));
+        _wrongT = UI.T("Lirik salah?", 11, UI.Dim);
+        var wrong = UI.Btn(_wrongT, () => { if (_m.Lyrics.Count > 0) _m.RejectLyrics(); else _m.RetryLyrics(); }, UI.Card, 9, new Thickness(9, 2, 9, 2));
+        wrong.Margin = new Thickness(10, 0, 0, 0); wrong.ToolTip = L.T("Lirik salah: tandai lalu cari versi dari sumber lain. Belum ada lirik: cari ulang");
+        sync.Children.Add(wrong);
         _zone.Children.Add(_lyrics);
         _zone.Children.Add(sync);
+        _syncRow = sync;
         _divider = new Border { Width = 1, Background = UI.Track, Margin = new Thickness(0, 8, 0, 8) };
 
         _player = UI.Cols(300, 1, -1);
         _player.Children.Add(left);
         _player.Children.Add(_divider.At(0, 1));
         _player.Children.Add(_zone.At(0, 2));
+        // Rekap di pojok kanan atas seluruh pemutar (area lirik; saat lirik mati tetap di pojok), supaya tidak memakan ruang judul lagu
+        var recapBtn = UI.Btn(UI.T("Rekap", 11, UI.Dim), () => { _recapOn = true; _recapDirty = true; Render(); }, UI.Card, 9, new Thickness(8, 2, 8, 3));
+        recapBtn.HorizontalAlignment = HorizontalAlignment.Right; recapBtn.VerticalAlignment = VerticalAlignment.Top; recapBtn.Margin = new Thickness(0, 2, 2, 0);
+        Grid.SetColumnSpan(recapBtn, 3);
+        _player.Children.Add(recapBtn);
 
         Children.Add(_player);
-        Children.Add(_empty);
+        Children.Add(_recap);
         _t.Tick += (_, _) => OnTick();
+    }
+
+    // volume bisa diubah dari luar (tombol keyboard, mixer): dibaca tiap detik selama tab terbuka, kecuali sedang diseret
+    void PollVolume()
+    {
+        if (_volDrag) return;
+        var v = AudioEndpoint.Volume();
+        bool muted = AudioEndpoint.Muted() ?? false;
+        if (v is { } f) { _vol.Set(muted ? 0 : f); _volPct.Text = muted ? L.T("Bisu") : Math.Round(f * 100) + "%"; }
+        _volIcon.Text = muted || v is 0f ? "" : "";
     }
 
     void Nudge(int deltaMs)
     {
-        Settings.Cur.LyricOffsetMs = Math.Clamp(Settings.Cur.LyricOffsetMs + deltaMs, -5000, 5000);
-        Settings.Save();
+        _m.Offset += deltaMs;   // tersimpan per lagu
         UpdateOffsetLabel();
     }
 
     void SeekToLine(int k)
     {
         if (k < 0 || k >= _m.Lyrics.Count) return;
-        _m.Seek(_m.Lyrics[k].At - TimeSpan.FromMilliseconds(Settings.Cur.LyricOffsetMs));
+        _m.Seek(_m.Lyrics[k].At - TimeSpan.FromMilliseconds(_m.Offset));
     }
 
-    void UpdateOffsetLabel() => _off.Text = (Settings.Cur.LyricOffsetMs / 1000.0).ToString("+0.0;-0.0;0.0", System.Globalization.CultureInfo.InvariantCulture) + " " + L.T("dtk");
+    void UpdateOffsetLabel() => _off.Text = (_m.Offset / 1000.0).ToString("+0.0;-0.0;0.0", System.Globalization.CultureInfo.InvariantCulture) + " " + L.T("dtk");
 
     static bool RomajiOnly => Settings.Cur.LyricRomaji && Settings.Cur.RomajiOnly;
 
@@ -171,19 +220,100 @@ public sealed class MusicView : TabView
         else if (!want && _flowOn) { AudioFlow.I.Release(); _flowOn = false; }
     }
 
-    public override void OnShow() { _m.Changed += OnChanged; Romaji.Ready += OnRomajiReady; Settings.Applied += OnRomajiReady; _lastIdx = -2; UpdateOffsetLabel(); _t.Start(); SyncFlow(true); OnChanged(); }
+    void BuildRecap()
+    {
+        _recap.Children.Clear();
+        var all = Settings.Cur.PlayLogOn ? PlayLog.Load() : new List<PlayEntry>();
+        var now = DateTime.Now;
+        var songs = PlayStats.TopSongs(all, now, _recapDays, 4);   // baris lagu dua tingkat: 4 muat di tinggi tab
+        var artists = PlayStats.TopArtists(all, now, _recapDays, 5);
+        _recapHasData = songs.Count > 0;
+
+        var root = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
+        var head = UI.Cols(-1, 0, 0, 0);
+        bool idle = !_m.HasSession;   // tidak ada pemutar: tab ini menjadi layar kosong yang berguna (lagu terakhir, rekap, tombol buka pemutar)
+        head.Children.Add(UI.T(idle ? "Tidak ada musik yang diputar" : _recapDays == 7 ? "Rekap 7 hari terakhir" : "Rekap 30 hari terakhir", 15, null, true));
+        var span = UI.Btn(UI.T(_recapDays == 7 ? "30 hari" : "7 hari", 11.5, UI.Dim), () => { _recapDays = _recapDays == 7 ? 30 : 7; _recapDirty = true; Render(); }, UI.Card, 9, new Thickness(9, 3, 9, 3));
+        span.Margin = new Thickness(0, 0, 6, 0);
+        head.Children.Add(span.At(0, 2));
+        head.Children.Add(idle
+            ? UI.Btn(UI.T("Buka pemutar", 11.5, UI.Dim), OpenPlayer, UI.Card, 9, new Thickness(9, 3, 9, 3)).At(0, 3)
+            : UI.Btn(UI.T("Kembali", 11.5, UI.Dim), () => { _recapOn = false; Render(); }, UI.Card, 9, new Thickness(9, 3, 9, 3)).At(0, 3));
+        root.Children.Add(head);
+        if (idle && all.Count > 0)
+        {
+            var last = all.MaxBy(e => e.T);
+            var l = UI.T(L.F("Terakhir diputar: {0}", last.Artist.Length > 0 ? last.Title + " · " + last.Artist : last.Title), 12, UI.Dim);
+            l.Margin = new Thickness(0, 6, 0, 0);
+            root.Children.Add(l);
+        }
+        if (idle && _recapHasData)
+        {
+            var c = UI.T(_recapDays == 7 ? "Rekap 7 hari terakhir" : "Rekap 30 hari terakhir", 11.5, UI.Faint);
+            c.Margin = new Thickness(0, 8, 0, 0);
+            root.Children.Add(c);
+        }
+
+        if (!_recapHasData)
+        {
+            var e = UI.T(Settings.Cur.PlayLogOn ? "Belum ada rekap. Lagu yang kamu dengarkan sedikitnya 30 detik dicatat di sini (hanya di PC ini)." : "Rekap dimatikan di Pengaturan > Musik.", 12, UI.Dim);
+            e.TextWrapping = TextWrapping.Wrap; e.Margin = new Thickness(0, 12, 0, 0);
+            root.Children.Add(e);
+        }
+        else
+        {
+            var cols = UI.Cols(-1, -1);
+            cols.Margin = new Thickness(0, 10, 0, 0);
+            cols.Children.Add(RecapList("Lagu teratas", songs, true).At(0, 0));
+            var ar = RecapList("Artis teratas", artists, false); ar.Margin = new Thickness(14, 0, 0, 0);
+            cols.Children.Add(ar.At(0, 1));
+            root.Children.Add(cols);
+        }
+        _recap.Children.Add(root);
+    }
+
+    /// <summary>Buka Spotify (tautan spotify:) bila terpasang; kalau tidak, YouTube Music di peramban bawaan.</summary>
+    static void OpenPlayer()
+    {
+        foreach (var uri in new[] { "spotify:", "https://music.youtube.com" })
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true }); return; }
+            catch (Exception ex) { App.Log(ex); }
+    }
+
+    static StackPanel RecapList(string title, List<PlayStats.Row> rows, bool withSub)
+    {
+        var sp = new StackPanel();
+        sp.Children.Add(UI.T(title, 11.5, UI.Faint));
+        int i = 1;
+        foreach (var r in rows)
+        {
+            var line = UI.Cols(18, -1, 0);
+            line.Margin = new Thickness(0, 5, 0, 0);
+            line.Children.Add(UI.T(i++.ToString(), 12.5, UI.Accent, true));
+            var name = new StackPanel();
+            name.Children.Add(UI.T(r.Name, 12.5, UI.Fg));
+            if (withSub && r.Sub.Length > 0) name.Children.Add(UI.T(r.Sub, 10.5, UI.Dim));
+            line.Children.Add(name.At(0, 1));
+            var n = UI.T(r.Plays + "×", 11.5, UI.Dim); n.Margin = new Thickness(6, 0, 0, 0);
+            line.Children.Add(n.At(0, 2));
+            sp.Children.Add(line);
+        }
+        return sp;
+    }
+
+    public override void OnShow() { _recapOn = false; _recapDirty = true; _m.Changed += OnChanged; Romaji.Ready += OnRomajiReady; Settings.Applied += OnRomajiReady; _lastIdx = -2; UpdateOffsetLabel(); _t.Start(); SyncFlow(true); OnChanged(); }
     public override void OnHide() { _m.Changed -= OnChanged; Romaji.Ready -= OnRomajiReady; Settings.Applied -= OnRomajiReady; _t.Stop(); SyncFlow(false); }
 
-    void OnChanged() { Render(); PaintLyrics(); }
+    void OnChanged() { Render(); PaintLyrics(); UpdateOffsetLabel(); }
 
     void OnTick()
     {
         // 30 fps saat lirik karaoke berjalan, selain itu 4 fps
-        bool fast = Settings.Cur.LyricKaraoke && Settings.Cur.MusicLyrics && _m.Playing && _m.Lyrics.Count > 0;
+        bool fast = Settings.Cur.LyricKaraoke && Settings.Cur.MusicLyrics && _m.Playing && _m.Lyrics.Count > 0 && !PowerSaver.On;   // hemat baterai: karaoke 4 kali/dtk
         var want = TimeSpan.FromMilliseconds(fast ? 33 : 250);
         if (_t.Interval != want) _t.Interval = want;
         SyncFlow(true);
-        if ((DateTime.Now - _lastPoll).TotalSeconds >= 1) { _lastPoll = DateTime.Now; _m.PollTimeline(); }
+        if ((DateTime.Now - _lastPoll).TotalSeconds >= 1) { _lastPoll = DateTime.Now; _m.PollTimeline(); PollVolume(); }
         if ((DateTime.Now - _lastFull).TotalMilliseconds >= 250) Render();
         PaintLyrics();
     }
@@ -192,13 +322,19 @@ public sealed class MusicView : TabView
     {
         _lastFull = DateTime.Now;
         bool has = _m.HasSession;
-        _player.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
-        _empty.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
-        if (!has) return;
+        if (_recapDirty && (_recapOn || !has)) { _recapDirty = false; PlayLog.Flush(); BuildRecap(); }
+        _recap.Visibility = _recapOn || !has ? Visibility.Visible : Visibility.Collapsed;
+        _player.Visibility = has && !_recapOn ? Visibility.Visible : Visibility.Collapsed;
+        if (!has || _recapOn) return;
 
         _title.Text = string.IsNullOrEmpty(_m.Title) ? "—" : _m.Title;
-        _artist.Text = string.IsNullOrEmpty(_m.Album) ? _m.Artist : $"{_m.Artist} - {_m.Album}";
+        // album yang sama dengan judul (single) tidak ditampilkan: sudah ada di baris judul
+        bool albumNew = !string.IsNullOrWhiteSpace(_m.Album) && !string.Equals(_m.Album.Trim(), _m.Title.Trim(), StringComparison.OrdinalIgnoreCase);
+        _artist.Text = albumNew ? $"{_m.Artist} - {_m.Album}" : _m.Artist;
         if (!ReferenceEquals(_cover.Source, _m.Cover)) _cover.Source = _m.Cover;
+        _shufBtn.Visibility = _m.Shuffle == null ? Visibility.Collapsed : Visibility.Visible;
+        ((TextBlock)_shufBtn.Child).Foreground = _m.Shuffle == true ? UI.Accent : UI.Faint;
+        _shufBtn.ToolTip = L.T(_m.Shuffle == true ? "Acak: menyala" : "Acak: mati");
         _play.Text = _m.Playing ? "" : "";
 
         var pos = _m.Position();
@@ -218,14 +354,16 @@ public sealed class MusicView : TabView
         _left.HorizontalAlignment = on ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
         _divider.Visibility = _zone.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         if (!on) return;
+        _syncRow.Visibility = _m.IsAd ? Visibility.Collapsed : Visibility.Visible;
         var L = _m.Lyrics;
+        _wrongT.Text = ZaxLet.L.T(L.Count > 0 ? "Lirik salah?" : "Cari ulang");
         if (L.Count == 0)
         {
             _prev.Set(""); _next.Set(""); SetRomaji("");
             _cur.Set(ZaxLet.L.T(_m.LyricState switch
             {
                 "loading" => "Mencari lirik…", "retry" => "Server lirik sibuk, mencoba lagi…", "listen" => "Mendengarkan…",
-                "norec" => "Lagu tidak dikenali", "notoken" => "Isi token pengenal lagu di Pengaturan > Musik", _ => "Lirik tidak tersedia"
+                "ad" => "Iklan sedang diputar", "norec" => "Lagu tidak dikenali", "notoken" => "Isi token pengenal lagu di Pengaturan > Musik", _ => "Lirik tidak tersedia"
             }));   // L = daftar lirik di metode ini
             _cur.Paint(-1);
             _lastIdx = -2;

@@ -36,10 +36,14 @@ public class NotifService extends NotificationListenerService {
     @Override public void onListenerConnected() {
         Net.init(this);   // proses bisa dimulai sistem tanpa lewat aplikasi: pastikan pengaturan pasangan terbaca
         inst = this;
+        ConnService.ensure(this);   // sistem yang mengikat layanan ini: jangkar untuk menghidupkan ConnService bila mati
         resync();
     }
 
-    @Override public void onListenerDisconnected() { inst = null; }
+    @Override public void onListenerDisconnected() {
+        inst = null;
+        try { requestRebind(new android.content.ComponentName(this, NotifService.class)); } catch (Exception e) { }
+    }
 
     /** Kirim ulang semua notifikasi aktif (dipanggil saat sambungan ke PC baru terbentuk). */
     static void resync() {
@@ -64,6 +68,7 @@ public class NotifService extends NotificationListenerService {
         try {
             Net.init(this);
             seen++;
+            if (!ConnService.alive) ConnService.ensure(this);
             if (!Net.paired() || sbn.getPackageName().equals(getPackageName())) return;
             Notification n = sbn.getNotification();
             if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;

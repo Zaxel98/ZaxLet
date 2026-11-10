@@ -25,7 +25,17 @@ public sealed class YieldService
     DateTime _at = DateTime.MinValue;
 
     /// <summary>islandPx mengembalikan persegi island (kiri, atas, kanan, bawah) dalam piksel layar.</summary>
-    public void Start(Func<(int L, int T, int R, int B)> islandPx) => _t = new Timer(_ => Poll(islandPx()), null, 3000, 1000);
+    public void Start(Func<(int L, int T, int R, int B)> islandPx) => _t = new Timer(_ => Poll(islandPx()), null, Timeout.Infinite, Timeout.Infinite);
+
+    /// <summary>Timer hanya jalan selama fiturnya menyala.</summary>
+    public void Enable(bool on)
+    {
+        if (on == _on || _t == null) return;
+        _on = on;
+        _t.Change(on ? 3000 : Timeout.Infinite, on ? 1000 : Timeout.Infinite);
+        if (!on) Blocked = false;
+    }
+    bool _on;
 
     public static bool Overlaps((int L, int T, int R, int B) a, (int L, int T, int R, int B) b, int min = 12) =>
         Math.Min(a.R, b.R) - Math.Max(a.L, b.L) >= min && Math.Min(a.B, b.B) - Math.Max(a.T, b.T) >= min;
@@ -42,10 +52,16 @@ public sealed class YieldService
             var sig = $"{h}|{wr.L},{wr.T},{wr.R2},{wr.B}|{island}";
             if (sig == _sig && (DateTime.Now - _at).TotalSeconds < 6) return;   // hasil sebelumnya masih berlaku
             _sig = sig; _at = DateTime.Now; _hwnd = h;
-            Blocked = BlocksControls(h, island);
+            Blocked = !IsOffice(pid) && BlocksControls(h, island);   // Word, Excel, PowerPoint: island tetap tampil penuh (slide show tetap menyembunyikannya lewat deteksi layar penuh)
         }
         catch { /* jendela menutup / pohon aksesibilitas belum siap: putaran berikut */ }
         finally { Volatile.Write(ref _busy, 0); }
+    }
+
+    static bool IsOffice(uint pid)
+    {
+        try { using var p = System.Diagnostics.Process.GetProcessById((int)pid); return p.ProcessName.ToLowerInvariant() is "winword" or "excel" or "powerpnt"; }
+        catch { return false; }
     }
 
     static bool BlocksControls(IntPtr h, (int L, int T, int R, int B) island)

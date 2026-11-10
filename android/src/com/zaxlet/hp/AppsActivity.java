@@ -27,27 +27,11 @@ public class AppsActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Net.init(this);
-        getWindow().setStatusBarColor(Color.parseColor("#0B0B0D"));
-        getWindow().setNavigationBarColor(Color.parseColor("#0B0B0D"));
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(Color.parseColor("#0B0B0D"));
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(36), dp(20), dp(24));
-        sv.addView(root);
-
-        TextView t = new TextView(this);
-        t.setText("Notifikasi ke PC");
-        t.setTextSize(24); t.setTextColor(Color.WHITE); t.setTypeface(null, android.graphics.Typeface.BOLD);
-        root.addView(t);
-        TextView hint = new TextView(this);
-        hint.setText("Semua mati secara bawaan. Aktifkan aplikasi yang notifikasinya boleh muncul di pill PC.");
-        hint.setTextSize(13); hint.setTextColor(Color.parseColor("#9A9AA2")); hint.setPadding(0, dp(6), 0, dp(10));
+        LinearLayout root = Ui.page(this, "Notifikasi ke PC");
+        TextView hint = Ui.text(this, "Semua mati secara bawaan. Aktifkan aplikasi yang notifikasinya boleh muncul di pill PC.", 13, Ui.DIM, false);
+        hint.setPadding(0, dp(6), 0, 0);
         root.addView(hint);
-        list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        root.addView(list);
-        setContentView(sv);
+        list = Ui.card(root, null);
 
         new Thread(() -> {   // memuat ikon puluhan aplikasi: jangan di main thread
             final List<Item> items = load();

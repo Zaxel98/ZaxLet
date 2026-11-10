@@ -13,11 +13,13 @@ namespace ZaxLet;
 public partial class App : Application
 {
     static Mutex _mutex;
-    WF.NotifyIcon _tray;
-    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    WF.NotifyIcon _tray;    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // pembantu FPS (admin): tanpa jendela, tanpa mutex instans tunggal, hanya mengirim angka ke ZaxLet yang meminta
+        if (e.Args.Length == 2 && e.Args[0] == "--fps-helper") { FpsHelper.Run(e.Args[1]); Environment.Exit(0); return; }
+        if (e.Args.Length == 3 && e.Args[0] == "--ram-helper") { MemTrim.Helper(e.Args[1], e.Args[2]); Environment.Exit(0); return; }
         // ZAXLET_NO_SINGLE=1: izinkan instans kedua (uji di PC yang sudah menjalankan ZaxLet; dipakai bersama ZAXLET_DATA_DIR)
         if (Environment.GetEnvironmentVariable("ZAXLET_NO_SINGLE") != "1")
         {
@@ -33,6 +35,9 @@ public partial class App : Application
 
         MigrateLegacy();
         Settings.Load();
+        // animasi latar (equalizer, teks berjalan, lingkaran) 30 fps cukup halus dan separuh bebannya; buka/tutup/ganti tab memakai 60 fps (IslandWindow.Fast)
+        if (Settings.Cur.AnimFps != "full")
+            System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(typeof(System.Windows.Media.Animation.Timeline), new FrameworkPropertyMetadata(30));
         Translit.PinyinFile = RomajiPack.PinyinFile;   // tabel pinyin ada di Paket tulisan Latin (opsional), bukan di installer
         var w = new IslandWindow();
         w.Show();
@@ -52,6 +57,34 @@ public partial class App : Application
         {
             if (a.StartsWith("--tab=")) { Settings.Cur.LastTab = a[6..]; w.OpenNow(); w.KeepOpen(true); }
             else if (a == "--shot") CaptureService.Full();
+            else if (a.StartsWith("--wish-probe="))   // uji ambil info produk satu link -> %ZAXLET_UI_OUT%\wish-probe.txt (tanpa mengubah wishlist)
+            {
+                var rep = System.Threading.Tasks.Task.Run(() => Wishlist.Probe(a[13..])).GetAwaiter().GetResult();
+                var o = Environment.GetEnvironmentVariable("ZAXLET_UI_OUT") is { Length: > 0 } d ? d : Settings.Dir;
+                System.IO.Directory.CreateDirectory(o);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(o, "wish-probe.txt"), rep);
+            }
+            else if (a.StartsWith("--wish-add="))   // uji: tambah link ke Wishlist 6 dtk setelah mulai (memberi waktu ekstensi/uji mengirim info halaman)
+            {
+                var u = a[11..];
+                var wt = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+                wt.Tick += (_, _) => { wt.Stop(); Wishlist.Add(u); };
+                wt.Start();
+            }
+            else if (a == "--fps-test")   // uji FPS: mencoba sesi langsung, bila ditolak meminta UAC; 15 dtk membaca FPS -> fps-test.txt
+            {
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    var o = Environment.GetEnvironmentVariable("ZAXLET_UI_OUT") is { Length: > 0 } d ? d : Settings.Dir;
+                    System.IO.Directory.CreateDirectory(o);
+                    var log = new System.Text.StringBuilder();
+                    FpsSource.TryDirect();
+                    log.AppendLine("direct=" + FpsSource.Available);
+                    if (!FpsSource.Available) log.AppendLine("elevated started=" + FpsSource.StartElevated());
+                    for (int i = 0; i < 15; i++) { System.Threading.Thread.Sleep(1000); log.AppendLine($"{i}s fps={FpsSource.Read()?.ToString("0.0") ?? "-"} fg={Native.ForegroundPid()} avail={FpsSource.Available}"); }
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(o, "fps-test.txt"), log.ToString());
+                });
+            }
             else if (a == "--ui-test") UiTest.Run();   // gambar tiap halaman Pengaturan dan langkah panduan -> PNG di ZAXLET_UI_OUT
             else if (a == "--usage-test")   // kuota Claude/Codex yang berhasil dibaca dan dari sumber mana -> usage-test.txt
             {
@@ -192,6 +225,10 @@ public partial class App : Application
         _ = MediaService.I.StartAsync();
         EyeService.I.Apply();
         PrayerAlerts.Start();
+        WishBridge.Apply();
+        Settings.Applied += WishBridge.Apply;
+        WeatherService.I.Apply();
+        Settings.Applied += WeatherService.I.Apply;   // nyala/mati dari Pengaturan berlaku langsung
         HydrationService.I.Start();
         DiscordRpc.I.Start();
         _ = LocationService.RefreshAsync();
@@ -217,7 +254,19 @@ public partial class App : Application
         var menu = new WF.ContextMenuStrip();
         menu.Items.Add(L.T("Buka"), null, (_, _) => IslandWindow.Instance?.OpenNow());
         menu.Items.Add(L.T("Sembunyikan / tampilkan pill"), null, (_, _) => IslandWindow.Instance?.ToggleHidden());
+        var focus = new WF.ToolStripMenuItem(L.T("Mode Fokus"));
+        focus.Click += (_, _) => { if (FocusService.I.Manual && FocusService.I.Active) FocusService.I.Stop(); else FocusService.I.Start(Settings.Cur.FocusMin); };
+        menu.Items.Add(focus);
+        menu.Items.Add(L.T("Jeda notifikasi 1 jam"), null, (_, _) => FocusService.I.Start(60));   // notifikasi HP ditahan seperti Mode Fokus; OTP tetap lewat
+        menu.Opening += (_, _) => focus.Checked = FocusService.I.Manual && FocusService.I.Active;
         menu.Items.Add(L.T("Pengaturan"), null, (_, _) => SettingsWindow.ShowIt());
+        menu.Items.Add(L.T("Periksa pembaruan"), null, async (_, _) =>
+        {
+            await UpdateService.CheckAsync();
+            var a = UpdateService.Available;
+            IslandWindow.Instance?.Alert(a != null ? L.F("ZaxLet {0} tersedia · klik untuk memperbarui", a.Version) : string.IsNullOrEmpty(UpdateService.Status) ? "ZaxLet " + UpdateService.Current : UpdateService.Status,
+                a != null ? 20 : 6, a != null ? () => _ = UpdateService.ApplyAsync() : null);
+        });
         var auto = new WF.ToolStripMenuItem(L.T("Mulai bersama Windows")) { Checked = IsAutostart(), CheckOnClick = true };
         auto.CheckedChanged += (_, _) => SetAutostart(auto.Checked);
         menu.Items.Add(auto);
@@ -253,6 +302,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _tray?.Dispose();
+        PlayLog.Flush();
         base.OnExit(e);
     }
 
@@ -261,7 +311,11 @@ public partial class App : Application
         try
         {
             Directory.CreateDirectory(Settings.Dir);
-            File.AppendAllText(Path.Combine(Settings.Dir, "error.log"), $"{DateTime.Now:s} {ex}\n\n");
+            var p = Path.Combine(Settings.Dir, "error.log");
+            if (File.Exists(p) && new FileInfo(p).Length > 200_000) File.Move(p, p + ".old", true);   // batas ukuran: simpan satu generasi lama
+            // galat jaringan (timeout, 429, 403, DNS) cukup satu baris, tanpa stack trace
+            var net = ex is System.Net.Http.HttpRequestException or System.Threading.Tasks.TaskCanceledException or System.Net.Sockets.SocketException or System.Net.WebException;
+            File.AppendAllText(p, net ? $"{DateTime.Now:s} {ex.GetType().Name}: {ex.Message}\n" : $"{DateTime.Now:s} {ex}\n\n");
         }
         catch { }
     }

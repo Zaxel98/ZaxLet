@@ -46,6 +46,7 @@ public sealed class PhoneDevice
     public string Ip { get; set; }
     public DateTime LastSeen { get; set; }
     public bool Blocked { get; set; }
+    public int BatPct = -1; public bool BatCharging;   // dari aplikasi HP lewat /ctl; field, jadi tidak ikut devices.json
     [System.Text.Json.Serialization.JsonIgnore] public bool Online => (DateTime.Now - LastSeen).TotalSeconds < 25;
 }
 
@@ -70,7 +71,8 @@ public static class PhoneCam
 /// <summary>
 /// Server mini untuk HP. Menerima alamat privat/loopback dan rentang Tailscale (100.64.0.0/10), jadi HP bisa tersambung dari
 /// jaringan mana pun lewat Tailscale; di jaringan yang sama lewat IP LAN. Dijaga token tetap + daftar perangkat yang bisa diblokir.
-/// HTTP untuk berkas; HTTPS (sertifikat sendiri) untuk kamera, karena browser HP hanya mengizinkan kamera di halaman aman.
+/// HTTPS (sertifikat sendiri) untuk halaman web, berkas, kamera, dan kanal kontrol aplikasi; HTTP polos hanya melayani unduhan APK
+/// (dan semuanya bagi PC ini sendiri, mis. MJPEG untuk OBS). Peramban lain di HTTP dialihkan ke HTTPS.
 /// TcpListener dipakai agar tidak butuh hak admin (urlacl).
 /// </summary>
 public sealed class ShareServer
@@ -91,15 +93,16 @@ public sealed class ShareServer
     public List<PhoneDevice> Devices { get; } = Store.Load<List<PhoneDevice>>("devices.json") ?? new();
     public event Action DevicesChanged;
 
-    public string LanUrl => $"http://{LanIp() ?? "127.0.0.1"}:{Port}/?t={Token}";
-    public string TailUrl => TailIp == null ? null : $"http://{TailIp}:{Port}/?t={Token}";   // IP, bukan nama MagicDNS: nama baru terbaca bila MagicDNS aktif di HP
+    string Web(string host) => TlsPort > 0 ? $"https://{host}:{TlsPort}/?t={Token}" : $"http://{host}:{Port}/?t={Token}";   // TLS bila ada: token tidak lewat jaringan tanpa enkripsi
+    public string LanUrl => Web(LanIp() ?? "127.0.0.1");
+    public string TailUrl => TailIp == null ? null : Web(TailIp);   // IP, bukan nama MagicDNS: nama baru terbaca bila MagicDNS aktif di HP
     /// <summary>Tautan untuk QR sesuai pilihan (jaringan sama / Tailscale); jatuh ke LAN bila Tailscale tidak ada.</summary>
     public string Url => Settings.Cur.ShareQr == "tailscale" && TailUrl != null ? TailUrl : LanUrl;
     public string CamUrl(string host) => $"https://{host}:{TlsPort}/cam?t={Token}";
     public string CertFp => _cert?.GetCertHashString(HashAlgorithmName.SHA256).ToLowerInvariant() ?? "";
     /// <summary>Tautan pasangan untuk aplikasi HP: kedua alamat (LAN dulu, lalu Tailscale), token, dan sidik jari sertifikat.</summary>
     public string PairLink => $"zaxlet://pair?lan={LanIp()}&ts={TailIp}&tp={TlsPort}&t={Token}&f={CertFp}";
-    public string ApkUrl => $"http://{LanIp() ?? "127.0.0.1"}:{Port}/zaxlet.apk?t={Token}";
+    public string ApkUrl => $"http://{LanIp() ?? "127.0.0.1"}:{Port}/zaxlet.apk";   // tanpa token: unduhan APK lewat HTTP polos tidak boleh membocorkan token
     public string MjpegUrl => $"http://127.0.0.1:{Port}/cam.mjpg?t={Token}";
     public string CamPageUrl => CamUrl(Settings.Cur.ShareQr == "tailscale" && TailIp != null ? TailIp : LanIp() ?? "127.0.0.1");
 
@@ -120,7 +123,11 @@ public sealed class ShareServer
         _ = Task.Run(DetectTailscale);
         // hook uji: tulis URL ke file yang ditunjuk env var (tidak aktif secara normal)
         if (Environment.GetEnvironmentVariable("ZAXLET_URL_FILE") is { Length: > 0 } f) File.WriteAllText(f, Url + "\n" + CamPageUrl);
+        RunChanged?.Invoke();
     }
+
+    /// <summary>Server menyala atau mati (pembacaan latar di island bergantung padanya).</summary>
+    public event Action RunChanged;
 
     static string NewToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
 
@@ -131,7 +138,7 @@ public sealed class ShareServer
         catch (SocketException) { var l = new TcpListener(IPAddress.Any, 0); l.Start(); return l; }
     }
 
-    public void Stop() { _l?.Stop(); _l = null; _tls?.Stop(); _tls = null; }
+    public void Stop() { _l?.Stop(); _l = null; _tls?.Stop(); _tls = null; RunChanged?.Invoke(); }
 
     public void ResetToken() { Settings.Cur.ShareToken = NewToken(); Settings.Save(); }
 
@@ -304,6 +311,7 @@ public sealed class ShareServer
                 var path = rq[1];
                 var q = new Dictionary<string, string>();
                 int qi = path.IndexOf('?');
+                string query = qi >= 0 ? path[qi..] : "";
                 if (qi >= 0)
                 {
                     foreach (var kv in path[(qi + 1)..].Split('&'))
@@ -312,6 +320,15 @@ public sealed class ShareServer
                         q[p[0]] = p.Length > 1 ? Uri.UnescapeDataString(p[1].Replace('+', ' ')) : "";
                     }
                     path = path[..qi];
+                }
+                // port HTTP polos (selain dari PC ini sendiri): hanya APK, tanpa token. Halaman web dipindah ke TLS supaya token dan berkas tidak lewat jaringan tanpa enkripsi
+                if (!tls && !IPAddress.IsLoopback(remote))
+                {
+                    if (rq[0] == "GET" && path == "/zaxlet.apk" && File.Exists(ApkPath)) await SendFile(ns, ApkPath, "application/vnd.android.package-archive");
+                    else if (rq[0] == "GET" && path == "/" && TlsPort > 0 && hdr.TryGetValue("host", out var hh) && Uri.TryCreate("http://" + hh, UriKind.Absolute, out var hu))
+                        await ns.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 302 Found\r\nLocation: https://{hu.Host}:{TlsPort}/{query}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"));
+                    else await Send(ns, 403, "text/plain", "forbidden");
+                    return;
                 }
                 if (!q.TryGetValue("t", out var tok) || string.IsNullOrEmpty(Token) || tok != Token) { await Send(ns, 403, "text/plain", "forbidden"); return; }
                 var dev = Touch(q.GetValueOrDefault("d"), hdr.GetValueOrDefault("user-agent"), remote, q.GetValueOrDefault("dn"));
@@ -325,6 +342,7 @@ public sealed class ShareServer
                 else if (rq[0] == "GET" && path == "/zaxlet.apk" && File.Exists(ApkPath)) await SendFile(ns, ApkPath, "application/vnd.android.package-archive");
                 else if (rq[0] == "GET" && path == "/cam") await Send(ns, 200, "text/html; charset=utf-8", CamPage());
                 else if (rq[0] == "GET" && path == "/cam/ws" && hdr.TryGetValue("sec-websocket-key", out var wk)) await CamSocket(ns, wk, dev?.Name ?? "HP");
+                else if (rq[0] == "GET" && path == "/aud/ws" && hdr.TryGetValue("sec-websocket-key", out var ak)) await AudSocket(ns, ak);
                 else if (rq[0] == "GET" && path == "/cam.mjpg") await Mjpeg(ns);
                 else if (rq[0] == "GET" && path == "/cam.jpg" && PhoneCam.Latest is { } jpg) await Send(ns, 200, "image/jpeg", jpg);
                 else if (rq[0] == "GET" && path.StartsWith("/d/") && int.TryParse(path[3..], out var idx)) await Download(ns, idx);
@@ -400,6 +418,13 @@ public sealed class ShareServer
                 if (masked) for (int i = 0; i < data.Length; i++) data[i] ^= mask[i & 3];
                 if (op == 8) return;
                 dev.LastSeen = DateTime.Now;   // setiap ping dari aplikasi = HP online
+                if (op == 1 && data.Length == 4 && data[0] == (byte)'p')   // "ping" dari HP: balas "pong" supaya HP bisa mendeteksi soket mati
+                {
+                    await mine.Item2.WaitAsync();
+                    try { await ns.WriteAsync(new byte[] { 0x81, 4, (byte)'p', (byte)'o', (byte)'n', (byte)'g' }); await ns.FlushAsync(); }
+                    catch { }
+                    finally { mine.Item2.Release(); }
+                }
                 if (op == 1 && data.Length > 4) PhoneNotifs.Handle(dev, Encoding.UTF8.GetString(data));   // JSON notifikasi dari HP
             }
         }
@@ -419,7 +444,18 @@ public sealed class ShareServer
     }
 
     // ---------- kamera: WebSocket masuk (HP -> PC) dan MJPEG keluar ----------
-    static async Task CamSocket(Stream ns, string key, string device)
+    static Task CamSocket(Stream ns, string key, string device) =>
+        WsIn(ns, key, d => { if (d.Length > 2 && d[0] == 0xFF && d[1] == 0xD8) PhoneCam.Push(d, device); });
+
+    // audio HP -> PC: PCM dari aplikasi HP, diputar PhoneAudio sebagai aliran tambahan (tidak mem-pause pemutar lain)
+    static async Task AudSocket(Stream ns, string key)
+    {
+        try { await WsIn(ns, key, PhoneAudio.Push); }
+        finally { PhoneAudio.Stop(); }
+    }
+
+    /// <summary>WebSocket masuk: jabat tangan, lalu setiap bingkai teks/biner diteruskan ke onData sampai soket ditutup.</summary>
+    static async Task WsIn(Stream ns, string key, Action<byte[]> onData)
     {
         var accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
         await ns.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"));
@@ -438,7 +474,7 @@ public sealed class ShareServer
             if (masked) for (int i = 0; i < data.Length; i++) data[i] ^= mask[i & 3];
             if (op == 8) return;
             if (op == 9) { await ns.WriteAsync(new byte[] { 0x8A, 0 }); continue; }   // ping -> pong
-            if (op is 1 or 2 && data.Length > 2 && data[0] == 0xFF && data[1] == 0xD8) PhoneCam.Push(data, device);
+            if (op is 1 or 2) onData(data);
         }
     }
 

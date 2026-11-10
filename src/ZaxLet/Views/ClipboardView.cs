@@ -16,17 +16,24 @@ public sealed class ClipboardView : TabView
 
     readonly StackPanel _list = new();
     readonly TextBlock _hint = UI.T("", 11, UI.Faint);
+    readonly TextBox _find;
     bool _dirty;
 
     public ClipboardView()
     {
-        var root = UI.Rows(0, -1);
+        var root = UI.Rows(0, 0, -1);
         var head = UI.Cols(-1, 0);
         head.Children.Add(UI.T("Riwayat clipboard", 15, null, true));
         head.Children.Add(UI.Btn(UI.T("Hapus semua", 11.5, UI.Dim), ClipboardHistory.Clear, UI.Card, 9, new Thickness(9, 3, 9, 3)).At(0, 1));
         root.Children.Add(head);
+        _find = new TextBox { FontSize = 12.5, Padding = new Thickness(8, 3, 8, 3) };
+        var ph = new TextBlock { Text = L.T("Cari di riwayat…"), FontSize = 12.5, Foreground = UI.Faint, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(9, 0, 0, 0) };
+        _find.TextChanged += (_, _) => { ph.Visibility = _find.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; Render(); };
+        var findBox = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+        findBox.Children.Add(_find); findBox.Children.Add(ph);
+        root.Children.Add(findBox.At(1));
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list, Margin = new Thickness(0, 8, 0, 0) };
-        root.Children.Add(scroll.At(1));
+        root.Children.Add(scroll.At(2));
         Children.Add(root);
     }
 
@@ -45,8 +52,10 @@ public sealed class ClipboardView : TabView
             _list.Children.Add(e);
             return;
         }
+        string q = _find.Text.Trim();
         foreach (var it in ClipboardHistory.Items.ToArray())
         {
+            if (q.Length > 0 && it.Text.IndexOf(q, StringComparison.CurrentCultureIgnoreCase) < 0) continue;
             var item = it;
             var row = UI.Cols(-1, 0, 0);
             row.Margin = new Thickness(0, 0, 0, 4);

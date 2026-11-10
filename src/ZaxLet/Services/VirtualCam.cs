@@ -78,20 +78,46 @@ public static class VirtualCam
     {
         if (!NeedsSetup) { done?.Invoke(); return; }
         _tried = true;
+        Elevate(Available && !Registered, !FirewallOk, ok =>
+        {
+            if (ok) { done?.Invoke(); return; }
+            _tried = false;   // UAC dibatalkan atau pendaftaran gagal: tombol berikutnya meminta lagi, dan kamera tidak "aktif" tanpa terdaftar
+            IslandWindow.Instance?.Alert(L.T("Kamera virtual butuh izin sekali. Nyalakan lagi dan pilih Ya di jendela Windows."), 8, null, false);
+        });
+    }
+
+    static bool _fwAsked;
+
+    /// <summary>Buka port firewall untuk server HP dengan satu UAC, dari aksi pengguna (menyalakan server). Batal = dicoba lagi pada penyalaan berikutnya; server tetap dinyalakan (done dipanggil).</summary>
+    public static void EnsureFirewall(Action done)
+    {
+        if (_fwAsked || FirewallOk) { done?.Invoke(); return; }
+        _fwAsked = true;
+        Elevate(false, true, _ =>
+        {
+            if (!FirewallOk)
+            {
+                _fwAsked = false;
+                IslandWindow.Instance?.Alert(L.T("Tanpa izin firewall, HP bisa gagal tersambung. Matikan lalu nyalakan lagi untuk mencoba, atau pilih Izinkan saat Windows bertanya."), 10, null, false);
+            }
+            done?.Invoke();
+        });
+    }
+
+    /// <summary>Satu UAC untuk pendaftaran kamera dan/atau aturan firewall; callback di UI thread, ok = yang diminta kamera sudah terdaftar.</summary>
+    static void Elevate(bool cam, bool fw, Action<bool> done)
+    {
         var cmds = new System.Collections.Generic.List<string>();
-        if (Available && !Registered) cmds.Add($"regsvr32 /s \"{DllPath}\"");
-        if (!FirewallOk) { int p = Settings.Cur.SharePort; cmds.Add($"netsh advfirewall firewall add rule name=\"ZaxLet HP\" dir=in action=allow protocol=TCP localport={p}-{p + 1} profile=any"); }
+        if (cam) cmds.Add($"regsvr32 /s \"{DllPath}\"");
+        if (fw) { int p = Settings.Cur.SharePort; cmds.Add($"netsh advfirewall firewall add rule name=\"ZaxLet HP\" dir=in action=allow protocol=TCP localport={p}-{p + 1} profile=any"); }
+        if (cmds.Count == 0) { done(true); return; }
+        void Finish() { _fw = null; var ok = !cam || Registered; System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => { if (!ok) Status = "Izin sistem dibatalkan"; done(ok); }); }
         try
         {
             var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c " + string.Join(" & ", cmds)) { Verb = "runas", UseShellExecute = true, WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden });
-            System.Threading.Tasks.Task.Run(() =>
-            {
-                proc?.WaitForExit();
-                _fw = null;   // periksa ulang hasilnya
-                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => done?.Invoke());
-            });
+            System.Threading.Tasks.Task.Run(() => { proc?.WaitForExit(); Finish(); });
         }
-        catch (Exception ex) { App.Log(ex); Status = "Izin sistem dibatalkan"; done?.Invoke(); }
+        catch (Exception ex) { if (ex is not System.ComponentModel.Win32Exception) App.Log(ex); Finish(); }   // 1223 = UAC ditolak
     }
 
     public static void Start()

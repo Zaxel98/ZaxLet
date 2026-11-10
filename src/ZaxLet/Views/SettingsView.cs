@@ -40,9 +40,24 @@ public sealed class SettingsView : TabView
     };
 
     bool _confirmReset;
+    readonly TextBox _search = new() { FontSize = 12, Foreground = Brushes.White, CaretBrush = Brushes.White, Background = UI.Card, BorderThickness = new Thickness(0), Padding = new Thickness(9, 6, 9, 6), VerticalContentAlignment = VerticalAlignment.Center };
+    string _query = "";
 
     public SettingsView()
     {
+        // kotak cari (Ctrl+F): mencari di semua halaman sekaligus; tetap di atas daftar halaman dan tidak ikut dibangun ulang supaya fokusnya tidak hilang
+        var searchHost = new Border { CornerRadius = new CornerRadius(10), Background = UI.Card, Margin = new Thickness(0, 0, 8, 8), ClipToBounds = true };
+        var searchGrid = new Grid();
+        var ph = new TextBlock { Text = L.T("Cari pengaturan (Ctrl+F)"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        searchGrid.Children.Add(_search); searchGrid.Children.Add(ph);
+        searchHost.Child = searchGrid;
+        _search.TextChanged += (_, _) => { ph.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; _query = _search.Text; _scroll?.ScrollToTop(); Render(); };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.F && (Keyboard.Modifiers & ModifierKeys.Control) != 0) { _search.Focus(); _search.SelectAll(); e.Handled = true; }
+            else if (e.Key == System.Windows.Input.Key.Escape && _search.IsKeyboardFocused && _search.Text.Length > 0) { _search.Clear(); e.Handled = true; }
+        };
+        _cats.Children.Add(searchHost);
         var g = UI.Cols(178, 1, -1);
         g.Children.Add(_cats);
         g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(0, 2, 12, 2) }.At(0, 1));
@@ -52,19 +67,19 @@ public sealed class SettingsView : TabView
     }
 
     void OnUpdate() => Dispatcher.BeginInvoke(() => { if (_page == "general") Render(); });
-    void OnAgenda() => Dispatcher.BeginInvoke(() => { if (_page == "calendar") Render(); });
 
-    public override void OnShow() { _confirmReset = false; UpdateService.Changed += OnUpdate; CalendarService.I.Changed += OnAgenda; ShareServer.I.DevicesChanged += OnDevices; LocationService.Changed += OnDevices; PhoneNotifs.Changed += OnDevices; DiscordRpc.I.Changed += OnDevices; Render(); }
-    public override void OnHide() { UpdateService.Changed -= OnUpdate; CalendarService.I.Changed -= OnAgenda; ShareServer.I.DevicesChanged -= OnDevices; LocationService.Changed -= OnDevices; PhoneNotifs.Changed -= OnDevices; DiscordRpc.I.Changed -= OnDevices; }
+    public override void OnShow() { _confirmReset = false; UpdateService.Changed += OnUpdate; ShareServer.I.DevicesChanged += OnDevices; LocationService.Changed += OnDevices; PhoneNotifs.Changed += OnDevices; DiscordRpc.I.Changed += OnDevices; Render(); }
+    public override void OnHide() { UpdateService.Changed -= OnUpdate; ShareServer.I.DevicesChanged -= OnDevices; LocationService.Changed -= OnDevices; PhoneNotifs.Changed -= OnDevices; DiscordRpc.I.Changed -= OnDevices; }
     void OnDevices() { if (_page is "phone" or "calendar" or "tools") Render(); }
 
     void Render()
     {
-        _cats.Children.Clear();
+        while (_cats.Children.Count > 1) _cats.Children.RemoveAt(1);   // indeks 0 = kotak cari
+        bool searching = _query.Trim().Length >= 2;
         foreach (var (key, label, glyph) in Pages)
         {
             var k = key;
-            bool on = key == _page;
+            bool on = key == _page && !searching;
             var item = new StackPanel { Orientation = Orientation.Horizontal };
             var ic = UI.Icon(glyph, 14, on ? UI.Accent : UI.Dim);
             ic.Width = 20;
@@ -72,27 +87,61 @@ public sealed class SettingsView : TabView
             var tx = UI.T(label, 12.5, on ? UI.Fg : UI.Dim, on);
             tx.Margin = new Thickness(6, 0, 0, 0);
             item.Children.Add(tx);
-            var b = UI.Btn(item, () => { _page = k; _scroll.ScrollToTop(); Render(); },
+            var b = UI.Btn(item, () => { _page = k; _search.Clear(); _scroll.ScrollToTop(); Render(); },
                            on ? UI.CardOn : Brushes.Transparent, 10, new Thickness(9, 5, 9, 5));
             b.Margin = new Thickness(0, 0, 8, 1);
             _cats.Children.Add(b);
         }
         _rows.Children.Clear();
+        if (searching) { RenderSearch(_query.Trim()); return; }
         if (PageHints.TryGetValue(_page, out var hint))
         {
             var h = UI.T(hint, 11.5, UI.Faint);
             h.TextWrapping = TextWrapping.Wrap; h.Margin = new Thickness(0, 0, 0, 6);
             _rows.Children.Add(h);
         }
-        foreach (var (raw, ctl) in PageRows(_page))
+        bool moreHdr = false;
+        foreach (var (raw0, ctl) in PageRows(_page))
         {
+            var raw = raw0;
             if (raw.StartsWith('§')) { _rows.Children.Add(SectionHeader(raw[1..])); continue; }
-            bool adv = raw.StartsWith('~');
-            if (adv && !Settings.Cur.Advanced) continue;   // opsi lanjutan tersembunyi kecuali Mode lanjutan menyala
-            _rows.Children.Add(Row(adv ? raw[1..] : raw, ctl));
+            bool adv = raw.StartsWith('~'), more = raw.StartsWith('¶');
+            if ((adv || more) && !Settings.Cur.Advanced) continue;   // opsi lanjutan tersembunyi kecuali Mode lanjutan menyala
+            if (more)
+            {
+                if (!moreHdr) { moreHdr = true; _rows.Children.Add(MoreHeader()); }
+                if (!_moreOpen) continue;
+            }
+            _rows.Children.Add(Row(adv || more ? raw[1..] : raw, ctl));
         }
         // pertama kali halaman HP dibuka: panduan sambung HP tampil sendiri (tombol "Buka panduan" membukanya lagi kapan saja)
         if (_page == "phone" && !_hpGuideShown) { _hpGuideShown = true; PhoneGuide.Show(false); }
+    }
+
+    /// <summary>Hasil pencarian: baris dari semua halaman yang labelnya (atau keterangannya, Indonesia atau Inggris) memuat kata yang dicari, dikelompokkan per halaman. Barisnya tetap kontrol asli.</summary>
+    void RenderSearch(string q)
+    {
+        bool any = false;
+        foreach (var (key, label, _) in Pages)
+        {
+            var hits = new List<(string Raw, UIElement Ctl)>();
+            foreach (var (raw, ctl) in PageRows(key))
+            {
+                if (raw.StartsWith('§') || ctl == null) continue;
+                var text = string.Join(" ", raw.TrimStart('~', '¶').Split('\n').Select(p => p + " " + L.T(p)));
+                if (text.Contains(q, StringComparison.OrdinalIgnoreCase)) hits.Add((raw, ctl));
+            }
+            if (hits.Count == 0) continue;
+            any = true;
+            _rows.Children.Add(SectionHeader(label));
+            foreach (var (raw, ctl) in hits) _rows.Children.Add(Row(raw.TrimStart('~', '¶'), ctl));
+        }
+        if (!any)
+        {
+            var e = UI.T("Tidak ada pengaturan yang cocok", 12, UI.Dim);
+            e.Margin = new Thickness(0, 14, 0, 0);
+            _rows.Children.Add(e);
+        }
     }
 
     internal static bool _hpGuideShown;
@@ -115,8 +164,8 @@ public sealed class SettingsView : TabView
 
     UIElement UpdateRow()
     {
-        var sp = new StackPanel { MaxWidth = 300 };
-        var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var sp = new StackPanel { MaxWidth = 300, Tag = "wide" };
+        var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
         var st = UI.T(string.IsNullOrEmpty(UpdateService.Status) ? "ZaxLet " + UpdateService.Current : UpdateService.Status, 11.5, UpdateService.Available != null ? UI.Fg : UI.Dim);
         st.TextWrapping = TextWrapping.Wrap; st.MaxWidth = 170; st.VerticalAlignment = VerticalAlignment.Center;
         line.Children.Add(st);
@@ -131,8 +180,8 @@ public sealed class SettingsView : TabView
 
     UIElement BackupRow()
     {
-        var sp = new StackPanel { MaxWidth = 300 };
-        var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var sp = new StackPanel { MaxWidth = 300, Tag = "wide" };
+        var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
         line.Children.Add(Act("Simpan…", DoBackup, UI.Fg));
         var r = (FrameworkElement)Act("Pulihkan…", DoRestore, UI.Fg); r.Margin = new Thickness(6, 0, 0, 0);
         line.Children.Add(r);
@@ -181,9 +230,9 @@ public sealed class SettingsView : TabView
     {
         var n = NetInfo.Current();
         var txt = n == null ? L.T("tidak terdeteksi") : $"{n.Name} · {L.T(n.Kind)}";
-        var sp = new StackPanel { MaxWidth = 300 };
+        var sp = new StackPanel { MaxWidth = 300, Tag = "wide" };
         var t = UI.T(txt, 11.5, n is { Category: 0 } && !NetInfo.FirewallOpenToPublic() ? UI.Warn : UI.Fg);
-        t.TextWrapping = TextWrapping.Wrap; t.HorizontalAlignment = HorizontalAlignment.Right;
+        t.TextWrapping = TextWrapping.Wrap; t.HorizontalAlignment = HorizontalAlignment.Left;
         sp.Children.Add(t);
         if (n is { Category: 0 })
         {
@@ -205,6 +254,7 @@ public sealed class SettingsView : TabView
         switch (page)
         {
             case "general":
+                yield return ("Gaya notifikasi\nTenang: hanya yang penting. Seimbang: popup umum. Lengkap: semua popup dan widget. Sakelar satu per satu ada di halaman Island dan Fokus", Choice(new[] { ("tenang", "Tenang"), ("seimbang", "Seimbang"), ("lengkap", "Lengkap"), ("custom", "Kustom") }, () => Presets.Detect(s), v => { if (v != "custom") Presets.Apply(s, v); }));
                 yield return ("Mode lanjutan\nTampilkan opsi tambahan di semua halaman", Toggle(() => s.Advanced, v => s.Advanced = v, true, Render));
                 yield return ("§Bahasa dan tampilan", null);
                 yield return ("Bahasa / Language", Choice(new[] { ("auto", "Otomatis (ikut Windows)"), ("id", "Indonesia"), ("en", "English") }, () => s.Lang, v => s.Lang = v, Render));
@@ -220,6 +270,11 @@ public sealed class SettingsView : TabView
                 yield return ("Cadangan pengaturan\nSimpan ke satu berkas atau pulihkan; token tidak ikut", BackupRow());
                 yield return ("§Bantuan", null);
                 yield return ("Tur ZaxLet\nPengenalan singkat island", Act("Tonton lagi", () => TourWindow.ShowIt(true), UI.Fg));
+                yield return ("Laporkan masalah atau usul fitur\nMembuka halaman Issues di GitHub", Act("Buka", () =>
+                {
+                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/Zaxel98/ZaxLet/issues/new") { UseShellExecute = true }); }
+                    catch (Exception ex) { App.Log(ex); }
+                }, UI.Fg));
                 yield return ("§Lainnya", null);
                 yield return ("~Kembalikan semua pengaturan", Act(_confirmReset ? "Klik lagi untuk yakin" : "Reset", () =>
                 {
@@ -234,16 +289,31 @@ public sealed class SettingsView : TabView
 
             case "island":
                 var pos = new[] { ("left", "Kiri"), ("center", "Tengah"), ("right", "Kanan") };
+                yield return ("§Tampilan island", null);
+                yield return ("Tema\nHitam bawaan, atau warna lain; Neon: garis tepi mengikuti warna sampul lagu", Choice(new[] { ("black", "Hitam"), ("aurora", "Aurora"), ("matcha", "Matcha"), ("senja", "Senja"), ("neon", "Neon") }, () => s.Theme, v => s.Theme = v));
+                yield return ("Bentuk island\nNotch: bahu cekung di kiri dan kanan seperti takik layar. Dynamic: kapsul bulat", Choice(new[] { ("notch", "Notch"), ("pill", "Dynamic") }, () => s.IslandShape, v => s.IslandShape = v));
+                yield return ("Info sesuai waktu di pill\nPagi: cuaca dan sholat berikutnya. Siang: tugas hari ini. Sore: sholat dan sisa minum. Malam: jadwal besok. Hanya tampil bila ada isinya dan tidak ada yang lebih penting", Toggle(() => s.IdleContext, v => s.IdleContext = v));
+                yield return ("Kilat tepi saat lagu ganti\nTepi pill menyala sekali dengan warna sampul. Hanya di island, tidak di layar penuh", Toggle(() => s.TrackFlash, v => s.TrackFlash = v));
+                yield return ("Ukuran island", Choice(new[] { ("0", "Otomatis"), ("75", "75%"), ("90", "90%"), ("100", "100%"), ("115", "115%"), ("130", "130%") }, () => s.IslandScale.ToString(), v => s.IslandScale = int.Parse(v)));
+                yield return ("Kapan island tampil\nSelalu; hanya saat ada aktivitas (kursor ke tepi atas untuk mengintip); atau tersembunyi sampai dibuka dari ikon tray", Choice(new[] { ("always", "Selalu"), ("activity", "Saat ada aktivitas"), ("hidden", "Disembunyikan") }, () => s.ShowMode, v => s.ShowMode = v));
+                yield return ("Hemat baterai otomatis\nSaat memakai baterai dan sisanya di bawah angka ini, pembaruan cepat dikurangi (karaoke lirik, tab Monitor). 0 = mati", Num(0, 50, 5, "%", () => s.SaverPct, v => s.SaverPct = v));
+                yield return ("Musik tetap tampil di layar penuh\nLagu dan liriknya muncul di atas game borderless; island tidak bisa diklik supaya permainan tidak terganggu", Toggle(() => s.FsMusic, v => s.FsMusic = v));
+                var screens = System.Windows.Forms.Screen.AllScreens;
+                if (screens.Length > 1)
+                    yield return ("Monitor", Choice(screens.Select((sc, i) => (i.ToString(), i == 0 ? "Monitor utama" : $"Monitor {i + 1}")).ToArray(), () => s.MonitorIdx.ToString(), v => s.MonitorIdx = int.Parse(v)));
                 yield return ("§Cara membuka", null);
                 yield return ("Cara membuka pill", Choice(new[] { ("hover", "Kursor di atas pill"), ("click", "Klik kiri") }, () => s.HoverOpen ? "hover" : "click", v => s.HoverOpen = v == "hover"));
+                yield return ("Pintasan buka island\nMis. ctrl+alt+space; tekan lagi untuk menutup. Kosongkan untuk mematikan", Txt(() => s.OpenKey, v => s.OpenKey = v.Trim().ToLowerInvariant(), 150));
+                yield return ("Pintasan Aksi cepat\nKolom ketik perintah singkat: t 10m, fokus 25, catat beli susu, w link, minum 250, tema neon. Mis. ctrl+alt+k; kosongkan untuk mematikan", Txt(() => s.QuickKey, v => s.QuickKey = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~Jeda sebelum menutup", Dur(() => s.CloseDelayMs / 1000.0, v => s.CloseDelayMs = (int)(v * 1000), 0.05, 600));
                 yield return ("§Menyembunyikan island", null);
                 yield return ("Sembunyikan saat fullscreen", Toggle(() => s.AutoHideFullscreen, v => s.AutoHideFullscreen = v));
                 yield return ("Klik kanan pill = sembunyikan\nKursor ke tepi atas untuk mengintip, klik kanan lagi untuk menampilkan terus", Toggle(() => s.RightClickHide, v => s.RightClickHide = v));
                 yield return ("Tahan Alt di atas pill = hilang sementara", Toggle(() => s.AltGhost, v => s.AltGhost = v));
                 yield return ("Pintasan sembunyikan pill\nMenu tray juga bisa menyembunyikan island", Txt(() => s.HideKey, v => s.HideKey = v.Trim().ToLowerInvariant(), 150));
-                yield return ("~Otomatis tampil lagi setelah", Num(0, 240, 5, " mnt (0 = manual)", () => s.SnoozeMin, v => s.SnoozeMin = v));
+                yield return ("~Otomatis tampil lagi setelah\n0 = manual", Num(0, 240, 5, " mnt", () => s.SnoozeMin, v => s.SnoozeMin = v));
                 yield return ("Menyingkir otomatis bila menutupi tombol aplikasi lain", Toggle(() => s.YieldOn, v => s.YieldOn = v));
+                yield return ("~Pil jam kecil saat menyingkir\nBukan hilang total: tetap tampil sebagai jam kecil (atau jam dan tanggal)", Choice(new[] { ("off", "Mati"), ("clock", "Jam"), ("date", "Jam dan tanggal") }, () => s.MiniClock, v => s.MiniClock = v));
                 yield return ("§Gestur dan popup", null);
                 yield return ("Gestur island\nScroll di atas island = volume, klik dua kali = putar/jeda, sapuan dua jari = pindah tab", Toggle(() => s.Gestures, v => s.Gestures = v));
                 yield return ("Popup OSD (volume, kecerahan, Caps Lock, Bluetooth, mikrofon)", Toggle(() => s.OsdOn, v => s.OsdOn = v));
@@ -290,15 +360,23 @@ public sealed class SettingsView : TabView
                     ctl.Children.Add(Toggle(() => !s.HiddenTabs.Contains(k), v => { s.HiddenTabs.Remove(k); if (!v) s.HiddenTabs.Add(k); }));
                     yield return (IslandWindow.TabMeta[k].Label, ctl);
                 }
+                // "¶" = opsi lanjutan yang jarang disentuh: dilipat di bawah satu kepala "Lainnya"
+                yield return ("¶Kelengkungan sudut\n0 = otomatis; makin besar makin bulat", Num(0, 40, 4, " px", () => s.PillRadius, v => s.PillRadius = v == 0 || v >= 8 ? v : 8));
+                yield return ("¶Lebar tambahan saat idle\nMelebarkan pill saat tertutup supaya lebih lega", Num(0, 160, 10, " px", () => s.IdleExtra, v => s.IdleExtra = v));
+                yield return ("¶Kehalusan animasi\nOtomatis: animasi latar 30 fps, buka/tutup/ganti tab 60 fps. Penuh: semua 60 fps. Berlaku setelah ZaxLet dimulai ulang", Choice(new[] { ("auto", "Otomatis"), ("full", "Penuh (60 fps)") }, () => s.AnimFps, v => s.AnimFps = v));
                 break;
 
             case "music":
+                yield return ("§Sumber musik", null);
+                yield return ("Abaikan musik dari aplikasi\nIsi nama aplikasi dipisah koma, mis. discord, zoom; island tidak akan menampilkannya", Txt(() => s.MediaIgnore, v => s.MediaIgnore = v.Trim(), 190));
+                yield return ("Rekap lagu dan artis teratas\nMencatat lagu yang kamu dengarkan sedikitnya 30 detik, hanya di PC ini (playlog.tsv). Dilihat lewat tombol Rekap di tab Musik", Toggle(() => s.PlayLogOn, v => s.PlayLogOn = v));
+                yield return ("~Hapus catatan rekap", Act("Hapus", () => { PlayLog.Clear(); }, UI.Bad));
                 yield return ("§Lirik", null);
                 yield return ("Tampilkan lirik (tab dan idle)", Toggle(() => s.MusicLyrics, v => s.MusicLyrics = v));
                 yield return ("Lirik karaoke (isi per kata)", Toggle(() => s.LyricKaraoke, v => s.LyricKaraoke = v));
                 yield return ("Karaoke mengikuti vokal\nMembaca suara PC secara lokal hanya saat tab Musik terbuka; tidak direkam atau dikirim", Toggle(() => s.LyricFlow, v => s.LyricFlow = v));
                 yield return ("~Tempo isi lirik", Choice(new[] { ("fast", "Cepat"), ("normal", "Normal"), ("slow", "Lambat") }, () => s.LyricPace, v => s.LyricPace = v));
-                yield return ("~Offset sinkron lirik", Num(-5000, 5000, 100, " ms", () => s.LyricOffsetMs, v => s.LyricOffsetMs = v));
+                yield return ("~Offset sinkron bawaan\nDipakai lagu yang belum punya geseran sendiri (atur di tab Musik)", Num(-5000, 5000, 100, " ms", () => s.LyricOffsetMs, v => s.LyricOffsetMs = v));
                 yield return ("Warna latar dari sampul", Toggle(() => s.TintCover, v => s.TintCover = v));
                 yield return ("§Tulisan Latin untuk lirik berhuruf lain", null);
                 yield return ("Tulisan Latin\nRomaji, pinyin, Hangul, Kiril, Yunani, Arab", Choice(new[] { ("off", "Mati"), ("below", "Di bawah lirik"), ("only", "Ganti lirik asli") },
@@ -315,12 +393,13 @@ public sealed class SettingsView : TabView
                 var st = PhoneGuide.State();
                 yield return ("§Sambungan", null);
                 yield return ("Panduan sambung HP\n" + L.T("Memasang aplikasi, memasangkan, sampai notifikasi masuk") + ": " + st.Text, Act("Buka panduan", () => PhoneGuide.Show(true), UI.Fg));
-                yield return ("Server sambungan HP\nHarus menyala agar HP bisa tersambung", Toggle(() => ShareServer.I.On, v => { if (v) ShareServer.I.Start(); else ShareServer.I.Stop(); }, false, Render));
+                yield return ("Server sambungan HP\nHarus menyala agar HP bisa tersambung", Toggle(() => ShareServer.I.On, v => { if (v) VirtualCam.EnsureFirewall(() => { ShareServer.I.Start(); Render(); }); else ShareServer.I.Stop(); }, false, Render));
                 yield return ("Aktif otomatis saat ZaxLet mulai", Toggle(() => s.ShareAuto, v => s.ShareAuto = v));
                 if (ShareServer.I.On) yield return ("Perangkat", PhoneDevices());
                 yield return ("§Notifikasi dari HP", null);
                 yield return ("Tampilkan notifikasi HP di pill", Toggle(() => s.NotifOn, v => s.NotifOn = v));
                 yield return ("Notifikasi berjalan (Gojek, dll)", Toggle(() => s.NotifOngoing, v => s.NotifOngoing = v));
+                yield return ("Salin kode OTP\nTombol Salin muncul di notifikasi berisi kode; kodenya tidak masuk riwayat clipboard", Toggle(() => s.NotifOtp, v => s.NotifOtp = v));
                 yield return ("Aplikasi baru langsung tampil", Toggle(() => s.NotifNewDefault, v => s.NotifNewDefault = v));
                 yield return ("~Lama tampil", Dur(() => s.NotifShowSec, v => s.NotifShowSec = v, 2, 120));
                 yield return ("~Muncul walau fullscreen / disembunyikan", Toggle(() => s.NotifFullscreen, v => s.NotifFullscreen = v));
@@ -361,14 +440,41 @@ public sealed class SettingsView : TabView
                 yield return ("Tampilkan GPU", Toggle(() => s.MonGpu, v => s.MonGpu = v));
                 yield return ("Bar per core CPU", Toggle(() => s.MonCores, v => s.MonCores = v));
                 yield return ("Daftar proses teratas", Toggle(() => s.MonTop, v => s.MonTop = v));
+                yield return ("§Overlay performa saat main", null);
+                yield return ("Kapan tampil\nGame: otomatis saat aplikasi layar penuh atau borderless di depan. Selalu: terus tampil. Ketik \"perf\" di Aksi cepat untuk menyalakan atau mematikan sesaat. Mati = tidak membaca sensor sama sekali", Choice(new[] { ("off", "Mati"), ("game", "Game"), ("on", "Selalu") }, () => s.PerfShow, v => s.PerfShow = v));
+                yield return ("Tampilkan juga di tab Monitor island\nMenggantikan daftar proses teratas dengan metrik yang dipilih di bawah, satu baris per metrik. Ukuran island tidak berubah", Toggle(() => s.PerfInIsland, v => s.PerfInIsland = v));
+                yield return ("Pojok layar", Choice(new[] { ("tl", "Kiri atas"), ("tr", "Kanan atas"), ("bl", "Kiri bawah"), ("br", "Kanan bawah") }, () => s.PerfCorner, v => s.PerfCorner = v));
+                yield return ("Kepekatan latar overlay\n0% = hanya teks tanpa kotak. Overlay selalu tembus klik", Num(0, 100, 10, "%", () => s.PerfBgAlpha, v => s.PerfBgAlpha = v));
+                foreach (var m in PerfFormat.Metrics)
+                {
+                    var key = m.Key;
+                    string cap = key switch
+                    {
+                        "fps" => "FPS dibaca dari peristiwa Present DirectX (cara PresentMon), tanpa menyuntik game. Windows mewajibkan izin: lihat dua baris di bawah daftar ini",
+                        "cpuvolt" or "gpuvolt" => "Dibaca dari LibreHardwareMonitor (jalankan sebagai admin, nyalakan Options > Remote Web Server). Tanpa itu tampil \"butuh LHM\"; ZaxLet sengaja tidak membawa driver sensor",
+                        "cpupwr" => "Dari sensor energi (RAPL) Windows; tidak ada di semua PC",
+                        _ => null,
+                    };
+                    yield return (m.Label + (cap != null ? "\n" + cap : ""), Toggle(() => PerfFormat.Items(s.PerfItems).Contains(key), v => s.PerfItems = PerfFormat.WithItem(s.PerfItems, key, v)));
+                }
+                yield return ("FPS: izinkan sekali (UAC)\nProses pembantu admin kecil membaca peristiwa Present; berlaku sampai ZaxLet ditutup. Pilih metrik FPS dulu", Act(FpsSource.Available ? "Aktif" : "Izinkan", () => { FpsSource.Ask(); Render(); }, UI.Fg));
+                yield return ("~FPS: izin permanen tanpa UAC\nSalin perintah, jalankan di CMD sebagai administrator, lalu sign out dan masuk lagi ke Windows sekali", Act("Salin perintah", () => { try { Clipboard.SetText(FpsSource.GroupCommand); } catch { } }, UI.Fg));
+                yield return ("§Bluetooth", null);
+                yield return ("Baterai perangkat Bluetooth\nTampil saat tersambung dan peringatan saat rendah, untuk perangkat yang melaporkan baterai ke Windows (headset Hands-Free). Ketik \"bt\" di Aksi cepat untuk melihat sekarang", Toggle(() => s.BtBattery, v => s.BtBattery = v));
+                yield return ("~Peringatkan di bawah", Num(5, 50, 5, "%", () => s.BtLowPct, v => s.BtLowPct = v));
                 break;
 
             case "calendar":
                 yield return ("§Kalender", null);
                 yield return ("Minggu dimulai", Choice(new[] { ("mon", "Senin"), ("sun", "Minggu") }, () => s.WeekMonday ? "mon" : "sun", v => s.WeekMonday = v == "mon"));
                 yield return ("Tampilkan hari libur", Toggle(() => s.ShowHolidays, v => s.ShowHolidays = v));
-                yield return ("Kalender iCal pribadi (https:// atau webcal://)" + (string.IsNullOrEmpty(CalendarService.I.AgendaStatus) ? "\n" + L.T("Tautan dari Google Calendar, Outlook, dan sejenisnya") : "\n" + CalendarService.I.AgendaStatus),
-                    Txt(() => s.IcalUrl, v => { s.IcalUrl = v.Trim(); _ = CalendarService.I.LoadAgendaAsync(true); }, 230));
+                yield return ("§Cuaca", null);
+                yield return ("Tampilkan cuaca\nSuhu di tab Hari ini. Mengirim koordinat lokasimu ke open-meteo.com; mati bawaannya", Toggle(() => s.WeatherOn, v => s.WeatherOn = v));
+                yield return ("Peringatan hujan\nBila peluang hujan 2 jam ke depan 60% ke atas", Toggle(() => s.RainAlert, v => s.RainAlert = v));
+                yield return ("§Ibadah", null);
+                yield return ("Widget ibadah\nSholat: jadwal dan adzan. Lainnya: pengingat dari jadwal mingguanmu sendiri", Choice(new[] { ("sholat", "Sholat"), ("other", "Ibadah lain"), ("off", "Mati") }, () => s.WorshipMode, v => s.WorshipMode = v));
+                if (s.WorshipMode == "other")
+                    yield return ("Jadwal ibadah lain\nFormat: hari jam nama; pisahkan dengan titik koma. Contoh: min 08:00 Kebaktian; jum,sab 18.30 Latihan koor; tiap 21:00 Doa", Txt(() => s.WorshipText, v => s.WorshipText = v.Trim(), 230));
                 yield return ("§Sholat", null);
                 yield return ("Sumber lokasi", Choice(new[] { ("auto", "Otomatis (IP)"), ("device", "Perangkat (izin)"), ("manual", "Cari kota") }, () => s.LocMode, v => s.LocMode = v,
                     () => { if (s.LocMode != "manual") _ = LocationService.RefreshAsync(true).ContinueWith(_ => Dispatcher.BeginInvoke(Render)); }));
@@ -382,6 +488,8 @@ public sealed class SettingsView : TabView
                 yield return ("~Ihtiyat", Num(0, 5, 1, " mnt", () => s.Ihtiyat, v => s.Ihtiyat = v));
                 yield return ("Notifikasi waktu sholat", Toggle(() => s.PrayerAlert, v => s.PrayerAlert = v));
                 yield return ("Jeda musik saat sholat", Toggle(() => s.PrayerPauseMusic, v => s.PrayerPauseMusic = v));
+                yield return ("Tawarkan melanjutkan musik\nBeberapa menit setelah dijeda, pill menawarkan memutar lagi", Toggle(() => s.PrayerResumeAsk, v => s.PrayerResumeAsk = v));
+                yield return ("Imsak dan buka puasa\nPengingat 10 menit sebelum Subuh dan tanda saat Maghrib", Toggle(() => s.ImsakOn, v => s.ImsakOn = v));
                 yield return ("Putar adzan\nPilih berkas suaramu sendiri; klik pill untuk menghentikannya", Toggle(() => s.AdhanOn, v => s.AdhanOn = v));
                 yield return ("Berkas adzan (mp3, wav, …)", new StackPanel
                 {
@@ -414,15 +522,33 @@ public sealed class SettingsView : TabView
                 yield return ("§Pomodoro", null);
                 yield return ("Pomodoro: fokus", Dur(() => s.PomoWork * 60, v => s.PomoWork = v / 60, 10, 86400, null, 60));
                 yield return ("Pomodoro: istirahat", Dur(() => s.PomoBreak * 60, v => s.PomoBreak = v / 60, 10, 86400, null, 60));
+                yield return ("§Mode Fokus", null);
+                yield return ("Lama Mode Fokus\nNotifikasi HP ditahan; kode OTP tetap lewat. Tombol ada di tab Timer", Num(5, 240, 5, " mnt", () => s.FocusMin, v => s.FocusMin = v));
+                yield return ("Fase kerja Pomodoro = Mode Fokus", Toggle(() => s.FocusPomo, v => s.FocusPomo = v));
                 break;
 
             case "tools":
                 yield return ("§Tangkap layar", null);
                 yield return ("Folder tangkapan (kosong = Pictures\\ZaxLet)", Txt(() => s.CapDir, v => s.CapDir = v.Trim(), 150));
                 yield return ("Salin tangkapan ke clipboard", Toggle(() => s.CapClipboard, v => s.CapClipboard = v));
+                yield return ("Pintasan tangkap area\nMis. ctrl+shift+s; kosongkan untuk mematikan", Txt(() => s.CapKey, v => s.CapKey = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~FPS rekam layar", Choice(new[] { ("15", "15"), ("30", "30"), ("60", "60") }, () => s.RecFps.ToString(), v => s.RecFps = int.Parse(v)));
                 yield return ("§Clipboard", null);
                 yield return ("Riwayat clipboard (hanya di memori)", Toggle(() => s.ClipboardOn, v => s.ClipboardOn = v));
+                yield return ("§Wishlist otomatis (ekstensi browser)", null);
+                yield return ("Panduan pemasangan\n" + (WishBridge.Connected ? L.T("Ekstensi tersambung") : L.T("Belum tersambung: Wishlist tetap bisa diisi manual")), Act("Buka panduan", () => WishGuide.Show(true), UI.Fg));
+                yield return ("Terima info produk dari ekstensi\nHanya dari browsermu ke ZaxLet di PC ini (127.0.0.1); tidak ada yang dikirim ke internet", Toggle(() => s.WishBridgeOn, v => s.WishBridgeOn = v));
+                yield return ("Sarankan simpan ke Wishlist\nSaat link produk yang baru dikenali disalin, pill menawarkannya sekali", Toggle(() => s.WishSuggest, v => s.WishSuggest = v));
+                yield return ("~Token ekstensi", Act("Salin", () => { try { Clipboard.SetText(WishBridge.Token); } catch { } }, UI.Fg));
+                yield return ("~Webhook lokal\nSkrip atau alat di PC ini bisa menampilkan pesan di pill; salin contoh perintahnya", Act("Salin contoh", () =>
+                {
+                    try { Clipboard.SetText("curl -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"Build selesai\\\",\\\"seconds\\\":6}\""); } catch { }
+                }, UI.Fg));
+                yield return ("§Mode rapat", null);
+                yield return ("Deteksi rapat\nZoom, Meet, Teams, Webex, Skype, Slack, dan telepon WhatsApp dikenali dari pemakaian mikrofon", Toggle(() => s.MeetOn, v => s.MeetOn = v));
+                yield return ("Tombol mikrofon di pill", Toggle(() => s.MeetMic, v => s.MeetMic = v));
+                yield return ("Jeda musik selama rapat", Toggle(() => s.MeetPause, v => s.MeetPause = v));
+                yield return ("Tahan notifikasi HP selama rapat", Toggle(() => s.MeetHold, v => s.MeetHold = v));
                 yield return ("§Discord dan Meet", null);
                 yield return ("Panduan Discord\n" + (DiscordRpc.I.Connected ? L.T("Tersambung") + (DiscordRpc.I.InVoice ? " · voice: " + DiscordRpc.I.Channel : "") : DiscordRpc.Configured ? DiscordRpc.I.Status : L.T("Cara cepat siap; cara lengkap belum disambungkan")), Act("Buka panduan", () => DiscordGuide.Show(true), UI.Fg));
                 yield return ("~Pintasan Discord: mic\nFormat: ctrl+shift+m, ctrl+d, f9", Txt(() => s.AppKeys.GetValueOrDefault("discord.mic", ""), v => s.AppKeys["discord.mic"] = v.Trim().ToLowerInvariant(), 150));
@@ -443,8 +569,8 @@ public sealed class SettingsView : TabView
     UIElement AddonControl(Addon a)
     {
         bool on = a.Installed();
-        var sp = new StackPanel { MaxWidth = 280 };
-        var top = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var sp = new StackPanel { MaxWidth = 360, Tag = "wide" };
+        var top = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
         string status = a.Busy ? (string.IsNullOrEmpty(a.Progress()) ? "Menunggu…" : a.Progress()) : a.Error.Length > 0 ? a.Error : on ? "Terpasang" : "Belum diunduh";
         var st = UI.T(status, 11.5, a.Error.Length > 0 && !a.Busy ? UI.Bad : on && !a.Busy ? UI.Fg : UI.Dim);
         st.VerticalAlignment = VerticalAlignment.Center; st.TextWrapping = TextWrapping.Wrap; st.MaxWidth = 170;
@@ -460,7 +586,7 @@ public sealed class SettingsView : TabView
                 {
                     try { await a.Install(() => Dispatcher.BeginInvoke(() => { if (_page == "addons") Render(); })); }
                     catch (Exception ex) { a.Error = L.T("Gagal: ") + ex.Message; App.Log(ex); }
-                    finally { a.Busy = false; Dispatcher.BeginInvoke(() => { if (_page == "addons") Render(); }); }
+                    finally { a.Busy = false; _ = Dispatcher.BeginInvoke(() => { if (_page == "addons") Render(); }); }
                 });
             }, on ? UI.Card : UI.AccentBg, 10, new Thickness(10, 4, 10, 4));
             b.Margin = new Thickness(8, 0, 0, 0);
@@ -477,7 +603,7 @@ public sealed class SettingsView : TabView
 
     UIElement PhoneDevices()
     {
-        var list = new StackPanel { MinWidth = 280 };
+        var list = new StackPanel { MinWidth = 280, Tag = "wide" };
         var devs = ShareServer.I.Devices.OrderByDescending(d => d.LastSeen).ToList();
         if (devs.Count == 0) list.Children.Add(UI.T("Belum ada HP yang tersambung", 11.5, UI.Faint));
         foreach (var d in devs)
@@ -518,10 +644,33 @@ public sealed class SettingsView : TabView
             c.TextWrapping = TextWrapping.Wrap; c.TextTrimming = TextTrimming.None; c.Margin = new Thickness(0, 2, 0, 0);
             left.Children.Add(c);
         }
+        if (ctl is FrameworkElement { Tag: "wide" } wide)
+        {
+            // kontrol lebar (status, add-on, daftar HP) di bawah label: kolom kanan yang auto-lebar terpotong pada jendela ukuran bawaan
+            left.Margin = new Thickness(0);
+            wide.HorizontalAlignment = HorizontalAlignment.Left; wide.Margin = new Thickness(0, 6, 0, 0);
+            var col = new StackPanel();
+            col.Children.Add(left); col.Children.Add(wide);
+            return new Border { BorderBrush = UI.Track, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 6, 0, 8), MinHeight = 34, Child = col };
+        }
         g.Children.Add(left);
         ctl.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         g.Children.Add(ctl.At(0, 1));
         return new Border { BorderBrush = UI.Track, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 6, 0, 6), MinHeight = 34, Child = g };
+    }
+
+    bool _moreOpen;
+
+    /// <summary>Kepala "Lainnya" yang bisa dibuka-tutup untuk baris bertanda "¶".</summary>
+    UIElement MoreHeader()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(UI.T("Lainnya", 11.5, UI.Accent, true));
+        var chev = UI.Icon(_moreOpen ? "" : "", 9, UI.Accent); chev.Margin = new Thickness(6, 1, 0, 0);
+        row.Children.Add(chev);
+        var b = UI.Btn(row, () => { _moreOpen = !_moreOpen; Render(); }, Brushes.Transparent, 6, new Thickness(0, 4, 0, 4));
+        b.Margin = new Thickness(0, 12, 0, 0); b.HorizontalAlignment = HorizontalAlignment.Left;
+        return b;
     }
 
     static UIElement SectionHeader(string title)
@@ -549,16 +698,55 @@ public sealed class SettingsView : TabView
         return track;
     }
 
-    static UIElement Choice((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra = null)
+    /// <summary>Pilihan 4 opsi atau lebih: daftar turun. Kurang dari itu: pemilih "‹ nilai ›" yang berputar.</summary>
+    static UIElement Dropdown((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra)
     {
         var txt = UI.T("", 12.5, UI.Fg, true);
-        txt.MinWidth = 96; txt.TextAlignment = TextAlignment.Center;
+        txt.MinWidth = 84; txt.MaxWidth = 190; txt.TextAlignment = TextAlignment.Center;
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(txt);
+        var chev = UI.Icon("", 9, UI.Dim); chev.Margin = new Thickness(8, 1, 0, 0);
+        row.Children.Add(chev);
+        var list = new StackPanel();
+        var pop = new System.Windows.Controls.Primitives.Popup
+        {
+            StaysOpen = false, AllowsTransparency = true, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+            Child = new Border
+            {
+                Background = UI.B("#FF1C1C20"), BorderBrush = UI.Track, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Margin = new Thickness(0, 4, 0, 8),
+                Child = new ScrollViewer { MaxHeight = 260, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = list }
+            }
+        };
+        void Paint() { txt.Text = L.T(Array.Find(opts, o => o.Key == get()).Label ?? get()); }
+        var b = UI.Btn(row, () =>
+        {
+            list.Children.Clear();
+            foreach (var o in opts)
+            {
+                var key = o.Key;
+                var item = UI.Btn(UI.T(o.Label, 12.5, UI.Fg, key == get()), () => { pop.IsOpen = false; set(key); Chg(extra); Paint(); },
+                    key == get() ? UI.CardOn : Brushes.Transparent, 8, new Thickness(12, 6, 12, 6));
+                item.MinWidth = 120;
+                list.Children.Add(item);
+            }
+            pop.IsOpen = !pop.IsOpen;
+        }, UI.Card, 10, new Thickness(12, 5, 12, 5));
+        pop.PlacementTarget = b;
+        Paint();
+        return b;
+    }
+
+    static UIElement Choice((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra = null)
+    {
+        if (opts.Length >= 4) return Dropdown(opts, get, set, extra);
+        var txt = UI.T("", 12.5, UI.Fg, true);
+        txt.MinWidth = 96; txt.MaxWidth = 190; txt.TextTrimming = TextTrimming.CharacterEllipsis; txt.TextAlignment = TextAlignment.Center;   // pilihan panjang (mis. bahasa) dipotong dengan "…" bukan terpotong di tepi
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(UI.Icon("", 9, UI.Dim));
         row.Children.Add(txt);
         row.Children.Add(UI.Icon("", 9, UI.Dim));
         var b = new Border { Child = row, Background = UI.Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5), Cursor = Cursors.Hand };
-        void Paint() => txt.Text = L.T(Array.Find(opts, o => o.Key == get()).Label ?? get());
+        void Paint() { txt.Text = L.T(Array.Find(opts, o => o.Key == get()).Label ?? get()); txt.ToolTip = txt.Text; }
         b.MouseLeftButtonUp += (_, e) =>
         {
             int i = Math.Max(0, Array.FindIndex(opts, o => o.Key == get()));

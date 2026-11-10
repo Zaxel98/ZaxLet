@@ -71,6 +71,12 @@ public static class AudioEndpoint
     public static float? Volume(int flow = Render) => With<float?>(flow, v => v.GetMasterVolumeLevelScalar(out var l) == 0 ? (float?)l : null);
     public static bool? Muted(int flow = Render) => With<bool?>(flow, v => v.GetMute(out var m) == 0 ? (bool?)m : null);
 
+    public static bool SetMuted(bool mute, int flow = Render)
+    {
+        var g = Guid.Empty;
+        return With(flow, v => v.SetMute(mute, ref g) == 0);
+    }
+
     public static bool SetVolume(float level, bool unmute = true, int flow = Render)
     {
         var g = Guid.Empty;
@@ -112,6 +118,7 @@ public sealed class BluetoothWatch
     readonly Dictionary<string, string> _names = new();
     readonly List<DeviceWatcher> _w = new();
     public event Action<string, bool> Changed;   // nama, tersambung?
+    public List<string> Connected() { lock (_names) return _names.Values.Distinct(StringComparer.OrdinalIgnoreCase).ToList(); }
 
     public void Start()
     {
@@ -137,6 +144,51 @@ public sealed class BluetoothWatch
         w.EnumerationCompleted += (_, _) => ready = true;
         w.Start();
         _w.Add(w);
+    }
+}
+
+/// <summary>
+/// Baterai perangkat Bluetooth klasik yang melaporkannya ke Windows (headset lewat Hands-Free, sama seperti angka di Pengaturan Windows): properti
+/// perangkat {104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2 pada node "Hands-Free AG". Lewat Configuration Manager, tanpa admin dan tanpa proses baru.
+/// Perangkat yang tidak melaporkan baterai (mis. stik game) tidak muncul; itu keterbatasan Windows, bukan bug.
+/// </summary>
+public static class BtBattery
+{
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] static extern int CM_Get_Device_ID_List_SizeW(out uint len, string filter, uint flags);
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] static extern int CM_Get_Device_ID_ListW(string filter, [Out] char[] buf, uint len, uint flags);
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] static extern int CM_Locate_DevNodeW(out uint inst, string id, uint flags);
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] static extern int CM_Get_DevNode_PropertyW(uint inst, ref DevKey key, out uint type, byte[] buf, ref uint size, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)] struct DevKey { public Guid Id; public uint Pid; }
+
+    const uint FilterEnumerator = 1, FilterPresent = 0x100, HfpType = 0x3;   // DEVPROP_TYPE_BYTE
+    static DevKey Battery = new() { Id = new Guid("104EA319-6EE2-4701-BD47-8DDBF425BBE5"), Pid = 2 };
+    static DevKey FriendlyName = new() { Id = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), Pid = 14 };
+
+    /// <summary>"soundcore R50i NC Hands-Free AG" -> "soundcore R50i NC".</summary>
+    public static string Clean(string n) => System.Text.RegularExpressions.Regex.Replace(n ?? "", @"\s+Hands-Free( AG)?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+
+    /// <summary>Nama perangkat dan persen baterainya untuk semua perangkat yang melaporkan; kosong bila tidak ada.</summary>
+    public static Dictionary<string, int> Read()
+    {
+        var r = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            if (CM_Get_Device_ID_List_SizeW(out var len, "BTHENUM", FilterEnumerator | FilterPresent) != 0 || len < 2) return r;
+            var buf = new char[len];
+            if (CM_Get_Device_ID_ListW("BTHENUM", buf, len, FilterEnumerator | FilterPresent) != 0) return r;
+            foreach (var id in new string(buf).Split('\0', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!id.StartsWith(@"BTHENUM\{0000111E", StringComparison.OrdinalIgnoreCase) || CM_Locate_DevNodeW(out var inst, id, 0) != 0) continue;   // 111E = Hands-Free
+                var b = new byte[1]; uint sz = 1;
+                if (CM_Get_DevNode_PropertyW(inst, ref Battery, out var t, b, ref sz, 0) != 0 || b[0] > 100) continue;
+                var nb = new byte[512]; uint ns = 512;
+                string name = CM_Get_DevNode_PropertyW(inst, ref FriendlyName, out _, nb, ref ns, 0) == 0 ? System.Text.Encoding.Unicode.GetString(nb, 0, (int)ns).TrimEnd('\0') : id;
+                r[Clean(name)] = b[0];
+            }
+        }
+        catch (Exception ex) { App.Log(ex); }
+        return r;
     }
 }
 

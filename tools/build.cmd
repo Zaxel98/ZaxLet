@@ -4,3 +4,5 @@ rem Uses the portable SDK in .dotnet when present, otherwise dotnet from PATH.
 set DN=dotnet
 if exist "%~dp0..\.dotnet\dotnet.exe" set DN="%~dp0..\.dotnet\dotnet.exe"
 %DN% publish "%~dp0..\src\ZaxLet\ZaxLet.csproj" -c Release -o "%~dp0..\dist" --no-self-contained
+rem browser extension for the Wishlist: dist\extension (folder for Chrome/Edge/Brave) and zaxlet-wishlist.xpi (Firefox)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pack-extension.ps1"

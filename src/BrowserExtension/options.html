@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>ZaxLet Wishlist</title>
+<style>
+  body { font: 14px/1.5 "Segoe UI", system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 28px; max-width: 520px; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  p { color: #aaa; margin: 6px 0 16px; }
+  label { display: block; margin: 14px 0 4px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #333; background: #1b1b1b; color: #fff; font: 13px Consolas, monospace; }
+  button { margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 8px; background: #2dd4bf; color: #04201c; font-weight: 600; cursor: pointer; }
+  #status { margin-top: 12px; min-height: 20px; }
+  .ok { color: #4ade80; } .bad { color: #f87171; }
+</style>
+</head>
+<body>
+<h1>ZaxLet Wishlist</h1>
+<p>Ekstensi ini membaca judul, harga, dan gambar halaman produk yang kamu buka, lalu mengirimnya ke ZaxLet di PC ini (hanya ke 127.0.0.1, tidak ke internet). Setelah itu cukup salin link produknya dan klik <b>+ Tempel link</b> di tab Wishlist.</p>
+<div id="perm" style="display:none; background:#2a1f10; border:1px solid #6b4a14; border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+  Firefox meminta izin akses situs sebelum ekstensi boleh membaca halaman produk. <button id="grant" style="margin-top:8px">Izinkan akses ke situs</button>
+</div>
+<label for="token">Token (salin dari ZaxLet: Pengaturan &gt; Alat &gt; Ekstensi browser)</label>
+<input id="token" type="text" autocomplete="off" spellcheck="false">
+<label><input id="enabled" type="checkbox"> Kirim halaman produk ke ZaxLet</label>
+<button id="save">Simpan dan tes sambungan</button>
+<div id="status"></div>
+<button id="diag" style="background:#333;color:#eee">Tes tab web yang terakhir kubuka</button>
+<pre id="diagout" style="white-space:pre-wrap; color:#bbb; font:12px Consolas,monospace; margin-top:10px"></pre>
+<script src="options.js"></script>
+</body>
+</html>

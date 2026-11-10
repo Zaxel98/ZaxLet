@@ -50,6 +50,19 @@ public static class UiTest
             }
         }
 
+        // tab-tab yang sering berubah: dirender apa adanya (Wishlist diisi dua item contoh tanpa jaringan)
+        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: pakai isi wishlist.json di folder data (salinan), bukan contoh
+        {
+            Wishlist.Items.Clear();
+            Wishlist.Items.Add(new WishItem { Id = "t1", Url = "https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.1.2", Title = "Fuwa Petit Mascot Akiyama Mizuki", Price = "IDR 149,000", Source = "Shopee", Added = DateTime.Now });
+            Wishlist.Items.Add(new WishItem { Id = "t2", Url = "https://kyou-hobby.com/p/nendoroid-miku", Title = "nendoroid miku", Source = "Kyou Hobby", Added = DateTime.Now });
+        }
+        foreach (var (name, make) in new (string, Func<TabView>)[] { ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()), ("water", () => new WaterView()), ("music", () => new MusicView()) })
+        {
+            try { var v = make(); v.OnShow(); Shot(v, "tab-" + name, 660, 262); v.OnHide(); log.AppendLine("ok tab " + name); }
+            catch (Exception ex) { log.AppendLine($"GAGAL tab {name}: {ex}"); }
+        }
+
         void Guide(string id, System.Collections.Generic.List<GuideStep> steps)
         {
             for (int i = 0; i < steps.Count; i++)
@@ -71,6 +84,7 @@ public static class UiTest
         }
         Guide("hp", PhoneGuide.Steps());
         Guide("discord", DiscordGuide.Steps());
+        Guide("wish", WishGuide.Steps());
 
         lock (L.Misses) File.WriteAllLines(Path.Combine(dir, "missing.txt"), L.Misses);
         File.WriteAllText(Path.Combine(dir, "ui-test.txt"), log.ToString());

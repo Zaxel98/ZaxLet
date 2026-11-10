@@ -22,7 +22,7 @@ public sealed class MediaService
     public static readonly MediaService I = new();
 
     public event Action Changed;
-    public bool HasSession, Playing;
+    public bool HasSession, Playing, IsAd;
     public string Title = "", Artist = "", Album = "";
     public BitmapSource Cover;
     public Color? CoverColor;
@@ -55,6 +55,73 @@ public sealed class MediaService
 
     static void Ui(Action a) => Application.Current?.Dispatcher.BeginInvoke(a);
 
+    // geseran waktu lirik per lagu (kunci "artis|judul"); lagu tanpa geseran sendiri memakai nilai bawaan di Pengaturan.
+    // Referensi Title/Artist dibandingkan supaya pencarian kamus tidak jalan di tiap bingkai karaoke.
+    string _offT, _offA; int _offV;
+    string OffKey => $"{Artist}|{Title}".ToLowerInvariant();
+    public int Offset
+    {
+        get
+        {
+            if (!ReferenceEquals(_offT, Title) || !ReferenceEquals(_offA, Artist))
+            { _offT = Title; _offA = Artist; _offV = Settings.Cur.LyricOffsets.TryGetValue(OffKey, out var v) ? v : Settings.Cur.LyricOffsetMs; }
+            return _offV;
+        }
+        set
+        {
+            value = Math.Clamp(value, -5000, 5000);
+            var d = Settings.Cur.LyricOffsets;
+            if (value == Settings.Cur.LyricOffsetMs) d.Remove(OffKey);
+            else { if (d.Count >= 1000) d.Remove(d.Keys.First()); d[OffKey] = value; }
+            _offV = value; _offT = Title; _offA = Artist;
+            Settings.Save();
+        }
+    }
+
+    // lirik yang ditandai salah oleh pengguna (hash isi): tidak dipakai lagi, jadi sumber berikutnya yang menang
+    static readonly HashSet<string> Rejected = LoadRejected();
+    static string RejectedFile => Path.Combine(Settings.Dir, "lyrics", "rejected.txt");
+    static HashSet<string> LoadRejected()
+    {
+        try { return File.Exists(RejectedFile) ? new HashSet<string>(File.ReadAllLines(RejectedFile)) : new(); } catch { return new(); }
+    }
+    static string LrcHash(string s) => Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(s)));
+    static bool IsRejected(string lrc) => lrc != null && Rejected.Contains(LrcHash(lrc));
+    static string CachePath(string artist, string title) => Path.Combine(Settings.Dir, "lyrics",
+        Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes($"{artist}|{title}".ToLowerInvariant()))) + ".lrc");
+
+    /// <summary>"Liriknya salah": buang lirik yang tampil dari cache, ingat supaya tidak dipakai lagi, lalu cari versi dari sumber lain.</summary>
+    public void RejectLyrics()
+    {
+        if (!HasSession || Lyrics.Count == 0 || string.IsNullOrWhiteSpace(Title)) return;
+        try
+        {
+            var cache = CachePath(Artist, Title);
+            if (File.Exists(cache))
+            {
+                Rejected.Add(LrcHash(File.ReadAllText(cache)));
+                Directory.CreateDirectory(Path.GetDirectoryName(RejectedFile));
+                File.WriteAllLines(RejectedFile, Rejected);
+                File.Delete(cache);
+            }
+        }
+        catch (Exception ex) { App.Log(ex); }
+        NoLyrics.Remove($"{Artist}|{Title}".ToLowerInvariant());
+        Lyrics = new(); LyricState = "loading";
+        Changed?.Invoke();
+        _ = LoadLyrics(_key, Title, Artist, Album);
+    }
+
+    /// <summary>"Cari ulang" saat lirik tidak ada atau gagal dimuat: lupakan hasil negatif sementara dan tanya sumber lagi.</summary>
+    public void RetryLyrics()
+    {
+        if (!HasSession || string.IsNullOrWhiteSpace(Title) || LyricState is "loading" or "retry" or "listen") return;
+        NoLyrics.Remove($"{Artist}|{Title}".ToLowerInvariant());
+        Lyrics = new(); LyricState = "loading";
+        Changed?.Invoke();
+        _ = LoadLyrics(_key, Title, Artist, Album);
+    }
+
     /// <summary>Dipanggil saat lirik dinyalakan lagi di tengah lagu: cari lirik lagu yang sedang diputar.</summary>
     public void EnsureLyrics()
     {
@@ -66,27 +133,44 @@ public sealed class MediaService
     public async Task StartAsync()
     {
         Settings.Applied += () => Ui(EnsureLyrics);
+        Settings.Applied += () => { if (Settings.Cur.MediaIgnore != _ignoreSig) Ui(async () => { _ignoreSig = Settings.Cur.MediaIgnore; await RefreshAll(); }); };   // daftar abaikan berubah: pilih ulang sesi
         try
         {
+            _ignoreSig = Settings.Cur.MediaIgnore;
+            _uiaT = new System.Threading.Timer(_ => PollYouTube(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);   // jalan hanya saat ada sesi (SyncPoll)
+            Settings.Applied += () => Ui(SyncPoll);
             _mgr = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
             _mgr.CurrentSessionChanged += (_, _) => Ui(async () => await RefreshAll());
+            _mgr.SessionsChanged += (_, _) => Ui(async () => await RefreshAll());   // sesi yang diabaikan sedang aktif lalu sesi lain mulai: pilih ulang
             await RefreshAll();
-            _uiaT = new System.Threading.Timer(_ => PollYouTube(), null, 2000, 2000);
         }
         catch (Exception ex) { App.Log(ex); }
     }
+
+    /// <summary>Sesi media yang dipakai island: yang sedang aktif, kecuali aplikasinya ada di daftar abaikan (lalu sesi lain yang tidak diabaikan, bila ada).</summary>
+    GlobalSystemMediaTransportControlsSession Pick()
+    {
+        var cur = _mgr?.GetCurrentSession();
+        var list = Settings.Cur.MediaIgnore;
+        if (cur == null || !MediaFilter.Ignored(cur.SourceAppUserModelId, list)) return cur;
+        foreach (var x in _mgr.GetSessions()) if (!MediaFilter.Ignored(x.SourceAppUserModelId, list)) return x;
+        return null;
+    }
+
+    string _ignoreSig = "";
 
     async Task RefreshAll()
     {
         try
         {
-            var s = _mgr?.GetCurrentSession();
+            var s = Pick();
             if (!ReferenceEquals(s, _s))
             {
                 if (_s != null) Detach();
                 _s = s;
                 if (_s != null) Attach();
             }
+            SyncPoll();
             if (_s == null)
             {
                 HasSession = Playing = false;
@@ -141,6 +225,8 @@ public sealed class MediaService
             _rawTitle = _vidTitle; _rawArtist = _vidArtist;
             var shown = TrackId.Parse(_rawTitle, _rawArtist).Show;   // judul YouTube "Artis - Judul (Audio)" + kanal "artisVEVO" -> pasangan yang rapi
             Title = shown.Title; Artist = shown.Artist; Album = p.AlbumTitle ?? "";
+            IsAd = MediaFilter.IsAd(_s?.SourceAppUserModelId, p.Title, p.Artist);
+            if (IsAd) { Title = ZaxLet.L.T("Iklan"); Album = ""; }   // teks templat Spotify di slot judul diganti keterangan iklan
         }
         if (newTrack)
         {
@@ -178,9 +264,15 @@ public sealed class MediaService
 
     void RefreshPlayback()
     {
-        var i = _s.GetPlaybackInfo();
+        var s = _s;
+        if (s == null) return;   // event datang setelah sesi hilang
+        var i = s.GetPlaybackInfo();
         Playing = i.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        Shuffle = i.Controls.IsShuffleEnabled ? i.IsShuffleActive : null;   // null: pemutar ini tidak mendukung acak lewat Windows
     }
+
+    public bool? Shuffle;
+    public void ToggleShuffle() { if (_s != null && Shuffle is { } on) _ = _s.TryChangeShuffleActiveAsync(!on); }
 
     /// <summary>Baca ulang durasi/posisi dari Windows. Peramban (YouTube) sering terlambat atau tidak mengirim event timeline, jadi dipanggil berkala.</summary>
     public void PollTimeline()
@@ -241,6 +333,15 @@ public sealed class MediaService
     int _uiaBusy;
     System.Threading.Timer _uiaT;
 
+    bool _ytOn;
+    void SyncPoll()
+    {
+        bool on = _s != null && Settings.Cur.YtProgress;
+        if (on == _ytOn || _uiaT == null) return;
+        _ytOn = on;
+        _uiaT.Change(on ? 2000 : System.Threading.Timeout.Infinite, on ? 2000 : System.Threading.Timeout.Infinite);
+    }
+
     /// <summary>Tiap 2 dtk baca bilah progres YouTube (bila tab videonya aktif) dan jadikan itu posisi sebenarnya; juga mengisi durasi yang tidak dikirim peramban.</summary>
     void PollYouTube()
     {
@@ -295,6 +396,7 @@ public sealed class MediaService
             catch (Exception ex) { App.Log(ex); }
         }
         if (key != _key) return;
+        if (IsAd) { LyricState = "ad"; return; }   // iklan tidak punya lirik: jangan mengunduh
         if (Settings.Cur.MusicLyrics) await LoadLyrics(key, Title, Artist, Album); else LyricState = "off";   // lirik dimatikan: tidak mengunduh
     }
 
@@ -324,7 +426,7 @@ public sealed class MediaService
     public int CurrentIndex()
     {
         if (Lyrics.Count == 0) return -1;
-        var p = Position() + TimeSpan.FromMilliseconds(200 + Settings.Cur.LyricOffsetMs);
+        var p = Position() + TimeSpan.FromMilliseconds(200 + Offset);
         int lo = 0, hi = Lyrics.Count - 1, ans = -1;
         while (lo <= hi)
         {
@@ -344,7 +446,7 @@ public sealed class MediaService
         if (i < 0) return (-1, 0);
         var l = Lyrics[i];
         var (sung, vexp, contig) = Est(i);
-        var t = Position() + TimeSpan.FromMilliseconds(Settings.Cur.LyricOffsetMs);
+        var t = Position() + TimeSpan.FromMilliseconds(Offset);
         double elapsed = (t - l.At).TotalSeconds, timeP = Math.Clamp(elapsed / sung, 0, 1);
         DbgK = (i, l.Text, sung, timeP, 0, 0, false);
 
@@ -433,7 +535,7 @@ public sealed class MediaService
         var L = Lyrics;
         if (L.Count == 0 || !Playing) return -1;
         if (_lblKey != _key) { _lblKey = _key; AudioFlow.I.ResetModel(); }   // lagu baru: mulai belajar dari nol
-        var t = Position() + TimeSpan.FromMilliseconds(Settings.Cur.LyricOffsetMs);
+        var t = Position() + TimeSpan.FromMilliseconds(Offset);
         if (t < L[0].At - TimeSpan.FromSeconds(0.6)) return t > TimeSpan.FromSeconds(1) ? 0 : -1;
         int lo = 0, hi = L.Count - 1, i = -1;
         while (lo <= hi) { int m = (lo + hi) / 2; if (L[m].At <= t) { i = m; lo = m + 1; } else hi = m - 1; }
@@ -448,7 +550,7 @@ public sealed class MediaService
         return -1;
     }
 
-    int _kIdx = -1; double _kSung, _kVoiced, _ratio = 1, _kP; DateTime _kAt;   // pembelajaran rasio dan keadaan progres karaoke vokal
+    int _kIdx = -1; double _kVoiced, _ratio = 1, _kP; DateTime _kAt;   // pembelajaran rasio dan keadaan progres karaoke vokal
 
     // ---------- kontrol ----------
     public void PlayPause() => _ = _s?.TryTogglePlayPauseAsync();
@@ -494,8 +596,7 @@ public sealed class MediaService
         if (string.IsNullOrWhiteSpace(title)) return;
 
         // cache disk: lagu yang sudah pernah dicari langsung tampil dan tidak bergantung pada server LRCLIB
-        var cache = Path.Combine(Settings.Dir, "lyrics",
-            Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes($"{artist}|{title}".ToLowerInvariant()))) + ".lrc");
+        var cache = CachePath(artist, title);
         try
         {
             // cache lama yang tidak wajar (cap waktu palsu dari versi sebelumnya) diabaikan dan dicari ulang
@@ -585,7 +686,7 @@ public sealed class MediaService
         async Task<string> First()
         {
             Interlocked.Increment(ref attempted);
-            try { var r = await FetchLrclib(title, artist, album, dur); return r != null && LrcSane(r, dur) ? r : null; }
+            try { var r = await FetchLrclib(title, artist, album, dur); return r != null && LrcSane(r, dur) && !IsRejected(r) ? r : null; }
             catch (Exception) { Interlocked.Increment(ref failed); return null; }   // LRCLIB sibuk / dilewati pemutus sirkuit: tidak menunda sumber lain
         }
         var main = MainTitle(title);
@@ -599,7 +700,7 @@ public sealed class MediaService
             // varian kueri: judul lengkap + artis bersih, judul utama (tanpa subjudul "-…-"/"~…~") + artis, judul utama saja; durasi tetap penyaring
             foreach (var (tt, a) in new[] { (clean, art), (main, art), (main, "") }.Distinct())
             {
-                try { if (await src(tt, a, dur) is { } lrc && LrcSane(lrc, dur)) return lrc; answered = true; }
+                try { if (await src(tt, a, dur) is { } lrc && LrcSane(lrc, dur) && !IsRejected(lrc)) return lrc; answered = true; }
                 catch (Exception ex) { App.Log(ex); }
             }
             if (!answered) Interlocked.Increment(ref failed);
@@ -642,7 +743,7 @@ public sealed class MediaService
                                 {
                                 {
                                     var got = await src(tt, a, 0);   // tanpa penyaring durasi sumber; kecocokan dinilai dari cakupan lirik terhadap durasi sebenarnya di bawah
-                                    if (got != null && LrcSane(got, dur) && Lrc.Parse(got) is { Count: > 0 } pl
+                                    if (got != null && LrcSane(got, dur) && !IsRejected(got) && Lrc.Parse(got) is { Count: > 0 } pl
                                         && pl[^1].At.TotalSeconds >= dur * 0.6 && pl[^1].At.TotalSeconds <= dur + 8) return got;
                                 }
                                 }

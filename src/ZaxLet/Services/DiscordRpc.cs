@@ -31,7 +31,7 @@ public sealed class DiscordRpc
     bool _started;
     int _nonce;
 
-    sealed class Token { public string Access { get; set; } public string Refresh { get; set; } public DateTime Expires { get; set; } }
+    sealed class Token { [System.Text.Json.Serialization.JsonConverter(typeof(SecretConverter))] public string Access { get; set; } [System.Text.Json.Serialization.JsonConverter(typeof(SecretConverter))] public string Refresh { get; set; } public DateTime Expires { get; set; } }
 
     public void Start()
     {
@@ -113,7 +113,12 @@ public sealed class DiscordRpc
         return t;
     }
 
-    static Token LoadToken() => Store.Load<Token>("discord-token.json");
+    static Token LoadToken()
+    {
+        var t = Store.Load<Token>("discord-token.json");
+        if (t != null) Store.Save("discord-token.json", t);   // migrasi: token polos lama ditulis ulang terenkripsi
+        return t;
+    }
 
     // ---------- protokol pipa: [opcode int32][panjang int32][JSON] ----------
     async Task Write(int op, string json)

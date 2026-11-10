@@ -50,6 +50,11 @@ public static class PhoneNotifs
         {
             using var doc = JsonDocument.Parse(json);
             var r = doc.RootElement;
+            if (r.TryGetProperty("t", out var tt) && tt.GetString() == "b")   // baterai HP: bukan notifikasi, jangan dihitung
+            {
+                dev.BatPct = r.GetProperty("l").GetInt32(); dev.BatCharging = r.GetProperty("c").GetInt32() == 1;
+                return;
+            }
             Received++; LastAt = DateTime.Now; LastPkg = r.TryGetProperty("pkg", out var lp) ? lp.GetString() : "";
             switch (r.GetProperty("t").GetString())
             {
@@ -95,6 +100,9 @@ public static class PhoneNotifs
                     Notify(show ? n : null, true);
                     break;
                 }
+                case "x":   // teks dari HP -> clipboard PC
+                    PhoneText.FromPhone(Str(r, "text"), dev.Name);
+                    break;
                 case "r":
                     lock (Active) Active.Remove(r.GetProperty("k").GetString());
                     Notify(null, false);
@@ -128,12 +136,17 @@ public static class PhoneNotifs
             lock (Active) Active[p.Key] = p;
             Notify(p, true);
         }
+        var g = new PhoneNotif { Key = "test3", Pkg = "test2", App = "Gmail", Title = "Tagihan Mei", Text = "Tagihan listrik bulan Mei sudah terbit dan jatuh tempo tanggal 20.", Device = "Uji" };
+        lock (Active) Active[g.Key] = g;
+        Notify(null, true);
     }
 
-    /// <summary>Notifikasi yang bisa dibalas (WhatsApp, Telegram, dll), terbaru dulu.</summary>
-    public static List<PhoneNotif> Replyable(string pkg = null)
+    /// <summary>Kotak masuk tab Komunikasi, terbaru dulu: chat yang bisa dibalas, ditambah notifikasi biasa dari aplikasi yang diizinkan (yang "berjalan" seperti status pengiriman tidak ikut).</summary>
+    public static bool Listed(PhoneNotif n) => n.CanReply || (!n.Ongoing && Enabled(n.Pkg));
+
+    public static List<PhoneNotif> Inbox(string pkg = null)
     {
-        lock (Active) return Active.Values.Where(n => n.CanReply && (pkg == null || n.Pkg == pkg)).OrderByDescending(n => n.Time).ToList();
+        lock (Active) return Active.Values.Where(n => Listed(n) && (pkg == null || n.Pkg == pkg)).OrderByDescending(n => n.Time).ToList();
     }
 
     /// <summary>Hapus percakapan dari daftar (tombol silang). Muncul lagi hanya bila pesannya berubah.</summary>

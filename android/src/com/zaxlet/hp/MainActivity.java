@@ -8,8 +8,6 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.*;
 import android.provider.MediaStore;
@@ -22,65 +20,183 @@ import java.io.*;
 import java.util.ArrayList;
 import javax.net.ssl.HttpsURLConnection;
 
-/** Layar tunggal: pasangkan, nyalakan layanan latar, kirim file ke PC, ambil file dari Shelf. Juga penerima menu Bagikan. */
+/** Layar utama: status sambungan, daftar izin agar tetap hidup di latar, pasangkan, kirim file/teks ke PC, ambil file dari Shelf. Juga penerima menu Bagikan. */
 public class MainActivity extends Activity {
-    private TextView status;
-    private Button toggle;
-    private EditText link;
+    private static final class Check { View dot; TextView label; Button act; boolean ok; }
+
+    private View stDot;
+    private TextView stTitle, stDetail, stDiag;
+    private Button toggle, audBtn;
+    private TextView audNote;
+    private EditText msg;
+    private Check cNotif, cBattery, cPost;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() { public void run() { refresh(); ui.postDelayed(this, 1500); } };
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Net.init(this);
-        getWindow().setStatusBarColor(Color.parseColor("#0B0B0D"));
-        getWindow().setNavigationBarColor(Color.parseColor("#0B0B0D"));
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(Color.parseColor("#0B0B0D"));
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(36), dp(20), dp(24));
-        sv.addView(root);
+        LinearLayout root = Ui.page(this, "ZaxLet HP");
 
-        TextView t = text("ZaxLet HP", 26, Color.WHITE, true);
-        root.addView(t);
-        status = text("", 14, Color.parseColor("#9A9AA2"), false);
-        status.setPadding(0, dp(6), 0, dp(14));
-        root.addView(status);
-
-        link = new EditText(this);
-        link.setHint("Tempel tautan pasangan (zaxlet://pair?…) atau scan QR dari ZaxLet");
-        link.setTextColor(Color.WHITE); link.setHintTextColor(Color.parseColor("#6A6A72")); link.setTextSize(13);
-        link.setBackground(bg("#1C1C20", 12));
-        link.setPadding(dp(12), dp(10), dp(12), dp(10));
-        root.addView(link, lp());
-        root.addView(btn("Pasangkan", "#1C1C20", Color.WHITE, v -> pair(link.getText().toString())), lp());
-        toggle = btn("", "#2DD4BF", Color.parseColor("#04201C"), v -> {
+        // ---- status ----
+        LinearLayout sc = Ui.card(root, null);
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        stDot = Ui.dot(this, Ui.DIM);
+        head.addView(stDot, new LinearLayout.LayoutParams(Ui.dp(this, 12), Ui.dp(this, 12)));
+        stTitle = Ui.text(this, "", 18, Ui.TEXT, true);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, -2, 1f);
+        tp.leftMargin = Ui.dp(this, 10);
+        head.addView(stTitle, tp);
+        toggle = Ui.button(this, "", true, v -> {
             if (ConnService.alive) startService(new Intent(this, ConnService.class).setAction("STOP")); else startService();
             ui.postDelayed(this::refresh, 400);
         });
-        root.addView(toggle, lp());
-        root.addView(btn("Kirim file ke PC", "#1C1C20", Color.WHITE, v -> pickFiles()), lp());
-        root.addView(btn("Ambil file dari Shelf PC", "#1C1C20", Color.WHITE, v -> shelf()), lp());
-        root.addView(btn("Setelan", "#1C1C20", Color.WHITE, v -> startActivity(new Intent(this, SettingsActivity.class))), lp());
-        TextView hint = text("Layanan latar belakang menjaga sambungan ke PC walau layar mati (notifikasi dan balasan chat). "
-                + "Setelah HP restart, buka aplikasi ini sekali lalu aktifkan lagi.", 12, Color.parseColor("#6A6A72"), false);
-        hint.setPadding(0, dp(12), 0, 0);
-        root.addView(hint);
-        setContentView(sv);
+        small(toggle);
+        head.addView(toggle, new LinearLayout.LayoutParams(-2, -2));
+        sc.addView(head);
+        LinearLayout info = new LinearLayout(this);   // teks alamat di kiri, QR kecil di kanan (di bawah tombol Matikan)
+        info.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        stDetail = Ui.text(this, "", 14, Ui.DIM, false);
+        stDiag = Ui.text(this, "", 12, Ui.DIM, false);
+        txt.addView(stDetail);
+        txt.addView(stDiag, Ui.gap(this, 2));
+        LinearLayout.LayoutParams xp = new LinearLayout.LayoutParams(0, -2, 1f);
+        xp.rightMargin = Ui.dp(this, 8);
+        info.addView(txt, xp);
+        info.addView(small(Ui.button(this, "QR", false, v -> startActivity(new Intent(this, ScanActivity.class)))), new LinearLayout.LayoutParams(-2, -2));   // pasangkan: pindai QR dari ZaxLet
+        sc.addView(info, Ui.gap(this, 6));
+
+        // ---- aksi (paling sering dipakai: tepat di bawah status) ----
+        LinearLayout ac = Ui.card(root, "Kirim & ambil");
+        LinearLayout r1 = new LinearLayout(this);
+        r1.addView(Ui.button(this, "Kirim file", false, v -> pickFiles()), new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -2, 1f);
+        sp.leftMargin = Ui.dp(this, 8);
+        r1.addView(Ui.button(this, "Ambil dari Shelf", false, v -> shelf()), sp);
+        ac.addView(r1);
+        LinearLayout r2 = new LinearLayout(this);
+        r2.setGravity(Gravity.CENTER_VERTICAL);
+        msg = Ui.field(this, "Teks ke clipboard PC", 1);
+        r2.addView(msg, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+        LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(-2, -2);
+        kp.leftMargin = Ui.dp(this, 8);
+        r2.addView(small(Ui.button(this, "Kirim", true, v -> { if (sendText(msg.getText().toString())) msg.setText(""); })), kp);
+        ac.addView(r2, Ui.gap(this, 8));
+        ac.addView(Ui.button(this, "Notifikasi ke PC", false, v -> startActivity(new Intent(this, AppsActivity.class))), Ui.gap(this, 8));
+        audBtn = Ui.button(this, "", false, v -> toggleAudio());
+        ac.addView(audBtn, Ui.gap(this, 8));
+        audNote = Ui.text(this, "", 12, Ui.DIM, false);
+        ac.addView(audNote, Ui.gap(this, 4));
+
+        // ---- izin agar tetap hidup (diset sekali, jadi di paling bawah) ----
+        LinearLayout kc = Ui.card(root, "Agar tetap hidup di latar");
+        cNotif = check(kc, "Akses notifikasi", v -> notifAccess());
+        cBattery = check(kc, "Bebas hemat baterai", v -> batteryOpt());
+        cPost = check(kc, "Izin notifikasi aplikasi", v -> requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 8));
+        View auto = check(kc, "Autostart / kunci aplikasi (Xiaomi, Oppo, Vivo, Huawei)", v -> autostart()).dot;
+        Ui.tint(auto, Ui.DIM);
+        TextView kh = Ui.text(this, "Aplikasi hidup lagi sendiri setelah HP restart. Autostart perlu dicek manual di merek tertentu; Android tidak bisa membacanya dari aplikasi.", 12, Ui.DIM, false);
+        kc.addView(kh, Ui.gap(this, 8));
         handle(getIntent());
+    }
+
+    /** Tombol kecil (tinggi 44dp, selebar teksnya) untuk slot sempit di samping teks atau kolom isian. */
+    private Button small(Button b) {
+        b.setTextSize(14); b.setMinWidth(0); b.setMinimumWidth(0);
+        b.setMinHeight(Ui.dp(this, 44)); b.setMinimumHeight(Ui.dp(this, 44));
+        b.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
+        return b;
+    }
+
+    private Check check(LinearLayout parent, String label, View.OnClickListener act) {
+        Check c = new Check();
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        c.dot = Ui.dot(this, Ui.DIM);
+        row.addView(c.dot, new LinearLayout.LayoutParams(Ui.dp(this, 10), Ui.dp(this, 10)));
+        c.label = Ui.text(this, label, 15, Ui.TEXT, false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1f);
+        lp.leftMargin = Ui.dp(this, 12); lp.rightMargin = Ui.dp(this, 8);
+        row.addView(c.label, lp);
+        c.act = new Button(this);
+        c.act.setText("Atur"); c.act.setAllCaps(false); c.act.setTextColor(Ui.ACC); c.act.setTextSize(14);
+        c.act.setBackground(null); c.act.setStateListAnimator(null); c.act.setMinHeight(Ui.dp(this, 48)); c.act.setMinimumWidth(Ui.dp(this, 56));
+        c.act.setOnClickListener(act);
+        row.addView(c.act);
+        parent.addView(row);
+        return c;
+    }
+
+    private void mark(Check c, boolean ok) {
+        c.ok = ok;
+        Ui.tint(c.dot, ok ? Ui.ACC : Ui.WARN);
+        c.act.setVisibility(ok ? View.GONE : View.VISIBLE);
     }
 
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); handle(i); }
     @Override protected void onResume() { super.onResume(); ui.post(tick); }
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(tick); }
 
+    private boolean listenerOn() {
+        String l = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+        return l != null && l.contains(getPackageName());
+    }
+
     private void refresh() {
-        toggle.setText(ConnService.alive ? "Matikan layanan latar belakang" : "Aktifkan layanan latar belakang");
-        String s = Net.paired() ? "Terpasang dengan PC (" + (Net.get("lan").isEmpty() ? "" : "LAN " + Net.get("lan")) + (Net.get("ts").isEmpty() ? "" : "  Tailscale " + Net.get("ts")) + ")" : "Belum dipasangkan";
-        String listeners = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        boolean notif = listeners != null && listeners.contains(getPackageName());
-        status.setText(s + "\nLayanan: " + (ConnService.alive ? ConnService.status : "mati") + "\nAkses notifikasi: " + (notif ? "aktif" : "belum diizinkan"));
+        boolean paired = Net.paired(), alive = ConnService.alive;
+        int color; String title, detail;
+        if (!paired) { color = Ui.WARN; title = "Belum dipasangkan"; detail = "Ketuk QR lalu pindai kode pasangan di ZaxLet PC."; }
+        else if (!alive) { color = Ui.DIM; title = "Layanan mati"; detail = "Aktifkan agar notifikasi dan balasan chat terus tersambung."; }
+        else if (ConnService.state == 2) { color = Ui.ACC; title = "Tersambung"; detail = "Ke PC lewat " + Net.active; }
+        else {
+            color = Ui.WARN; title = "Menunggu PC…"; detail = ConnService.status;
+            if (detail.contains("sidik jari")) detail = "Sertifikat PC tidak cocok dengan pasangan ini. Ketuk QR dan pindai ulang dari ZaxLet PC.";
+        }
+        Ui.tint(stDot, color);
+        stTitle.setText(title); stDetail.setText(detail);
+        boolean on = listenerOn();
+        stDiag.setText(on ? "Notifikasi: dilihat " + NotifService.seen + ", terkirim " + NotifService.sent + (NotifService.lastErr.isEmpty() ? "" : " (" + NotifService.lastErr + ")") : "");
+        stDiag.setVisibility(on ? View.VISIBLE : View.GONE);
+        audBtn.setText(AudioService.alive ? "Matikan audio ke PC" : "Audio HP ke PC");
+        audNote.setText(AudioService.alive ? "Speaker HP senyap, suara diputar di PC bersama audio lain." : AudioService.err);
+        audNote.setVisibility(audNote.getText().length() == 0 ? View.GONE : View.VISIBLE);
+        toggle.setText(alive ? "Matikan" : "Aktifkan");
+        toggle.setBackground(Ui.shape(this, alive ? Ui.FIELD : Ui.ACC, 14));
+        toggle.setTextColor(alive ? Ui.TEXT : Ui.ON_ACC);
+
+        mark(cNotif, on);
+        mark(cBattery, ((PowerManager) getSystemService(POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()));
+        mark(cPost, Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
+    }
+
+    /** Android 13+ memblokir akses notifikasi untuk APK sideload ("setelan terbatas"); jelaskan jalan keluarnya. */
+    private void notifAccess() {
+        final Intent listener = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        if (Build.VERSION.SDK_INT < 33) { startActivity(listener); return; }
+        new AlertDialog.Builder(this).setTitle("Akses notifikasi")
+                .setMessage("1. Ketuk \"Buka akses notifikasi\" lalu nyalakan ZaxLet HP.\n\n"
+                        + "2. Jika Android menolak (\"setelan terbatas\"): ketuk \"Info aplikasi\", buka menu ⋮ di pojok kanan atas, pilih \"Izinkan setelan terbatas\", lalu ulangi langkah 1. Menu itu baru muncul setelah langkah 1 pernah ditolak.")
+                .setPositiveButton("Buka akses notifikasi", (d, w) -> startActivity(listener))
+                .setNeutralButton("Info aplikasi", (d, w) -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
+                .show();
+    }
+
+    /** Layar autostart bawaan pabrikan; tidak ada API resmi, jadi coba beberapa dan jatuh ke Info aplikasi. */
+    private void autostart() {
+        String[][] c = {
+            {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
+            {"com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"},
+            {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"},
+            {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"}};
+        for (String[] p : c) {
+            try { startActivity(new Intent().setClassName(p[0], p[1])); return; } catch (Exception e) { }
+        }
+        toast("Cari \"Autostart\" atau \"Aplikasi tidur\" di Info aplikasi → Baterai");
+        startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
     }
 
     private void handle(Intent i) {
@@ -90,14 +206,46 @@ public class MainActivity extends Activity {
         else if (Intent.ACTION_SEND.equals(a)) {
             Uri u = i.getParcelableExtra(Intent.EXTRA_STREAM);
             if (u != null) { ArrayList<Uri> l = new ArrayList<>(); l.add(u); upload(l); }
+            else { CharSequence t = i.getCharSequenceExtra(Intent.EXTRA_TEXT); if (t != null) sendText(t.toString()); }   // Bagikan teks dari aplikasi lain
         } else if (Intent.ACTION_SEND_MULTIPLE.equals(a)) {
             ArrayList<Uri> l = i.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
             if (l != null) upload(l);
         }
     }
 
+    /** Teks ke clipboard PC lewat kanal kontrol. Bingkai di PC dibatasi 64 KB, jadi JSON-nya dijaga di bawah itu. */
+    private boolean sendText(String s) {
+        if (s == null || s.trim().isEmpty()) { toast("Teks kosong"); return false; }
+        if (!ConnService.connected()) { toast("Belum tersambung ke PC: aktifkan layanan latar belakang"); return false; }
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("t", "x"); o.put("text", s);
+            String j = o.toString();
+            if (j.getBytes("UTF-8").length > 60000) { toast("Teks terlalu panjang (maksimal sekitar 60 KB)"); return false; }
+            if (ConnService.send(j)) { toast("Teks terkirim ke PC"); return true; }
+        } catch (Exception e) { }
+        toast("Gagal mengirim, cek sambungan ke PC");
+        return false;
+    }
+
+    /** Buka Google Lens untuk memindai QR dari ZaxLet PC; ketuk hasilnya (zaxlet://pair) dan aplikasi ini terbuka sendiri. Cadangan: aplikasi kamera. */
+    /** Kamera bawaan hanya menyalin tautan: saat layar ini kembali fokus dan clipboard berisi tautan pasangan baru, pasangkan otomatis. */
+    @Override public void onWindowFocusChanged(boolean focus) {
+        super.onWindowFocusChanged(focus);
+        if (!focus) return;
+        try {
+            android.content.ClipData d = ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).getPrimaryClip();
+            CharSequence t = d == null || d.getItemCount() == 0 ? null : d.getItemAt(0).getText();
+            String s = t == null ? "" : t.toString().trim();
+            if (s.startsWith("zaxlet://pair") && !s.equals(Net.get("clip"))) { Net.sp.edit().putString("clip", s).apply(); pair(s); }
+        } catch (Exception e) { }
+    }
+
     private void pair(String s) {
-        if (Net.savePairing(s)) { toast("Terpasang. Ketuk \"Aktifkan layanan\"."); link.setText(""); } else toast("Tautan tidak valid");
+        if (Net.savePairing(s)) {
+            if (ConnService.alive) { ConnService.kickNow(); toast("Terpasang, menyambung ke PC…"); }
+            else toast("Terpasang. Ketuk \"Aktifkan\".");
+        } else toast("Tautan tidak valid");
         refresh();
     }
 
@@ -111,7 +259,19 @@ public class MainActivity extends Activity {
         toast("Layanan diaktifkan");
     }
 
-    @Override public void onRequestPermissionsResult(int c, String[] p, int[] r) { if (c == 7) startService(); }
+    @Override public void onRequestPermissionsResult(int c, String[] p, int[] r) {
+        if (c == 7) startService();
+        else if (c == 10 && r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio();
+    }
+
+    /** Audio HP -> PC: izin rekam audio, lalu dialog rekam layar Android (wajib untuk menangkap audio aplikasi lain); hasilnya diteruskan ke AudioService. */
+    private void toggleAudio() {
+        if (AudioService.alive) { startService(new Intent(this, AudioService.class).setAction("STOP")); ui.postDelayed(this::refresh, 400); return; }
+        if (!Net.paired()) { toast("Pasangkan dulu dengan ZaxLet di PC"); return; }
+        if (Build.VERSION.SDK_INT < 29) { toast("Butuh Android 10 ke atas"); return; }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 10); return; }
+        startActivityForResult(((android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE)).createScreenCaptureIntent(), 10);
+    }
 
     private void batteryOpt() {
         try { startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()))); }
@@ -124,6 +284,11 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onActivityResult(int rc, int res, Intent d) {
+        if (rc == 10) {
+            if (res == RESULT_OK && d != null) startForegroundService(new Intent(this, AudioService.class).putExtra("rc", res).putExtra("data", d));
+            ui.postDelayed(this::refresh, 600);
+            return;
+        }
         if (rc != 9 || res != RESULT_OK || d == null) return;
         ArrayList<Uri> l = new ArrayList<>();
         if (d.getClipData() != null) { ClipData c = d.getClipData(); for (int i = 0; i < c.getItemCount(); i++) l.add(c.getItemAt(i).getUri()); }
@@ -215,19 +380,5 @@ public class MainActivity extends Activity {
         return o.toString("UTF-8");
     }
 
-    // ---------- UI kecil ----------
-    private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
-    private GradientDrawable bg(String c, int r) { GradientDrawable g = new GradientDrawable(); g.setColor(Color.parseColor(c)); g.setCornerRadius(dp(r)); return g; }
-    private LinearLayout.LayoutParams lp() { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.topMargin = dp(10); return p; }
-    private TextView text(String s, int sp, int color, boolean bold) {
-        TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(color);
-        if (bold) t.setTypeface(null, android.graphics.Typeface.BOLD);
-        return t;
-    }
-    private Button btn(String s, String bgc, int fg, View.OnClickListener l) {
-        Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextColor(fg); b.setTextSize(15);
-        b.setBackground(bg(bgc, 14)); b.setPadding(dp(14), dp(14), dp(14), dp(14)); b.setOnClickListener(l); b.setGravity(Gravity.CENTER);
-        return b;
-    }
 }

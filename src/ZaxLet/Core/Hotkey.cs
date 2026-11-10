@@ -55,6 +55,8 @@ public static class Hotkey
         return vk != 0 && RegisterHotKey(h, id, mods | 0x4000, vk);   // 0x4000 = tanpa pengulangan saat ditahan
     }
 
+    public static void Unregister(IntPtr h, int id) => UnregisterHotKey(h, id);
+
     /// <summary>Tekan lalu lepas kombinasi. False bila format tidak dikenal.</summary>
     public static bool Send(string combo)
     {

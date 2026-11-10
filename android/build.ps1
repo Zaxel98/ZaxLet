@@ -9,12 +9,13 @@ Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$out\classes","$out\dex" | Out-Null
 
 & "$bt\aapt2.exe" compile --dir "$root\res" -o "$out\res.zip"
-& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$root\AndroidManifest.xml" --min-sdk-version 26 --target-sdk-version 34 --version-code 1 --version-name 1.0 "$out\res.zip"
+& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$root\AndroidManifest.xml" --min-sdk-version 26 --target-sdk-version 34 --version-code 3 --version-name 1.2 "$out\res.zip"
 
 $src = Get-ChildItem "$root\src" -Recurse -Filter *.java | ForEach-Object FullName
-& javac --release 8 -g:none -Xlint:-options -encoding UTF-8 -classpath $jar -d "$out\classes" $src
+$zx = Join-Path $root "lib\core-3.5.3.jar"   # ZXing core (Apache 2.0): pemindai QR pasangan
+& javac --release 8 -g:none -Xlint:-options -encoding UTF-8 -classpath "$jar;$zx" -d "$out\classes" $src
 $cls = Get-ChildItem "$out\classes" -Recurse -Filter *.class | ForEach-Object FullName
-& "$bt\d8.bat" --lib $jar --min-api 26 --output "$out\dex" $cls
+& "$bt\d8.bat" --lib $jar --min-api 26 --output "$out\dex" $cls $zx
 
 # classes.dex ke dalam APK
 Add-Type -AssemblyName System.IO.Compression.FileSystem

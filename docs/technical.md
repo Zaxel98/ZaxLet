@@ -1,4 +1,4 @@
-﻿# ZaxLet: technical notes
+# ZaxLet: technical notes
 
 How the main pieces work, for anyone reading or extending the code. The general overview is in the [README](../README.md).
 
@@ -63,7 +63,6 @@ Han characters belong to both Japanese and Chinese, so the language is decided p
 - **Network type:** `NetInfo` asks `INetworkListManager` (late-bound COM, readable without admin; the HKLM registry copy is not) and checks whether the "ZaxLet HP" firewall rule covers the Public profile.
 - **Clipboard:** `WM_CLIPBOARDUPDATE` feeds `ClipboardHistory` (40 entries, memory only, pinned entries survive Clear).
 - **Yield:** `YieldService` looks at the foreground window under the island with UI Automation (buttons, tabs, edits, menus; cached per window and position) and, when something interactive is covered, makes the island behave like it does in fullscreen. Off by default.
-- **Calendar:** `Ical` expands RRULE (DAILY, WEEKLY with BYDAY, MONTHLY, YEARLY, INTERVAL, COUNT, UNTIL, EXDATE) for the next 400 days. Times ending in Z become local; TZID times are assumed local.
 - **Updates:** `UpdateService` reads `releases/latest`, needs the asset `ZaxLet-update.zip` and its hash (the `digest` field or `ZaxLet-update.zip.sha256`), extracts safely (no entries outside the folder) and lets a small `cmd` script copy the files after the app exits. `installer/build.ps1` writes both files to `installer/out`. Upload them next to `ZaxLetSetup.exe` in every release.
 - **Backup:** `SettingsBackup` exports the settings without secrets and, when restoring, keeps the current secrets.
 
@@ -106,6 +105,18 @@ Right-click on the pill (outside text boxes and items that handle right-click th
 
 Sources in `android/` (package `com.zaxlet.hp`), built by `android/build.ps1` with aapt2, javac, d8, zipalign and apksigner (no Gradle). The APK is copied to `dist\` and embedded in the installer so the PC can serve it over HTTP for the first QR code.
 
+## Combined features (focus, meetings, OTP, themes, weather)
+
+- Quiet style: `Presets.Apply` sets ten popup and idle-widget switches for Quiet, Balanced or Full, and `Presets.Detect` reports Custom when the switches match none; new installs start Balanced (existing `settings.json` files already store their values). `MediaFilter.Ignored` matches the ignore list against the media session's `SourceAppUserModelId`, `MediaService.Pick` falls back to another session, and the accent "windows" reads `HKCU\...\DWM\AccentColor` through `AccentColor.FromAbgr` (lightened on dark accents). `OpenKey` toggles the island from the keyboard and closes it after 12 s without hover or typing. The local webhook is `POST /notify` on the same `127.0.0.1:47892` listener: token required, no `Origin` header allowed (browser pages are refused), text limited to 200 characters and 2 to 30 seconds.
+
+- Focus and meetings: `FocusService` holds `PhoneNotifs.Posted` while a manual countdown, a Pomodoro work phase (`FocusPomo`) or a meeting runs; OTP codes always pass, and a summary alert shows the held count. `MeetingService.Poll` runs on the existing 2 s background timer: it reads the microphone consent registry (`PrivacyWatch.InUse`) and window titles, and `MeetingDetect.Classify` decides (native meeting apps by process name; browsers only with a meeting tab title). The pill mic button mutes the default capture endpoint (`AudioEndpoint.SetMuted`).
+- OTP: `Otp.Find` needs a keyword plus 4-8 digits; `ClipboardHistory.CopySecret` sets the exclusion formats (`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory`, `CanUploadToCloudClipboard`).
+- Phone text: control frame `{"t":"x","text":...}` from the phone goes to `PhoneText.FromPhone`; `text <base64>` goes to the phone, which sets its clipboard and posts a notification. Frames stay under 64 KB.
+- Lyrics: `MediaService.Offset` is stored per song in `Settings.LyricOffsets` (`artist|title`, lowercase), falling back to the default offset. `RejectLyrics` records the SHA-1 of the cached lyric text in `lyrics/rejected.txt` and the source chain ignores any result with that hash.
+- Island look: `Theme` fills the pill shape (neon adds a stroke in the cover colour), `IslandScale` is a ScaleTransform ahead of the pop animation (the window widens to fit), `ShowMode` reuses the snooze/peek machinery, `FsMusic` keeps the pill visible over a fullscreen app with `WS_EX_TRANSPARENT`, and `MonitorIdx` selects the screen used for position, peek and fullscreen detection (multi-monitor DPI differences are not covered by tests).
+- Weather and worship: `WeatherParse` reads open-meteo JSON (current temperature, WMO code, highest rain chance in the next 2 hours); `Worship.Parse` reads a weekly schedule such as `sun 08:00 Service; fri,sat 18.30 Choir; daily 21:00 Prayer`. Both are pure and covered by the self-checks.
+- Wishlist: `Wishlist` stores `wishlist.json` and images in `wish\`; `WishParse` reads `og:` meta tags (fallback JSON-LD price) and never throws. Direct page reads use an honest `ZaxLet/1.1` user agent and accept a refusal (403, JavaScript-only pages) instead of imitating a browser.
+- Browser extension (`src/BrowserExtension`, copied to `dist\extension`): a Manifest V3 service worker injects `scanPage` after a page finishes loading (and on single-page-app navigation), recognises products by JSON-LD `Product`, `og:type=product`/price meta tags, or a large "Rp" text next to a buy button, shrinks the picture to 360 px JPEG in an `OffscreenCanvas`, and POSTs it to `WishBridge` (`127.0.0.1:47892`). The server accepts only `chrome-extension://` / `moz-extension://` origins plus the `WishToken` header, validates everything in `WishBridgeCore.ParsePage`, keeps at most 60 pages for 6 hours in memory, and never adds an item by itself: `Wishlist.Add` (or the clipboard suggestion in the pill) looks the link up by `WishBridgeCore.Key` (host, path and non-tracking query). The extension polls nothing; it only reacts to navigation events.
 ## Installer
 
 `installer/build.ps1` zips `dist\` (without `.pdb`) and embeds it in `installer/Setup.cs`, compiled with the .NET Framework `csc.exe` (C# 5, WinForms). It installs per user to `%LOCALAPPDATA%\Programs\ZaxLet`, adds Start Menu and desktop shortcuts, optional autostart, a copy of itself as `Uninstall.exe` and an uninstall registry entry. If the .NET 8 Desktop Runtime is missing it offers to download the official installer from Microsoft.

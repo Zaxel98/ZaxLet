@@ -36,6 +36,9 @@ public sealed class HydrationService
         Save();
     }
 
+    /// <summary>Hitungan hari ini kembali ke nol (salah catat, atau mulai ulang).</summary>
+    public void Reset() { _days[Key(DateTime.Today)] = 0; _lastAdd = 0; Save(); }
+
     public void Undo() { if (_lastAdd != 0) { Add(-_lastAdd); _lastAdd = 0; } }
 
     void Save()

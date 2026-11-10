@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -29,6 +30,11 @@ public sealed class MonitorView : TabView
     readonly StackPanel _top = new(), _gpuBox = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
     readonly Border _batHost = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
     StackPanel _rightPanel;
+    Border _ovBtn, _acBtn;
+    readonly TextBlock _ovTxt = UI.T("Overlay", 11, UI.Dim, true), _acTxt = UI.T("Auto-clear", 10.5, UI.Dim, true);
+    readonly TextBlock _rightTitle = UI.T("Memori terbanyak", 11.5, UI.Dim);
+    readonly StackPanel _perfBox = new() { ClipToBounds = true, Height = 168 };   // tinggi tetap: ganti daftar proses tanpa mengubah ukuran island
+    PerfProbe _probe;   // hidup hanya selama tab terbuka dan "tampilkan di island" menyala
 
     public MonitorView()
     {
@@ -50,7 +56,7 @@ public sealed class MonitorView : TabView
         left.Children.Add(_coreBox);
 
         // memori: cincin M + angka + bar
-        var m = UI.Cols(0, 0, -1);
+        var m = UI.Cols(0, 0, -1, 0);
         m.Margin = new Thickness(0, 7, 0, 0);
         m.Children.Add(_rM);
         _mem.Margin = new Thickness(8, 0, 10, 0);
@@ -58,6 +64,10 @@ public sealed class MonitorView : TabView
         m.Children.Add(_mem.At(0, 1));
         _memBar.VerticalAlignment = VerticalAlignment.Center;
         m.Children.Add(_memBar.At(0, 2));
+        // auto-clear ala ISLC: buang cache (standby) begitu mencapai 1 GB; mati sampai dinyalakan
+        _acBtn = UI.Btn(_acTxt, () => { if (MemTrim.On) MemTrim.Stop(); else if (!MemTrim.Start()) IslandWindow.Instance?.Alert(L.T("Auto-clear butuh izin admin. Coba lagi dan pilih Ya di jendela Windows."), 8, null, false); Render(); }, UI.Card, 9, new Thickness(8, 2, 8, 2));
+        _acBtn.Margin = new Thickness(8, 0, 0, 0);
+        m.Children.Add(_acBtn.At(0, 3));
         left.Children.Add(m);
 
         // jaringan: panah biru unduh, panah teal unggah, masing-masing dengan grafik mini
@@ -87,13 +97,24 @@ public sealed class MonitorView : TabView
         g.Children.Add(left);
         g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(14, 2, 14, 2) }.At(0, 1));
         var right = new StackPanel { Margin = new Thickness(14, 0, 0, 0) };
-        right.Children.Add(UI.T("Memori terbanyak", 11.5, UI.Dim));
+        var head = UI.Cols(-1, 0);   // judul + tombol on/off overlay performa
+        head.Children.Add(_rightTitle);
+        _ovBtn = UI.Btn(_ovTxt, () => { var s = Settings.Cur; if (PerfOverlay.IsOn && FpsSource.NeedsAsk) { FpsSource.Ask(); Render(); return; } bool turnOn = !PerfOverlay.IsOn; s.PerfShow = turnOn ? "on" : "off"; Settings.Apply(); Render(); if (turnOn) PerfOverlay.AskAccess(); }, UI.Card, 9, new Thickness(9, 2, 9, 2));
+        head.Children.Add(_ovBtn.At(0, 1));
+        right.Children.Add(head);
         _top.Margin = new Thickness(0, 6, 0, 0);
         right.Children.Add(_top);
+        _perfBox.Margin = new Thickness(0, 4, 0, 0); _perfBox.Visibility = Visibility.Collapsed;
+        right.Children.Add(_perfBox);
         g.Children.Add(right.At(0, 2));
         _rightPanel = right;
         Children.Add(g);
-        _t.Tick += async (_, _) => { _s.Sample(); Render(); await _s.SampleSlowAsync(); };
+        _t.Tick += async (_, _) =>
+        {
+            var iv = TimeSpan.FromSeconds(PowerSaver.On ? 3 : 1);   // hemat baterai: sampel tiap 3 dtk
+            if (_t.Interval != iv) _t.Interval = iv;
+            _s.Sample(); Render(); await _s.SampleSlowAsync();
+        };
     }
 
     // Pemanasan saat aplikasi mulai: sampel pertama (dasar selisih CPU/jaringan), GPU, dan daftar proses sudah siap sebelum tab dibuka.
@@ -113,10 +134,52 @@ public sealed class MonitorView : TabView
     // Bila sudah dipanaskan: tampilkan angka terakhir seketika, lalu sampel baru menyusul tanpa menunggu tick pertama.
     public override void OnShow()
     {
+        _visible = true;
         if (_warm) Render();
         _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync();
     }
-    public override void OnHide() => _t.Stop();
+    bool _visible;   // Warm() menggambar saat tab belum terbuka: probe sensor tidak boleh ikut menyala
+    public override void OnHide() { _visible = false; _t.Stop(); _probe?.Dispose(); _probe = null; }
+
+    void RenderPerf(Settings st)
+    {
+        bool want = st.PerfInIsland && _visible;
+        if (want && _probe == null) _probe = new PerfProbe(PerfFormat.Items(st.PerfItems));
+        else if (!want && _probe != null) { _probe.Dispose(); _probe = null; }
+        bool perf = _probe != null;
+        _rightPanel.Visibility = Visibility.Visible;   // tombol overlay selalu ada
+        _top.Visibility = perf || !st.MonTop ? Visibility.Collapsed : Visibility.Visible;
+        _perfBox.Visibility = perf ? Visibility.Visible : Visibility.Collapsed;
+        _rightTitle.Text = L.T(perf || !st.MonTop ? "Performa" : "Memori terbanyak");
+        bool on = PerfOverlay.IsOn;
+        _ovBtn.Background = on ? UI.AccentBg : UI.Card;
+        _ovTxt.Text = L.T(on ? FpsSource.NeedsAsk ? "Izinkan FPS" : "Overlay nyala" : "Overlay mati");
+        _ovTxt.Foreground = on ? UI.Fg : UI.Dim;
+        _acBtn.Background = MemTrim.On ? UI.AccentBg : UI.Card;
+        _acTxt.Foreground = MemTrim.On ? UI.Fg : UI.Dim;
+        if (!perf) return;
+        var items = PerfFormat.Items(st.PerfItems);
+        var v = _probe.Read();
+        _perfBox.Children.Clear();
+        var rows = PerfFormat.Metrics.Where(m => items.Contains(m.Key) && v.TryGetValue(m.Key, out var x) && x != null).ToList();
+        if (rows.Count == 0) { _perfBox.Children.Add(UI.T(L.T("Belum ada metrik dipilih"), 11.5, UI.Faint)); return; }
+        // lebih dari satu halaman: ganti halaman tiap 4 detik (tinggi daftar tetap, ukuran island tidak berubah)
+        int pages = (rows.Count + PerfRows - 1) / PerfRows, page = pages > 1 ? _perfTick++ / 4 % pages : 0;
+        if (pages > 1) _rightTitle.Text += $"  {page + 1}/{pages}";
+        foreach (var m in rows.Skip(page * PerfRows).Take(PerfRows))
+        {
+            var row = UI.Cols(-1, 0);
+            row.Margin = new Thickness(0, 1, 0, 1);
+            row.Children.Add(UI.T(L.T(m.Label), 11.5, UI.Dim).At(0, 0));
+            var vt = UI.T(System.Text.RegularExpressions.Regex.Replace(v[m.Key], @"^(inti|mem|bus|kipas|batas:)\s+", ""), 11.5);   // label baris sudah menjelaskan
+            vt.Margin = new Thickness(8, 0, 0, 0);
+            row.Children.Add(vt.At(0, 1));
+            _perfBox.Children.Add(row);
+        }
+    }
+
+    const int PerfRows = 10;
+    int _perfTick;
 
     static Brush Level(double f) => f > .85 ? UI.Bad : f > .6 ? UI.Warn : Blue;
 
@@ -125,7 +188,7 @@ public sealed class MonitorView : TabView
         var st = Settings.Cur;
         _gpuBox.Visibility = st.MonGpu ? Visibility.Visible : Visibility.Collapsed;
         _coreBox.Visibility = st.MonCores ? Visibility.Visible : Visibility.Collapsed;
-        _rightPanel.Visibility = st.MonTop ? Visibility.Visible : Visibility.Collapsed;
+        RenderPerf(st);
 
         _rC.Set(_s.Cpu, Level(_s.Cpu));
         _cpu.Inlines.Clear();

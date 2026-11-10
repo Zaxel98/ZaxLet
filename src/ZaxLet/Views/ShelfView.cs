@@ -23,24 +23,28 @@ public sealed class ShelfView : TabView
     readonly TextBlock _title = UI.T("", 14, null, true);
     readonly Border _chip;
     readonly TextBlock _chipText = UI.T("Sambung HP", 12), _camText = UI.T("Kamera", 12), _flipText = UI.T("", 12);
-    readonly Border _camChip, _flipChip;
+    readonly Border _camChip, _flipChip, _textChip;
     readonly Grid _body = new();
     bool _phone = ShareServer.I.On;
 
     public ShelfView()
     {
         var root = UI.Rows(0, -1);
-        var head = UI.Cols(-1, 0, 0, 0);
+        var head = UI.Cols(-1, 0, 0, 0, 0);
         head.Margin = new Thickness(0, 0, 0, 8);
         head.Children.Add(_title);
         _camChip = UI.Btn(_camText, ToggleCam, UI.CardOn, 12, new Thickness(10, 4, 10, 4));
         _camChip.Margin = new Thickness(0, 0, 6, 0);
-        head.Children.Add(_camChip.At(0, 1));
+        _textChip = UI.Btn(UI.T("Teks ke HP", 12), SendText, UI.CardOn, 12, new Thickness(10, 4, 10, 4));
+        _textChip.Margin = new Thickness(0, 0, 6, 0);
+        _textChip.ToolTip = L.T("Kirim teks yang ada di clipboard PC ke clipboard HP");
+        head.Children.Add(_textChip.At(0, 1));
+        head.Children.Add(_camChip.At(0, 2));
         _flipChip = UI.Btn(_flipText, FlipCam, UI.CardOn, 12, new Thickness(10, 4, 10, 4));
         _flipChip.Margin = new Thickness(0, 0, 6, 0);
-        head.Children.Add(_flipChip.At(0, 2));
+        head.Children.Add(_flipChip.At(0, 3));
         _chip = UI.Btn(_chipText, TogglePhone, UI.CardOn, 12, new Thickness(10, 4, 10, 4));
-        head.Children.Add(_chip.At(0, 3));
+        head.Children.Add(_chip.At(0, 4));
         root.Children.Add(head);
         root.Children.Add(_body.At(1));
         Children.Add(root);
@@ -68,18 +72,23 @@ public sealed class ShelfView : TabView
 
     void RefreshCam()
     {
-        _camChip.Visibility = _flipChip.Visibility = _phone ? Visibility.Visible : Visibility.Collapsed;
+        _camChip.Visibility = _flipChip.Visibility = _textChip.Visibility = _phone ? Visibility.Visible : Visibility.Collapsed;
         _camText.Text = L.T(PhoneCam.Active ? "Matikan kamera" : "Nyalakan kamera");
         _flipText.Text = L.T(Settings.Cur.CamFront ? "Depan" : "Belakang") + " ⇄";
         _camChip.Background = PhoneCam.Active ? UI.AccentBg : UI.CardOn;
     }
 
+    void SendText()
+    {
+        int n = PhoneText.SendClipboard();
+        IslandWindow.Instance?.Alert(L.T(n < 0 ? "Clipboard tidak berisi teks (atau terlalu besar)" : n == 0 ? "HP tidak tersambung" : "Teks terkirim ke HP"), 3, null, false);
+    }
+
     void TogglePhone()
     {
         _phone = !_phone;
-        if (_phone) { ShareServer.I.Start(); PhoneGuide.Show(false); }   // pertama kali dinyalakan: panduan sambung HP tampil sendiri
-        else ShareServer.I.Stop();
-        Render();
+        if (_phone) VirtualCam.EnsureFirewall(() => { ShareServer.I.Start(); PhoneGuide.Show(false); Render(); });   // izin firewall dulu (satu UAC), lalu panduan sambung HP tampil sendiri pertama kali
+        else { ShareServer.I.Stop(); Render(); }
     }
 
     void Render()

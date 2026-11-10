@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
@@ -55,6 +56,22 @@ public static class ClipboardHistory
     {
         try { _own = it.Text; Clipboard.SetText(it.Text); }
         catch { _own = null; }
+    }
+
+    /// <summary>Taruh kode di clipboard dengan penanda pengecualian: tidak masuk riwayat ZaxLet maupun riwayat clipboard Windows (Win+V) dan clipboard cloud.</summary>
+    public static bool CopySecret(string code)
+    {
+        try
+        {
+            var d = new DataObject();
+            d.SetText(code);
+            d.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream(BitConverter.GetBytes(1)));
+            d.SetData("CanIncludeInClipboardHistory", new MemoryStream(BitConverter.GetBytes(0)));
+            d.SetData("CanUploadToCloudClipboard", new MemoryStream(BitConverter.GetBytes(0)));
+            Clipboard.SetDataObject(d, true);
+            return true;
+        }
+        catch { return false; }   // clipboard sedang dikunci aplikasi lain
     }
 
     public static void Remove(Item it) { Items.Remove(it); Changed?.Invoke(); }

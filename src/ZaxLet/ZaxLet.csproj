@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
@@ -25,6 +25,11 @@
     <!-- tanpa batas, budget gen-0 mengikuti cache CPU dan GC menahan puluhan MB kosong -->
     <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
+  <!-- ekstensi browser untuk Wishlist ikut ke dist\extension (dan ke installer); dimuat dari sana lewat "Muat yang belum dipaket" -->
+  <ItemGroup>
+    <None Include="..\BrowserExtension\*" Link="extension\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

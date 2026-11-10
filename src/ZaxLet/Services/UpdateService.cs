@@ -94,8 +94,13 @@ public static class UpdateService
             File.WriteAllText(script, "@echo off\r\ntimeout /t 2 /nobreak >nul\r\n" +
                 $"robocopy \"{src}\" \"{dst}\" /E /R:10 /W:1 /NFL /NDL /NJH /NJS /NP >nul\r\n" +
                 $"start \"\" \"{exe}\" --updated\r\n");
-            Set(L.T("Memasang pembaruan…"));
-            Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"") { CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = work });
+            bool writable;   // folder pemasangan di Program Files dsb. butuh admin untuk menyalin: minta UAC, jangan gagal diam-diam setelah ZaxLet keluar
+            try { var probe = Path.Combine(dst, ".zaxlet-write-test"); File.WriteAllText(probe, ""); File.Delete(probe); writable = true; }
+            catch { writable = false; }
+            Set(L.T(writable ? "Memasang pembaruan…" : "Folder ZaxLet butuh izin admin untuk pembaruan: pilih Ya di jendela Windows."));
+            Process.Start(writable
+                ? new ProcessStartInfo("cmd.exe", $"/c \"{script}\"") { CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = work }
+                : new ProcessStartInfo("cmd.exe", $"/c \"{script}\"") { Verb = "runas", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = work });
             Application.Current.Dispatcher.Invoke(() => Application.Current.Shutdown());
         }
         catch (Exception ex) { App.Log(ex); Set(L.T("Pembaruan gagal: ") + ex.Message); }

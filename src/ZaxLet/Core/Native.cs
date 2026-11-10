@@ -22,6 +22,7 @@ static class Native
     [DllImport("kernel32.dll")] public static extern bool GlobalMemoryStatusEx(ref MemStatus m);
     [DllImport("psapi.dll")] public static extern bool EmptyWorkingSet(IntPtr process);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int i, int v);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out Rect r, int size);
@@ -40,11 +41,20 @@ static class Native
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point p);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
 
+    /// <summary>PID pemilik jendela yang sedang di depan (0 bila tidak ada).</summary>
+    public static int ForegroundPid()
+    {
+        var h = GetForegroundWindow();
+        if (h == IntPtr.Zero) return 0;
+        GetWindowThreadProcessId(h, out var pid);
+        return (int)pid;
+    }
+
     /// <summary>True selama tombol Alt (kiri/kanan) sedang ditahan, di aplikasi mana pun.</summary>
     public static bool AltDown() => (GetAsyncKeyState(0x12) & 0x8000) != 0;
 
     /// <summary>True bila jendela aktif (bukan milik kita / desktop / taskbar) menutupi seluruh monitor utama.</summary>
-    public static bool ForegroundFullscreenOnPrimary()
+    public static bool ForegroundFullscreenOnPrimary(System.Drawing.Rectangle? on = null)
     {
         var h = GetForegroundWindow();
         if (h == IntPtr.Zero) return false;
@@ -53,10 +63,11 @@ static class Native
         var sb = new System.Text.StringBuilder(64);
         GetClassName(h, sb, 64);
         if (sb.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "XamlExplorerHostIslandWindow") return false;
-        var primary = MonitorFromPoint(new Point(), 1);
-        if (MonitorFromWindow(h, 2) != primary) return false;
+        var b = on ?? System.Windows.Forms.Screen.PrimaryScreen.Bounds;   // monitor tempat island berada
+        var mon = MonitorFromPoint(new Point { X = b.Left + 1, Y = b.Top + 1 }, 2);
+        if (MonitorFromWindow(h, 2) != mon) return false;
         var mi = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(primary, ref mi) || !GetWindowRect(h, out var r)) return false;
+        if (!GetMonitorInfo(mon, ref mi) || !GetWindowRect(h, out var r)) return false;
         return r.Left <= mi.Monitor.Left && r.Top <= mi.Monitor.Top && r.Right >= mi.Monitor.Right && r.Bottom >= mi.Monitor.Bottom;
     }
 

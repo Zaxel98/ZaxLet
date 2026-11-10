@@ -43,10 +43,11 @@ final class Ws {
         byte[] m = new byte[4];
         rnd.nextBytes(m);
         h.write(m);
-        byte[] body = new byte[len];
-        for (int i = 0; i < len; i++) body[i] = (byte) (p[off + i] ^ m[i & 3]);
-        out.write(h.toByteArray());
-        out.write(body);
+        byte[] hb = h.toByteArray();
+        byte[] fr = new byte[hb.length + len];   // satu write: header dan isi tidak terpisah jadi dua rekaman TLS
+        System.arraycopy(hb, 0, fr, 0, hb.length);
+        for (int i = 0; i < len; i++) fr[hb.length + i] = (byte) (p[off + i] ^ m[i & 3]);
+        out.write(fr);
         out.flush();
     }
 

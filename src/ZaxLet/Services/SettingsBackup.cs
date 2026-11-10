@@ -14,7 +14,7 @@ namespace ZaxLet;
 public static class SettingsBackup
 {
     public const int Format = 1;
-    public static readonly string[] Secrets = { "ShareToken", "DiscordSecret", "DiscordClientId", "SongIdToken" };
+    public static readonly string[] Secrets = { "ShareToken", "WishToken", "DiscordSecret", "DiscordClientId", "SongIdToken" };
 
     public static string Export(string settingsJson)
     {

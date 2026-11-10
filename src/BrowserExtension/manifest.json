@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "ZaxLet Wishlist",
+  "version": "1.0.2",
+  "description": "Mengirim judul, harga, dan gambar halaman produk yang kamu buka ke ZaxLet di PC ini (hanya ke 127.0.0.1), supaya Wishlist terisi lengkap cukup dengan menyalin link.",
+  "permissions": ["scripting", "webNavigation", "storage", "tabs"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js", "scripts": ["background.js"] },
+  "action": { "default_title": "ZaxLet Wishlist: pengaturan" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "wishlist@zaxlet.app",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": { "required": ["websiteContent"] }
+    }
+  }
+}

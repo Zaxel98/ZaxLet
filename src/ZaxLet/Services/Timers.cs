@@ -123,7 +123,7 @@ public static class PrayerAlerts
     public static readonly (string Key, string Label, double Fajr, double Isha)[] Methods =
     {
         ("kemenag", "Kemenag RI", 20, 18), ("mwl", "Muslim World League", 18, 17), ("isna", "ISNA", 15, 15),
-        ("egypt", "Mesir", 19.5, 17.5), ("karachi", "Karachi", 18, 18),
+        ("egypt", "Mesir", 19.5, 17.5), ("karachi", "Karachi", 18, 18), ("jakim", "JAKIM (Malaysia)", 18, 18),
     };
 
     /// <summary>Jadwal untuk tanggal tertentu sesuai metode, mazhab Asar, ihtiyat, dan lokasi di Pengaturan.</summary>
@@ -139,20 +139,56 @@ public static class PrayerAlerts
     {
         T.Tick += (_, _) =>
         {
-            if (!Settings.Cur.PrayerAlert) return;
+            var s = Settings.Cur;
             var now = DateTime.Now;
-            foreach (var (name, at) in For(now.Date).All)
+            if (s.WorshipMode == "off") return;
+            if (s.WorshipMode == "other")   // jadwal mingguan buatan sendiri (Worship): hanya pengingat di pill
+            {
+                foreach (var w in Worship.Due(Worship.Parse(s.WorshipText), now))
+                {
+                    var wk = $"{now:yyyyMMdd}{w.At}{w.Label}";
+                    if (wk == _last) continue;
+                    _last = wk;
+                    IslandWindow.Instance?.Alert(w.Label == "" ? L.T("Waktu ibadah") : L.F("Waktu {0} · {1}", w.Label, w.At.ToString(@"hh\.mm")), 30);
+                }
+                return;
+            }
+            if (!s.PrayerAlert) return;
+            var times = For(now.Date);
+            var list = new System.Collections.Generic.List<(string Name, DateTime At)>(times.All);
+            if (s.ImsakOn) list.Add(("Imsak", times.Fajr.AddMinutes(-10)));   // 10 menit sebelum Subuh
+            foreach (var (name, at) in list)
             {
                 var key = $"{now:yyyyMMdd}{name}";
                 if (now >= at && now < at.AddMinutes(2) && key != _last)
                 {
                     _last = key;
-                    bool adhan = Settings.Cur.AdhanOn && AdhanPlayer.Play(Settings.Cur.AdhanFile);
-                    IslandWindow.Instance?.Alert(L.F("Waktu {0} · {1}", L.T(name), at.ToString("HH.mm")) + (adhan ? " · " + L.T("klik untuk hentikan adzan") : ""), 30);
-                    if (Settings.Cur.PrayerPauseMusic && MediaService.I.Playing) MediaService.I.PlayPause();
+                    bool imsak = name == "Imsak";
+                    bool adhan = !imsak && s.AdhanOn && AdhanPlayer.Play(s.AdhanFile);
+                    IslandWindow.Instance?.Alert(L.F("Waktu {0} · {1}", L.T(name), at.ToString("HH.mm")) + (name == "Maghrib" && s.ImsakOn ? " · " + L.T("buka puasa") : "") + (adhan ? " · " + L.T("klik untuk hentikan adzan") : ""), 30);
+                    if (!imsak && s.PrayerPauseMusic && MediaService.I.Playing)
+                    {
+                        MediaService.I.PlayPause();
+                        if (s.PrayerResumeAsk) ResumeLater();
+                    }
                 }
             }
         };
         T.Start();
+    }
+
+    static DispatcherTimer _resumeT;
+
+    /// <summary>Musik tidak lanjut sendiri setelah adzan: beberapa menit kemudian pill menawarkan memutarnya lagi (klik untuk lanjut).</summary>
+    static void ResumeLater()
+    {
+        _resumeT?.Stop();
+        _resumeT = new DispatcherTimer { Interval = TimeSpan.FromMinutes(4) };
+        _resumeT.Tick += (_, _) =>
+        {
+            _resumeT.Stop();
+            if (!MediaService.I.Playing) IslandWindow.Instance?.Alert(L.T("Lanjutkan musik? Klik di sini"), 30, () => { if (!MediaService.I.Playing) MediaService.I.PlayPause(); }, false);
+        };
+        _resumeT.Start();
     }
 }

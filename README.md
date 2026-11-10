@@ -9,7 +9,7 @@
 
 ## Why ZaxLet
 
-- **Light.** About 30 MB of RAM at idle, a 7 MB installer and no WebView.
+- **Light.** About 75 MB of RAM at idle, a 7 MB installer and no WebView.
 - **Yours.** No account, no server, no telemetry. Heavy extras are optional downloads you start yourself.
 - **Connected.** An Android companion app brings phone notifications to the PC and lets you answer chats from the keyboard.
 - **Out of the way.** Hold Alt or right-click the pill to hide it, and it steps back by itself when a fullscreen app is running. Open it by hovering or, if you prefer, by left click.
@@ -22,16 +22,21 @@
 - Lyrics are found automatically across several sources, even for YouTube videos with messy titles such as "Artist - Song (Audio)". Click or drag the progress bar to jump around, also for YouTube in a browser. For compilation videos with a track list in the description, the title, lyrics and progress bar follow the song that is playing now.
 - A "Shazam-style" button identifies a song with no usable title by listening to the PC's audio (needs your own free AudD token).
 - Lyrics in other scripts can be shown in Latin letters: romaji (Japanese), pinyin (Mandarin), Korean, Russian and other Cyrillic, Greek and Arabic. Only Japanese kanji and Mandarin need the optional Latin script pack (one download).
+- Lyric timing can be shifted per song (saved), and a "Wrong lyrics?" button throws out the shown lyrics and looks for another version.
 - Complex features come with a step-by-step guide that opens the first time (phone connection, Discord), and an info button to open it again. Advanced users get extra rows through Settings > General > Advanced mode.
 
 **Phone**
 - Notifications from the apps you pick appear in the pill. Chats such as WhatsApp can be replied to from the PC.
 - Send files both ways through the Shelf, or use the phone camera as a webcam.
+- Send text both ways: share text to ZaxLet HP and it lands on the PC clipboard; the Shelf has a "Text to phone" button for the other direction.
+- One-time codes (OTP) in notifications get a Copy button, and the code stays out of the clipboard history.
 
 **Everyday tools**
-- Timer, Pomodoro and stopwatch; eye-break and water reminders.
+- Timer, Pomodoro and stopwatch; eye-break and water reminders. Focus mode in the Timer tab holds phone notifications (OTP codes still pass) and summarises them afterwards.
+- Meeting mode: Zoom, Meet, Teams and other calls are recognised from microphone use; the pill gets a mic mute button, music pauses and notifications are held.
+- Wishlist tab: copy a product link and click Paste link. With the small browser extension (Firefox, Chrome, Edge, Brave; folder `extension` next to ZaxLet.exe with `zaxlet-wishlist.xpi` for Firefox, setup guide inside the tab; release Firefox needs the .xpi signed by Mozilla, which is free through addons.mozilla.org "On your own") the title, price and picture come from the page in your own browser and go only to ZaxLet on this PC (127.0.0.1, token-protected); the pill even offers to save a product link you just copied. Without the extension ZaxLet takes the shop name and a title from the link, and you can paste the picture and the price by hand. ZaxLet never tries to get around a shop's bot protection.
+- Optional weather (open-meteo) with a rain alert, imsak and break-fast reminders, a JAKIM method, and a weekly schedule for other worship.
 - Calendar with to-dos, and prayer times computed offline, with an optional adhan sound of your own choosing.
-- Your own iCal calendar (https or webcal link) shown on the Today tab.
 - Clipboard history (kept in memory only; copies from password managers are skipped).
 - Screenshots (full, area, window) and screen recording.
 
@@ -39,6 +44,8 @@
 - Scroll over the island for volume, double-click the closed island to play or pause, swipe two fingers sideways to switch tabs.
 - Small popups for volume, brightness, Caps Lock, Bluetooth connections and microphone mute, plus which app is using the microphone or camera, and finished downloads.
 - Right-click hides the island (move to the top edge to peek, right-click again to keep it shown). Optionally it moves away by itself when it covers another app's buttons.
+- One-choice notification style (Quiet, Balanced, Full) for new users, with every switch still available for advanced ones; accent colour can follow Windows; an optional keyboard shortcut opens and closes the island; apps whose music should never appear can be ignored; scripts on the same PC can show a message in the pill through a token-protected local webhook.
+- Themes (Black, Aurora, Matcha, Senja, Neon), island size, monitor choice, and a choice of always shown, only when something is happening, or hidden until opened from the tray. Music and lyrics can stay on screen over borderless fullscreen games.
 - Updates itself from GitHub Releases (checked against SHA-256), and settings can be backed up to one file.
 
 **System and AI usage**
@@ -118,4 +125,4 @@ Bug reports and ideas are welcome in [Issues](https://github.com/Zaxel98/ZaxLet/
 
 ## License
 
-Not decided yet; until one is added, all rights are reserved by the author. Third-party components and services are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). Third-party components and services are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

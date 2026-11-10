@@ -19,6 +19,9 @@ public sealed class TimerView : TabView
     readonly StackPanel _modes = new() { Orientation = Orientation.Horizontal }, _presets = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
     readonly TextBlock _go = UI.Icon("", 20);
 
+    readonly TextBlock _focusT = UI.T("", 12.5);
+    Border _focus;
+
     public TimerView()
     {
         var root = UI.Rows(0, -1, 0);
@@ -30,6 +33,10 @@ public sealed class TimerView : TabView
             b.Tag = m;
             _modes.Children.Add(b);
         }
+        _focus = UI.Btn(_focusT, () => { var f = FocusService.I; if (f.Manual) f.Stop(); else f.Start(Settings.Cur.FocusMin); }, UI.Card, 12, new Thickness(12, 4, 12, 4));
+        _focus.Margin = new Thickness(10, 0, 0, 0);
+        _focus.ToolTip = L.T("Mode Fokus: notifikasi HP ditahan, kode OTP tetap lewat. Lamanya diatur di Pengaturan > Pengingat");
+        _modes.Children.Add(_focus);
         root.Children.Add(_modes);
 
         var mid = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -59,8 +66,8 @@ public sealed class TimerView : TabView
         }
     }
 
-    public override void OnShow() { _t.Tick += OnTick; Render(); }
-    public override void OnHide() => _t.Tick -= OnTick;
+    public override void OnShow() { _t.Tick += OnTick; FocusService.I.Changed += OnTick; Render(); }
+    public override void OnHide() { _t.Tick -= OnTick; FocusService.I.Changed -= OnTick; }
     void OnTick() => Render();
 
     void Render()
@@ -74,6 +81,11 @@ public sealed class TimerView : TabView
             _ => L.T("Hitung maju")
         };
         _presets.Visibility = _t.Mode == TMode.Timer ? Visibility.Visible : Visibility.Hidden;
-        foreach (Border b in _modes.Children) b.Background = (TMode)b.Tag == _t.Mode ? UI.CardOn : UI.Card;
+        foreach (Border b in _modes.Children) if (b.Tag is TMode tm) b.Background = tm == _t.Mode ? UI.CardOn : UI.Card;
+        var f = FocusService.I;
+        _focusT.Text = f.Active
+            ? L.T("Fokus") + " " + UI.Clock(f.Left) + (f.HeldCount > 0 ? " · " + L.F("{0} tertahan", f.HeldCount) : "")
+            : L.T("Mode Fokus");
+        _focus.Background = f.Active ? UI.AccentBg : UI.Card;
     }
 }

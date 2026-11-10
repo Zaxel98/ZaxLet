@@ -62,12 +62,9 @@ public sealed class CalendarView : TabView
         right.Children.Add(_info.At(1));
         right.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _tasks }.At(2));
 
-        _input.KeyDown += (_, e) =>
-        {
-            if (e.Key != System.Windows.Input.Key.Enter) return;
-            _c.Add(_sel, _input.Text);
-            _input.Text = "";
-        };
+        void Commit() { _c.Add(_sel, _input.Text); _input.Text = ""; }
+        _input.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) Commit(); };
+        _input.LostFocus += (_, _) => Commit();   // catatan yang sudah diketik tapi belum Enter (island menutup, pindah tab) tidak hilang
         var hint = UI.Rows(0);
         var ph = new TextBlock { Text = L.T("Tambah tugas…"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         _input.TextChanged += (_, _) => ph.Visibility = _input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -81,14 +78,14 @@ public sealed class CalendarView : TabView
     public override void OnShow()
     {
         _c.Changed += OnChanged;
+        WeatherService.I.Changed += OnChanged;
         _sel = DateOnly.FromDateTime(DateTime.Now);
         _first = new DateTime(_sel.Year, _sel.Month, 1);
         _ = _c.LoadHolidaysAsync();
-        _ = _c.LoadAgendaAsync();
         Render();
     }
 
-    public override void OnHide() => _c.Changed -= OnChanged;
+    public override void OnHide() { _c.Changed -= OnChanged; WeatherService.I.Changed -= OnChanged; }
 
     void OnChanged() => Dispatcher.BeginInvoke(Render);
 
@@ -139,18 +136,13 @@ public sealed class CalendarView : TabView
 
         // panel kanan
         _head.Text = LongDate(_sel);
-        _city.Text = st.City;
+        _city.Text = st.City + (WeatherService.I.Summary is { Length: > 0 } wx ? " · " + wx : "");
         bool hol = st.ShowHolidays;
         var info = hol && _c.Holidays.TryGetValue(_sel, out var hn) ? L.F("Libur: {0}", hn) : L.T("Tidak ada acara.");
         if (hol && !_c.Holidays.ContainsKey(_sel) && _c.NextHoliday(_sel) is { } nx)
         {
             int days = nx.Date.DayNumber - today.DayNumber;
             info += L.F(" Libur: {0} · {1}, {2} {3}", nx.Name, Short[((int)nx.Date.DayOfWeek + 6) % 7], nx.Date.Day, Months[nx.Date.Month - 1][..3]) + (days > 0 ? L.F(" ({0} hari lagi)", days) : "");
-        }
-        if (_c.Agenda.TryGetValue(_sel, out var evs))   // acara dari kalender iCal pribadi
-        {
-            foreach (var ev in evs.Take(3)) info += "\n• " + (ev.Time.Length > 0 ? ev.Time + " " : "") + ev.Title;
-            if (evs.Count > 3) info += "\n" + L.F("+{0} acara lagi", evs.Count - 3);
         }
         _info.Text = info;
 

@@ -77,6 +77,8 @@ final class Net {
             if (h == null || h.isEmpty() || why.indexOf(h + ":") >= 0) continue;
             try {
                 Socket raw = new Socket();
+                raw.setKeepAlive(true);
+                raw.setTcpNoDelay(true);   // tanpa ini Nagle + delayed ACK menahan paket kecil (audio/kamera) puluhan ms
                 raw.connect(new InetSocketAddress(h, port()), 2500);
                 SSLSocket s = (SSLSocket) f.createSocket(raw, h, port(), true);
                 s.setSoTimeout(0);

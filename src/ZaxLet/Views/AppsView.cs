@@ -27,6 +27,7 @@ public sealed class AppsView : TabView
     readonly Grid _body = new();
     readonly Dictionary<string, string> _draft = new();
     readonly DispatcherTimer _clip = new() { Interval = TimeSpan.FromMilliseconds(700) };
+    public static string WantPkg;   // klik baris notifikasi di pill: tab dibuka langsung di aplikasinya
     string _sel, _lastClip = "";
     bool _picked;   // pengguna sudah memilih aplikasi sendiri; sebelum itu tab mengikuti aplikasi pertama (chat HP bila ada)
     bool _wizard;
@@ -34,15 +35,60 @@ public sealed class AppsView : TabView
     public AppsView()
     {
         var root = UI.Rows(0, -1);
-        var sv = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _chips, Margin = new Thickness(0, 0, 0, 8) };
-        root.Children.Add(sv);
+        var sv = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _chips };
+        var top = UI.Cols(-1, 0);   // kiri: pilih aplikasi; kanan: perangkat Bluetooth yang tersambung (ikon + cincin baterai)
+        top.Margin = new Thickness(0, 0, 0, 8);
+        top.Children.Add(sv);
+        _bt.VerticalAlignment = VerticalAlignment.Center; _bt.Margin = new Thickness(12, 0, 0, 0);
+        top.Children.Add(_bt.At(0, 1));
+        root.Children.Add(top);
         root.Children.Add(_body.At(1));
         Children.Add(root);
         _clip.Tick += (_, _) => ClipTick();
+        _btT.Tick += (_, _) => RenderBt();
     }
 
-    public override void OnShow() { PhoneNotifs.Changed += OnChanged; DiscordRpc.I.Changed += OnChanged; Render(); }
-    public override void OnHide() { PhoneNotifs.Changed -= OnChanged; DiscordRpc.I.Changed -= OnChanged; if (!_wizard) _clip.Stop(); }   // panduan: clipboard tetap dipantau walau pill menutup (pengguna sedang di browser)
+    // ---------- Bluetooth: ikon headset/stik dengan cincin sisa baterai ----------
+    readonly StackPanel _bt = new() { Orientation = Orientation.Horizontal };
+    readonly DispatcherTimer _btT = new() { Interval = TimeSpan.FromSeconds(6) };   // baterai headset baru dilaporkan beberapa detik setelah tersambung, lalu berubah pelan
+
+    /// <summary>"headset" bila melaporkan baterai Hands-Free atau namanya audio; "gamepad" untuk stik; selain itu "other".</summary>
+    public static string BtKind(string name, bool hasBattery)
+    {
+        var n = (name ?? "").ToLowerInvariant();
+        if (n.Contains("controller") || n.Contains("gamepad") || n.Contains("dualsense") || n.Contains("dualshock") || n.Contains("xbox") || n.Contains("joy-con") || n.Contains("pro controller")) return "gamepad";
+        if (hasBattery || n.Contains("buds") || n.Contains("airpods") || n.Contains("headset") || n.Contains("headphone") || n.Contains("earbuds") || n.Contains("soundcore") || n.Contains("wh-") || n.Contains("wf-")) return "headset";
+        return "other";
+    }
+
+    void RenderBt()
+    {
+        _bt.Children.Clear();
+        var list = IslandWindow.Instance?.BtList() ?? new();
+        foreach (var (name, pct) in list.Take(3))
+        {
+            var kind = BtKind(name, pct != null);
+            var glyph = kind == "gamepad" ? "" : kind == "headset" ? "" : "";
+            var ring = new RingBadge("", 32);
+            var cell = new Grid { Width = 32, Height = 32 };
+            if (pct is { } p) ring.Set(p / 100.0, p <= Math.Max(10, Settings.Cur.BtLowPct) ? UI.Bad : p <= 40 ? UI.Warn : UI.B("#FF22D35A"));
+            else ring.Set(0.999, UI.Faint);   // perangkat tanpa laporan baterai: cincin penuh redup
+            cell.Children.Add(ring);
+            var ic = UI.Icon(glyph, 14);
+            ic.HorizontalAlignment = HorizontalAlignment.Center; ic.VerticalAlignment = VerticalAlignment.Center;
+            cell.Children.Add(ic);
+            var col = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0) };
+            var nm = UI.T(name, 11, UI.Dim); nm.TextTrimming = TextTrimming.CharacterEllipsis; nm.MaxWidth = 96;
+            col.Children.Add(nm);
+            col.Children.Add(UI.T(pct is { } q ? q + "%" : L.T("tersambung"), 12, UI.Fg, true));
+            var item = new StackPanel { Orientation = Orientation.Horizontal, ToolTip = name };
+            item.Children.Add(cell); item.Children.Add(col);
+            _bt.Children.Add(item);
+        }
+    }
+
+    public override void OnShow() { PhoneNotifs.Changed += OnChanged; DiscordRpc.I.Changed += OnChanged; Render(); RenderBt(); _btT.Start(); }
+    public override void OnHide() { PhoneNotifs.Changed -= OnChanged; DiscordRpc.I.Changed -= OnChanged; _btT.Stop(); if (!_wizard) _clip.Stop(); }   // panduan: clipboard tetap dipantau walau pill menutup (pengguna sedang di browser)
 
     // jangan membangun ulang saat pengguna sedang mengetik balasan
     void OnChanged() { if (Keyboard.FocusedElement is TextBox) return; Render(); }
@@ -50,7 +96,8 @@ public sealed class AppsView : TabView
     void Render()
     {
         var apps = new List<(string Id, string Name, string Pkg)>();
-        foreach (var g in PhoneNotifs.Replyable().GroupBy(n => n.Pkg)) apps.Add((g.Key, g.First().App, g.Key));
+        foreach (var g in PhoneNotifs.Inbox().GroupBy(n => n.Pkg)) apps.Add((g.Key, g.First().App + " " + g.Count(), g.Key));   // "WhatsApp 4": jumlah percakapan/notifikasi aktif
+        if (WantPkg != null) { if (apps.Any(a => a.Id == WantPkg)) { _sel = WantPkg; _picked = true; } WantPkg = null; }
         apps.Add(("pc:discord", "Discord", null));
         apps.Add(("pc:meet", "Google Meet", null));
         if (!_picked || _sel == null || apps.All(a => a.Id != _sel)) _sel = apps[0].Id;
@@ -84,9 +131,9 @@ public sealed class AppsView : TabView
     UIElement ChatPanel(string pkg)
     {
         var list = new StackPanel();
-        var items = PhoneNotifs.Replyable(pkg);
+        var items = PhoneNotifs.Inbox(pkg);
         if (items.Count == 0)
-            list.Children.Add(UI.T(ShareServer.I.AppCount == 0 ? "Aplikasi ZaxLet HP belum tersambung." : "Belum ada percakapan yang bisa dibalas.", 12, UI.Dim));
+            list.Children.Add(UI.T(ShareServer.I.AppCount == 0 ? "Aplikasi ZaxLet HP belum tersambung." : "Belum ada notifikasi dari HP.", 12, UI.Dim));
         foreach (var n in items.Take(8))
         {
             var key = n.Key;
@@ -111,8 +158,9 @@ public sealed class AppsView : TabView
             var msgScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, MaxHeight = 3 * 18, Content = msgs };
             msgScroll.Loaded += (_, _) => msgScroll.ScrollToEnd();
             card.Children.Add(msgScroll);
+            if (!n.CanReply) { list.Children.Add(card); continue; }   // notifikasi biasa (Gmail dll): hanya dibaca, bisa disilang
 
-            var box = new TextBox { FontSize = 12, Padding = new Thickness(8, 3, 8, 3), Text = _draft.GetValueOrDefault(key, "") };
+            var box =new TextBox { FontSize = 12, Padding = new Thickness(8, 3, 8, 3), Text = _draft.GetValueOrDefault(key, "") };
             var ph = new TextBlock { Text = L.T("Balas…"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             ph.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             var sendText = UI.T("Kirim", 12, UI.Fg, true);

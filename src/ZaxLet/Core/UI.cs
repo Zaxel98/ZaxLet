@@ -1,5 +1,9 @@
 using System;
+using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -16,7 +20,7 @@ public static class UI
         return b;
     }
 
-    public static readonly Brush Fg = B("#FFFFFFFF"), Dim = B("#A6FFFFFF"), Faint = B("#59FFFFFF"),
+    public static readonly Brush Fg = B("#FFFFFFFF"), Dim = B("#A6FFFFFF"), Faint = B("#8CFFFFFF"),   // putih 55%: kontras ≥ 5:1 di atas hitam dan ≥ 5:1 di atas CardOn (sebelumnya 35% ≈ 3:1)
         Card = B("#1AFFFFFF"), CardOn = B("#33FFFFFF"),
         Bad = B("#FFFF5C5C"), Warn = B("#FFFFB454"), Good = B("#FF34D399"), Track = B("#26FFFFFF");
 
@@ -26,12 +30,23 @@ public static class UI
     public static readonly (string Key, string Label, string Hex)[] Accents =
     {
         ("teal", "Teal", "2DD4BF"), ("blue", "Biru", "60A5FA"), ("purple", "Ungu", "A78BFA"),
-        ("pink", "Pink", "F472B6"), ("orange", "Oranye", "FB923C"), ("white", "Putih", "FFFFFF"),
+        ("pink", "Pink", "F472B6"), ("orange", "Oranye", "FB923C"), ("white", "Putih", "FFFFFF"), ("windows", "Ikut Windows", ""),
     };
+
+    static string WindowsAccent()
+    {
+        try
+        {
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM");
+            if (k?.GetValue("AccentColor") is int v) return AccentColor.FromAbgr(v);
+        }
+        catch { }
+        return "2DD4BF";   // tidak terbaca: teal bawaan
+    }
 
     public static void SetAccent(string key)
     {
-        var hex = Array.Find(Accents, a => a.Key == key).Hex ?? "2DD4BF";
+        var hex = key == "windows" ? WindowsAccent() : Array.Find(Accents, a => a.Key == key).Hex ?? "2DD4BF";
         Accent = B("#FF" + hex);
         AccentBg = B("#2E" + hex);
     }
@@ -56,12 +71,61 @@ public static class UI
         VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center
     };
 
+    /// <summary>Tombol: bisa difokus (Tab), ditekan dengan Enter/Spasi, dan terbaca sebagai Button oleh pembaca layar (nama dari AutomationProperties.Name, ToolTip, atau teksnya).</summary>
+    sealed class BtnBorder : Border
+    {
+        public Action Click;
+        protected override AutomationPeer OnCreateAutomationPeer() => new Peer(this);
+
+        sealed class Peer : FrameworkElementAutomationPeer, IInvokeProvider
+        {
+            public Peer(BtnBorder o) : base(o) { }
+            protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Button;
+            protected override string GetClassNameCore() => "Button";
+            protected override string GetNameCore()
+            {
+                var n = base.GetNameCore();
+                if (!string.IsNullOrEmpty(n)) return n;
+                var o = (BtnBorder)Owner;
+                return o.ToolTip as string ?? TextOf(o.Child);
+            }
+            public override object GetPattern(PatternInterface p) => p == PatternInterface.Invoke ? this : base.GetPattern(p);
+            public void Invoke() => ((BtnBorder)Owner).Dispatcher.BeginInvoke(((BtnBorder)Owner).Click);
+
+            static string TextOf(DependencyObject d) => d switch
+            {
+                TextBlock t => t.Text.Length > 0 && t.Text[0] < '' ? t.Text : "",   // glif ikon (area privat Unicode) bukan nama
+                Panel p => string.Join(" ", p.Children.OfType<DependencyObject>().Select(TextOf).Where(s => s.Length > 0)),
+                Decorator x => TextOf(x.Child),
+                _ => ""
+            };
+        }
+    }
+
+    static readonly Style FocusRing = MakeFocusRing();
+    static Style MakeFocusRing()
+    {
+        var r = new FrameworkElementFactory(typeof(System.Windows.Shapes.Rectangle));
+        r.SetValue(System.Windows.Shapes.Shape.StrokeProperty, Brushes.White);
+        r.SetValue(System.Windows.Shapes.Shape.StrokeThicknessProperty, 1.5);
+        r.SetValue(System.Windows.Shapes.Rectangle.RadiusXProperty, 8.0);
+        r.SetValue(System.Windows.Shapes.Rectangle.RadiusYProperty, 8.0);
+        var st = new Style();
+        st.Setters.Add(new Setter(Control.TemplateProperty, new ControlTemplate { VisualTree = r }));
+        return st;
+    }
+
     public static Border Btn(UIElement content, Action click, Brush bg = null, double radius = 10, Thickness? pad = null)
     {
-        var b = new Border
+        var b = new BtnBorder
         {
             Child = content, Background = bg ?? Card, CornerRadius = new CornerRadius(radius),
-            Padding = pad ?? new Thickness(10, 6, 10, 6), Cursor = Cursors.Hand
+            Padding = pad ?? new Thickness(10, 6, 10, 6), Cursor = Cursors.Hand,
+            Focusable = true, FocusVisualStyle = FocusRing, Click = click
+        };
+        b.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.Space) { e.Handled = true; click(); }
         };
         // umpan balik halus: sedikit meredup saat disorot, menyusut sebentar saat ditekan
         var sc = new ScaleTransform(1, 1);

@@ -23,7 +23,7 @@ public static class LocationService
         if (!force && DateTime.Now - s.LocAt < TimeSpan.FromHours(6)) return;
         try
         {
-            if (s.LocMode == "device" && await FromDevice()) return;
+            if (s.LocMode == "device" && await FromDevice(force)) return;
             await FromIp(s.LocMode == "device" ? L.T("Sensor lokasi tidak tersedia, memakai IP. ") : "");
         }
         catch (Exception ex) { Status = L.T("Gagal mendeteksi lokasi: ") + ex.Message; App.Log(ex); }
@@ -37,12 +37,20 @@ public static class LocationService
         Set(r.GetProperty("city").GetString(), r.GetProperty("latitude").GetDouble(), r.GetProperty("longitude").GetDouble(), prefix + "dari IP");
     }
 
-    static async Task<bool> FromDevice()
+    static async Task<bool> FromDevice(bool userAction)
     {
         try
         {
             var access = await Windows.Devices.Geolocation.Geolocator.RequestAccessAsync();
-            if (access != Windows.Devices.Geolocation.GeolocationAccessStatus.Allowed) return false;
+            if (access != Windows.Devices.Geolocation.GeolocationAccessStatus.Allowed)
+            {
+                if (userAction)   // pilihan/tombol pengguna: langsung buka halaman izin Windows, tidak hanya mundur diam-diam ke IP
+                {
+                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:privacy-location") { UseShellExecute = true }); } catch { }
+                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => IslandWindow.Instance?.Alert(L.T("Nyalakan Lokasi dan \"Izinkan aplikasi desktop mengakses lokasi\" di jendela Windows yang terbuka, lalu tekan Deteksi sekarang."), 12, null, false));
+                }
+                return false;
+            }
             var g = new Windows.Devices.Geolocation.Geolocator { DesiredAccuracyInMeters = 5000 };
             var pos = await g.GetGeopositionAsync(TimeSpan.FromMinutes(30), TimeSpan.FromSeconds(10));
             var c = pos.Coordinate.Point.Position;
