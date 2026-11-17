@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 namespace ZaxLet;
 
@@ -50,6 +51,37 @@ public static class AiTaskScan
         "MATI" => 1,
         _ => 2,
     };
+
+    /// <summary>Memilih maksimal <paramref name="max"/> baris halaman 1 (BERJALAN tahap tertinggi lalu Started terawal dulu) serta sisa BERJALAN.</summary>
+    public static (List<WorkerRow> Shown, int MoreRunning) PageOne(List<WorkerRow> rows, int max)
+    {
+        if (rows == null || rows.Count == 0) return (new List<WorkerRow>(), 0);
+        if (max < 0) max = 0;
+
+        var ordered = rows.Where(r => r.State == "BERJALAN")
+            .OrderByDescending(r => AiTaskParse.Stage(r.Info.Phase))
+            .ThenBy(r => r.Info.Started)
+            .Concat(rows.Where(r => r.State != "BERJALAN"))
+            .ToList();
+
+        var shown = ordered.Take(max).ToList();
+        int moreRunning = ordered.Skip(max).Count(r => r.State == "BERJALAN");
+        return (shown, moreRunning);
+    }
+
+    /// <summary>Mengelompokkan worker menurut jenis (audit, verify, other), membuang kelompok kosong, menjaga urutan masukan.</summary>
+    public static List<(string Kind, List<WorkerRow> Rows)> Groups(List<WorkerRow> rows)
+    {
+        var result = new List<(string Kind, List<WorkerRow> Rows)>();
+        if (rows == null || rows.Count == 0) return result;
+
+        foreach (var kind in new[] { "audit", "verify", "other" })
+        {
+            var list = rows.Where(r => AiTaskParse.Kind(r.Info.Name) == kind).ToList();
+            if (list.Count > 0) result.Add((kind, list));
+        }
+        return result;
+    }
 
     /// <summary>Memeriksa apakah proses dengan PID tersebut masih berjalan.</summary>
     public static bool PidAlive(int pid)

@@ -111,17 +111,13 @@ public sealed class UsageView : TabView
             Fill(_codex, agy ? UsageService.I.Agy : UsageService.I.Codex);
             if (agy)
             {
-                // halaman 1: yang berjalan dan paling dekat selesai dulu (tahap terbesar, lalu yang paling lama); selesai/mati hanya mengisi sisa slot
-                var first = _workerRows.Where(r => r.State == "BERJALAN")
-                    .OrderByDescending(r => AiTaskParse.Stage(r.Info.Phase)).ThenBy(r => r.Info.Started)
-                    .Concat(_workerRows.Where(r => r.State != "BERJALAN")).ToList();
-                WorkerRows.AddWorkerRows(_codex, first, PageWorkers);
-                int rest = _workerRows.Count - PageWorkers;
-                if (rest > 0)
+                var (shown, moreRunning) = AiTaskScan.PageOne(_workerRows, PageWorkers);
+                WorkerRows.AddWorkerRows(_codex, shown, PageWorkers);
+                if (_workerRows.Count > PageWorkers)
                 {
                     var row = UI.Cols(-1, 0);
                     row.Margin = new Thickness(0, 3, 0, 0);
-                    row.Children.Add(UI.T("+" + rest, 11, UI.Dim));
+                    if (moreRunning > 0) row.Children.Add(UI.T("+" + moreRunning, 11, UI.Dim));
                     row.Children.Add(UI.Btn(UI.T("More", 10.5, UI.Dim), () => { _more = true; Render(); }, UI.Card, 8, new Thickness(8, 1, 8, 2)).At(0, 1));
                     _codex.Children.Add(row);
                 }
@@ -141,7 +137,7 @@ public sealed class UsageView : TabView
         _page2.Children.Add(top);
 
         var list = new StackPanel();
-        WorkerRows.AddWorkerRows(list, _workerRows, int.MaxValue);
+        WorkerRows.AddWorkerDetail(list, _workerRows);
         _page2.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, MaxHeight = 120, Margin = new Thickness(0, 6, 0, 0), Content = list });
     }
 

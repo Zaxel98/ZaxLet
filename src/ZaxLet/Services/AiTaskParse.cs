@@ -15,7 +15,8 @@ public sealed record WorkerInfo(
     DateTimeOffset Started,
     DateTimeOffset Updated,
     int Pid,
-    string[] Detail);
+    string[] Detail,
+    string Title = "");
 
 /// <summary>
 /// Parser murni untuk status worker Hydrogen (JSON di ~/.config/ponytail/workers). Tanpa WPF atau Settings.
@@ -56,7 +57,8 @@ public static class AiTaskParse
                 detail = list.ToArray();
             }
 
-            return new WorkerInfo(name, repo, state, phase, model, timeout, started, updated, pid, detail);
+            var title = Str(r, "title");
+            return new WorkerInfo(name, repo, state, phase, model, timeout, started, updated, pid, detail, title);
         }
         catch { return null; }
     }
@@ -108,6 +110,48 @@ public static class AiTaskParse
         if (detail == null || detail.Length == 0) return 0;
         var m = TokenRx.Match(string.Join("\n", detail));
         return m.Success && long.TryParse(m.Groups[1].Value, out long tok) ? tok : 0;
+    }
+
+    /// <summary>Mengelompokkan jenis worker berdasarkan awalan nama ("audit", "verify", atau "other").</summary>
+    public static string Kind(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "other";
+        var n = name.ToLowerInvariant();
+        if (n == "aud" || n == "audit" || n.StartsWith("aud-") || n.StartsWith("audit-")) return "audit";
+        if (n == "ver" || n == "verify" || n == "verifikasi" || n.StartsWith("ver-") || n.StartsWith("verify-") || n.StartsWith("verifikasi-")) return "verify";
+        return "other";
+    }
+
+    /// <summary>Label tampilan untuk jenis worker.</summary>
+    public static string KindTitle(string kind) => kind switch
+    {
+        "audit" => "Audit",
+        "verify" => "Verify",
+        _ => "Lainnya",
+    };
+
+    /// <summary>Keterangan ringkas worker dari Title atau nama yang dirapikan.</summary>
+    public static string Describe(WorkerInfo w)
+    {
+        if (w == null) return "";
+        if (!string.IsNullOrWhiteSpace(w.Title)) return w.Title.Trim();
+        var name = w.Name ?? "";
+        var kind = Kind(name);
+        if (kind == "other") return name.Replace('-', ' ');
+        var rest = StripKindPrefix(name, kind).Replace('-', ' ').Trim();
+        var title = KindTitle(kind);
+        return string.IsNullOrEmpty(rest) ? title : $"{title} · {rest}";
+    }
+
+    static string StripKindPrefix(string name, string kind)
+    {
+        string[] prefixes = kind == "audit"
+            ? new[] { "audit-", "aud-" }
+            : new[] { "verifikasi-", "verify-", "ver-" };
+        foreach (var p in prefixes)
+            if (name.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                return name.Substring(p.Length);
+        return "";
     }
 
     static string Str(JsonElement el, string prop) =>
