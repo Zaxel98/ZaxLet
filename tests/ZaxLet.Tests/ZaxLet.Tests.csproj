@@ -42,6 +42,8 @@
     <Compile Include="..\..\src\ZaxLet\Core\L.cs" Link="L.cs" />
     <Compile Include="..\..\src\ZaxLet\Core\Strings.cs" Link="Strings.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\PinyinPack.cs" Link="PinyinPack.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\AiTaskParse.cs" Link="AiTaskParse.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\AiTaskScan.cs" Link="AiTaskScan.cs" />
   </ItemGroup>
 
 </Project>

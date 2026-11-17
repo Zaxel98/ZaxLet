@@ -136,7 +136,7 @@ public sealed class UsageService
     };
 
     // Claude Code dan Codex mengizinkan folder konfigurasi lain lewat variabel lingkungan
-    static string ClaudeDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".claude");
+    internal static string ClaudeDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".claude");
     static string CodexDir => Environment.GetEnvironmentVariable("CODEX_HOME") is { Length: > 0 } d ? d : Path.Combine(Home, ".codex");
 
     (string token, bool expired) ReadClaudeToken(string path)

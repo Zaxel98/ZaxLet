@@ -57,7 +57,7 @@ public static class UiTest
             Wishlist.Items.Add(new WishItem { Id = "t1", Url = "https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.1.2", Title = "Fuwa Petit Mascot Akiyama Mizuki", Price = "IDR 149,000", Source = "Shopee", Added = DateTime.Now });
             Wishlist.Items.Add(new WishItem { Id = "t2", Url = "https://kyou-hobby.com/p/nendoroid-miku", Title = "nendoroid miku", Source = "Kyou Hobby", Added = DateTime.Now });
         }
-        foreach (var (name, make) in new (string, Func<TabView>)[] { ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()), ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()), ("usage", () => new UsageView()) })
+        foreach (var (name, make) in new (string, Func<TabView>)[] { ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()), ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()), ("usage", () => new UsageView()), ("aitask", () => new AiTaskView()) })
         {
             try { var v = make(); v.OnShow(); Shot(v, "tab-" + name, 660, 262); v.OnHide(); log.AppendLine("ok tab " + name); }
             catch (Exception ex) { log.AppendLine($"GAGAL tab {name}: {ex}"); }
