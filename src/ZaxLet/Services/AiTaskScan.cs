@@ -69,19 +69,24 @@ public static class AiTaskScan
         return (shown, moreRunning);
     }
 
-    /// <summary>Mengelompokkan worker menurut jenis (audit, verify, other), kelompok dengan tugas BERJALAN di atas, membuang kelompok kosong, menjaga urutan masukan.</summary>
-    public static List<(string Kind, List<WorkerRow> Rows)> Groups(List<WorkerRow> rows)
+    /// <summary>Mengelompokkan worker per tugas (GroupKey, tanpa membedakan huruf besar/kecil), kelompok terbaru di atas; di tiap kelompok BERJALAN dulu lalu terbaru dulu.</summary>
+    public static List<(string Title, List<WorkerRow> Rows)> Groups(List<WorkerRow> rows)
     {
-        var result = new List<(string Kind, List<WorkerRow> Rows)>();
+        var result = new List<(string Title, List<WorkerRow> Rows)>();
         if (rows == null || rows.Count == 0) return result;
 
-        foreach (var kind in new[] { "audit", "verify", "other" })
+        foreach (var g in rows.GroupBy(r => AiTaskParse.GroupKey(r.Info), StringComparer.OrdinalIgnoreCase))
         {
-            var list = rows.Where(r => AiTaskParse.Kind(r.Info.Name) == kind).ToList();
-            if (list.Count > 0) result.Add((kind, list));
+            var title = AiTaskParse.GroupKey(g.First().Info);
+            var list = g
+                .OrderByDescending(r => r.State == "BERJALAN")
+                .ThenByDescending(r => r.Info.Started)
+                .ToList();
+            result.Add((title, list));
         }
+
         return result
-            .OrderByDescending(g => g.Rows.Any(r => r.State == "BERJALAN"))
+            .OrderByDescending(g => g.Rows.Max(r => r.Info.Started))
             .ToList();
     }
 

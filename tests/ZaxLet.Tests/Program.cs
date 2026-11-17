@@ -363,9 +363,9 @@ if (!bridgeOk) fail++;
 {
     var wJson = "\uFEFF{\"name\":\"scope1\",\"repo\":\"toy\",\"state\":\"SELESAI\",\"phase\":\"selesai\",\"model\":\"m\",\"timeoutMin\":8,\"startedAt\":\"2026-11-17T10:00:00+07:00\",\"updatedAt\":\"2026-11-17T10:02:00+07:00\",\"pid\":21092,\"detail\":[\"VONIS: OK\"]}";
     var w = AiTaskParse.ParseWorker(wJson);
-    var wTitle = AiTaskParse.ParseWorker("{\"name\":\"aud-x\",\"state\":\"BERJALAN\",\"title\":\"Ringkas fitur\"}");
-    bool wrkOk = w != null && w.Name == "scope1" && w.Repo == "toy" && w.State == "SELESAI" && w.TimeoutMin == 8 && w.Pid == 21092 && w.Title == ""
-        && wTitle != null && wTitle.Title == "Ringkas fitur"
+    var wTitle = AiTaskParse.ParseWorker("{\"name\":\"aud-x\",\"state\":\"BERJALAN\",\"title\":\"Ringkas fitur\",\"group\":\"Audit ZaxLet\"}");
+    bool wrkOk = w != null && w.Name == "scope1" && w.Repo == "toy" && w.State == "SELESAI" && w.TimeoutMin == 8 && w.Pid == 21092 && w.Title == "" && w.Group == ""
+        && wTitle != null && wTitle.Title == "Ringkas fitur" && wTitle.Group == "Audit ZaxLet"
         && AiTaskParse.ParseWorker("{\"name\":\"x\",\"sta") == null
         && AiTaskParse.ParseWorker("{\"name\":\"x\"}") == null;
 
@@ -408,8 +408,12 @@ if (!bridgeOk) fail++;
         && AiTaskParse.Describe(wRun with { Name = "ver-capture", Title = "" }) == "Verify · capture"
         && AiTaskParse.Describe(wRun with { Name = "zax-aiusage", Title = "" }) == "zax aiusage";
 
-    bool aiOk = wrkOk && effOk && stgOk && verOk && tokOk && kindOk && descOk;
-    Console.WriteLine(aiOk ? "AITASK OK" : $"AITASK GAGAL wrk={wrkOk} eff={effOk} stg={stgOk} ver={verOk} tok={tokOk} kind={kindOk} desc={descOk}");
+    bool gkOk = AiTaskParse.GroupKey(wRun with { Group = "  Tugas A  ", Repo = "repo1", Name = "n1" }) == "Tugas A"
+        && AiTaskParse.GroupKey(wRun with { Group = "  ", Repo = "repo1", Name = "n1" }) == "repo1"
+        && AiTaskParse.GroupKey(wRun with { Group = "", Repo = "", Name = "n1" }) == "n1";
+
+    bool aiOk = wrkOk && effOk && stgOk && verOk && tokOk && kindOk && descOk && gkOk;
+    Console.WriteLine(aiOk ? "AITASK OK" : $"AITASK GAGAL wrk={wrkOk} eff={effOk} stg={stgOk} ver={verOk} tok={tokOk} kind={kindOk} desc={descOk} gk={gkOk}");
     if (!aiOk) fail++;
 }
 
@@ -467,32 +471,22 @@ if (!bridgeOk) fail++;
             && p2.Shown.Count == 2 && p2.Shown[0].Info.Name == "run1" && p2.Shown[1].Info.Name == "d1" && p2.MoreRunning == 0
             && p3.Shown.Count == 2 && p3.Shown[0].Info.Name == "early" && p3.Shown[1].Info.Name == "late";
 
+        WorkerRow MkGrpRow(string name, string repo, string group, string state, DateTimeOffset started) =>
+            new(new WorkerInfo(name, repo, state, "p", "m", 8, started, started, 1, Array.Empty<string>(), "", group), state);
+
         var grps = AiTaskScan.Groups(new System.Collections.Generic.List<WorkerRow>
         {
-            MkRow("ver-1", "BERJALAN", "p", nowOff),
-            MkRow("zax-1", "SELESAI", "p", nowOff),
-            MkRow("aud-1", "BERJALAN", "p", nowOff),
-            MkRow("ver-2", "SELESAI", "p", nowOff),
-            MkRow("aud-2", "SELESAI", "p", nowOff),
-            MkRow("zax-2", "MATI", "p", nowOff),
-        });
-        var grps2 = AiTaskScan.Groups(new System.Collections.Generic.List<WorkerRow>
-        {
-            MkRow("aud-1", "SELESAI", "p", nowOff),
-            MkRow("ver-1", "SELESAI", "p", nowOff),
-            MkRow("zax-1", "BERJALAN", "p", nowOff),
-        });
-        var grps3 = AiTaskScan.Groups(new System.Collections.Generic.List<WorkerRow>
-        {
-            MkRow("zax-1", "BERJALAN", "p", nowOff),
-            MkRow("aud-1", "BERJALAN", "p", nowOff),
+            MkGrpRow("aud-1", "repo-a", "Audit ZaxLet", "SELESAI", nowOff.AddMinutes(-30)),
+            MkGrpRow("ver-1", "repo-a", "audit zaxlet", "BERJALAN", nowOff.AddMinutes(-20)),
+            MkGrpRow("aud-2", "repo-a", "Audit ZaxLet", "BERJALAN", nowOff.AddMinutes(-10)),
+            MkGrpRow("zax-1", "repo-b", "", "SELESAI", nowOff.AddMinutes(-2)),
+            MkGrpRow("zax-2", "repo-b", "", "MATI", nowOff.AddMinutes(-5)),
+            MkGrpRow("solo", "", "", "SELESAI", DateTimeOffset.MinValue),
         });
         bool groupsOk = grps.Count == 3
-            && grps[0].Kind == "audit" && grps[0].Rows.Count == 2 && grps[0].Rows[0].Info.Name == "aud-1" && grps[0].Rows[1].Info.Name == "aud-2"
-            && grps[1].Kind == "verify" && grps[1].Rows.Count == 2 && grps[1].Rows[0].Info.Name == "ver-1" && grps[1].Rows[1].Info.Name == "ver-2"
-            && grps[2].Kind == "other" && grps[2].Rows.Count == 2 && grps[2].Rows[0].Info.Name == "zax-1" && grps[2].Rows[1].Info.Name == "zax-2"
-            && grps2.Count == 3 && grps2[0].Kind == "other" && grps2[1].Kind == "audit" && grps2[2].Kind == "verify"
-            && grps3.Count == 2 && grps3[0].Kind == "audit" && grps3[1].Kind == "other";
+            && grps[0].Title == "repo-b" && grps[0].Rows.Count == 2 && grps[0].Rows[0].Info.Name == "zax-1" && grps[0].Rows[1].Info.Name == "zax-2"
+            && grps[1].Title == "Audit ZaxLet" && grps[1].Rows.Count == 3 && grps[1].Rows[0].Info.Name == "aud-2" && grps[1].Rows[1].Info.Name == "ver-1" && grps[1].Rows[2].Info.Name == "aud-1"
+            && grps[2].Title == "solo" && grps[2].Rows.Count == 1 && grps[2].Rows[0].Info.Name == "solo";
 
         bool scanOk = workersOk && pageOneOk && groupsOk;
         Console.WriteLine(scanOk ? "AISCAN OK" : $"AISCAN GAGAL w={workersOk} p1={pageOneOk} grp={groupsOk}");

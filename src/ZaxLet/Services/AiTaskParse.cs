@@ -16,7 +16,8 @@ public sealed record WorkerInfo(
     DateTimeOffset Updated,
     int Pid,
     string[] Detail,
-    string Title = "");
+    string Title = "",
+    string Group = "");
 
 /// <summary>
 /// Parser murni untuk status worker Hydrogen (JSON di ~/.config/ponytail/workers). Tanpa WPF atau Settings.
@@ -58,7 +59,8 @@ public static class AiTaskParse
             }
 
             var title = Str(r, "title");
-            return new WorkerInfo(name, repo, state, phase, model, timeout, started, updated, pid, detail, title);
+            var group = Str(r, "group");
+            return new WorkerInfo(name, repo, state, phase, model, timeout, started, updated, pid, detail, title, group);
         }
         catch { return null; }
     }
@@ -120,6 +122,16 @@ public static class AiTaskParse
         if (n == "aud" || n == "audit" || n.StartsWith("aud-") || n.StartsWith("audit-")) return "audit";
         if (n == "ver" || n == "verify" || n == "verifikasi" || n.StartsWith("ver-") || n.StartsWith("verify-") || n.StartsWith("verifikasi-")) return "verify";
         return "other";
+    }
+
+    /// <summary>Kunci pengelompokan tugas: Group bila ada, selain itu Repo, selain itu Name.</summary>
+    public static string GroupKey(WorkerInfo w)
+    {
+        if (w == null) return "";
+        var g = w.Group?.Trim();
+        if (!string.IsNullOrEmpty(g)) return g;
+        if (!string.IsNullOrWhiteSpace(w.Repo)) return w.Repo;
+        return w.Name ?? "";
     }
 
     /// <summary>Label tampilan untuk jenis worker.</summary>
