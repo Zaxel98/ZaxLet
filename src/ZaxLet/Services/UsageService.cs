@@ -136,7 +136,7 @@ public sealed class UsageService
     };
 
     // Claude Code dan Codex mengizinkan folder konfigurasi lain lewat variabel lingkungan
-    internal static string ClaudeDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".claude");
+    static string ClaudeDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".claude");
     static string CodexDir => Environment.GetEnvironmentVariable("CODEX_HOME") is { Length: > 0 } d ? d : Path.Combine(Home, ".codex");
 
     (string token, bool expired) ReadClaudeToken(string path)
@@ -365,7 +365,8 @@ public sealed class UsageService
                     foreach (var g in groups.EnumerateArray())
                     {
                         var gn = g.TryGetProperty("displayName", out var dn) && dn.ValueKind == JsonValueKind.String ? dn.GetString() : "?";
-                        gn = gn.Replace("Gemini Models", "Gemini").Replace("Claude and GPT models", "Claude + GPT");
+                        if (gn.Contains("Claude and GPT", StringComparison.OrdinalIgnoreCase)) continue;
+                        gn = gn.Replace("Gemini Models", "Gemini");
                         if (!g.TryGetProperty("buckets", out var bs) || bs.ValueKind != JsonValueKind.Array) continue;
                         foreach (var b in bs.EnumerateArray())
                         {

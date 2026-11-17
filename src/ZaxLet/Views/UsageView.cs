@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -13,12 +15,17 @@ public sealed class UsageView : TabView
 {
     public override string Key => "usage";
     public override string Glyph => "";
-    public override string Label => "Usage";
+    public override string Label => "AI";
     public override double H => 188;
+
+    static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     readonly StackPanel _claude = new(), _codex = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(60) };
     readonly DispatcherTimer _redraw = new() { Interval = TimeSpan.FromSeconds(20) };
+    readonly DispatcherTimer _workerT = new() { Interval = TimeSpan.FromSeconds(3) };
+    bool _workerBusy;
+    List<WorkerRow> _workerRows = new();
 
     public UsageView()
     {
@@ -31,23 +38,57 @@ public sealed class UsageView : TabView
         Children.Add(g);
         _t.Tick += async (_, _) => await UsageService.I.RefreshAsync();
         _redraw.Tick += (_, _) => Render();
+        _workerT.Tick += (_, _) => _ = RefreshWorkersAsync();
     }
 
     public override void OnShow()
     {
         UsageService.I.Changed += OnChanged;
-        _t.Start(); _redraw.Start();
+        _t.Start(); _redraw.Start(); _workerT.Start();
         Render();
         _ = UsageService.I.RefreshAsync();
+        _ = RefreshWorkersAsync();
     }
 
     public override void OnHide()
     {
         UsageService.I.Changed -= OnChanged;
-        _t.Stop(); _redraw.Stop();
+        _t.Stop(); _redraw.Stop(); _workerT.Stop();
     }
 
     void OnChanged() => Dispatcher.BeginInvoke(Render);
+
+    async Task RefreshWorkersAsync()
+    {
+        var s = Settings.Cur;
+        if (!s.CodexOn || s.Slot2 != "antigravity" || _workerBusy) return;
+        _workerBusy = true;
+        try
+        {
+            var workersDir = System.IO.Path.Combine(Home, ".config", "ponytail", "workers");
+            var rows = await Task.Run(() => AiTaskScan.Workers(workersDir, DateTimeOffset.Now, AiTaskScan.PidAlive));
+            if (!WorkersEqual(_workerRows, rows))
+            {
+                _workerRows = rows;
+                _ = Dispatcher.BeginInvoke(Render);
+            }
+        }
+        finally { _workerBusy = false; }
+    }
+
+    static bool WorkersEqual(List<WorkerRow> a, List<WorkerRow> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (a[i].Info.Name != b[i].Info.Name
+                || a[i].State != b[i].State
+                || a[i].Info.Phase != b[i].Info.Phase
+                || a[i].Info.Updated != b[i].Info.Updated)
+                return false;
+        }
+        return true;
+    }
 
     void Render()
     {
@@ -55,7 +96,12 @@ public sealed class UsageView : TabView
         _claude.Visibility = s.ClaudeOn ? Visibility.Visible : Visibility.Collapsed;
         _codex.Visibility = s.CodexOn ? Visibility.Visible : Visibility.Collapsed;
         if (s.ClaudeOn) Fill(_claude, UsageService.I.Claude);
-        if (s.CodexOn) Fill(_codex, s.Slot2 == "antigravity" ? UsageService.I.Agy : UsageService.I.Codex);
+        if (s.CodexOn)
+        {
+            bool agy = s.Slot2 == "antigravity";
+            Fill(_codex, agy ? UsageService.I.Agy : UsageService.I.Codex);
+            if (agy) WorkerRows.AddWorkerRows(_codex, _workerRows, 3);
+        }
     }
 
     static void Fill(StackPanel host, ProviderUsage u)

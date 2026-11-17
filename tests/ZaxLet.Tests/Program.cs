@@ -359,33 +359,8 @@ Console.WriteLine(miscOk ? "MISC OK" : $"MISC GAGAL {AccentColor.FromAbgr(unchec
 if (!miscOk) fail++;
 if (!bridgeOk) fail++;
 
-// Cek mandiri parser AiTaskParse: replay update_plan/TodoWrite/wrap_up, worker JSON (BOM/terpotong), status MATI, stage, vonis, dan token
+// Cek mandiri parser AiTaskParse: worker JSON (BOM/terpotong), status MATI, stage, vonis, dan token
 {
-    string Asst(string name, string inputJson) =>
-        $"{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"tool_use\",\"name\":\"{name}\",\"input\":{inputJson}}}]}}}}";
-    var l1 = Asst("mcp__ccd_turn__update_plan", "{\"items\":[{\"content\":\"A\",\"status\":\"in_progress\"},{\"content\":\"B\",\"status\":\"pending\"},{\"content\":\"C\",\"status\":\"pending\"}]}");
-    var l2 = Asst("mcp__ccd_turn__update_plan", "{\"advance\":true}");
-    var l3 = Asst("mcp__ccd_turn__update_plan", "{\"done\":[2],\"start\":3}");
-    var lDecoy1 = "{\"type\":\"api-request-shape\",\"tools\":[{\"name\":\"mcp__ccd_turn__update_plan\"}]}";
-    var lDecoy2 = "{\"type\":\"user\",\"message\":{\"content\":\"tolong panggil mcp__ccd_turn__update_plan\"}}";
-    var lBad = "{bukan json";
-
-    var p1 = AiTaskParse.ReplayPlan(new[] { l1 });
-    var p2 = AiTaskParse.ReplayPlan(new[] { l1, lDecoy1, lDecoy2, lBad, l2 });
-    var p3 = AiTaskParse.ReplayPlan(new[] { l1, l2, l3 });
-    var p4 = AiTaskParse.ReplayPlan(new[] { l1, l2, l3, l2, l2 }); // advance di akhir & saat tak ada Active
-    var p5 = AiTaskParse.ReplayPlan(new[] { l1, Asst("mcp__ccd_turn__update_plan", "{\"items\":[{\"content\":\"Baru\",\"status\":\"pending\"}]}") });
-    var p6 = AiTaskParse.ReplayPlan(new[] { l1, Asst("mcp__ccd_turn__wrap_up", "{}") });
-    var p7 = AiTaskParse.ReplayPlan(new[] { Asst("TodoWrite", "{\"todos\":[{\"content\":\"X\",\"status\":\"completed\",\"activeForm\":\"Xing\"},{\"content\":\"Y\",\"status\":\"in_progress\",\"activeForm\":\"Ying\"}]}") });
-
-    bool planOk = p1.Count == 3 && p1[0].State == StepState.Active && p1[1].State == StepState.Pending && p1[2].State == StepState.Pending
-        && p2.Count == 3 && p2[0].State == StepState.Done && p2[1].State == StepState.Active && p2[2].State == StepState.Pending
-        && p3.Count == 3 && p3[0].State == StepState.Done && p3[1].State == StepState.Done && p3[2].State == StepState.Active
-        && p4.Count == 3 && p4.All(s => s.State == StepState.Done)
-        && p5.Count == 1 && p5[0].Text == "Baru" && p5[0].State == StepState.Pending
-        && p6.Count == 3 && p6.All(s => s.State == StepState.Done)
-        && p7.Count == 2 && p7[0] == new PlanStep("X", StepState.Done) && p7[1] == new PlanStep("Y", StepState.Active);
-
     var wJson = "\uFEFF{\"name\":\"scope1\",\"repo\":\"toy\",\"state\":\"SELESAI\",\"phase\":\"selesai\",\"model\":\"m\",\"timeoutMin\":8,\"startedAt\":\"2026-11-17T10:00:00+07:00\",\"updatedAt\":\"2026-11-17T10:02:00+07:00\",\"pid\":21092,\"detail\":[\"VONIS: OK\"]}";
     var w = AiTaskParse.ParseWorker(wJson);
     bool wrkOk = w != null && w.Name == "scope1" && w.Repo == "toy" && w.State == "SELESAI" && w.TimeoutMin == 8 && w.Pid == 21092
@@ -419,12 +394,12 @@ if (!bridgeOk) fail++;
     bool tokOk = AiTaskParse.Tokens(new[] { "File berubah:", " M clamp.go", "Durasi: 42 s; token: 33610", "Reviewer (x) - durasi: 54 s; token: 22136" }) == 33610
         && AiTaskParse.Tokens(new[] { "File berubah:" }) == 0;
 
-    bool aiOk = planOk && wrkOk && effOk && stgOk && verOk && tokOk;
-    Console.WriteLine(aiOk ? "AITASK OK" : $"AITASK GAGAL plan={planOk} wrk={wrkOk} eff={effOk} stg={stgOk} ver={verOk} tok={tokOk}");
+    bool aiOk = wrkOk && effOk && stgOk && verOk && tokOk;
+    Console.WriteLine(aiOk ? "AITASK OK" : $"AITASK GAGAL wrk={wrkOk} eff={effOk} stg={stgOk} ver={verOk} tok={tokOk}");
     if (!aiOk) fail++;
 }
 
-// Cek mandiri pemindai AiTaskScan: worker JSON (urutan, BOM, file rusak, jendela 1 jam) dan sesi Claude JSONL (ekor, multi-sesi, file lama)
+// Cek mandiri pemindai AiTaskScan: worker JSON (urutan, BOM, file rusak, jendela 1 jam)
 {
     var tmp = Path.Combine(Path.GetTempPath(), "zx-aiscan-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(tmp);
@@ -452,39 +427,8 @@ if (!bridgeOk) fail++;
             && rows[2].Info.Name == "B" && rows[2].State == "SELESAI"
             && emptyRows.Count == 0;
 
-        string AsstPlan(string itemsJson) =>
-            $"{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"tool_use\",\"name\":\"mcp__ccd_turn__update_plan\",\"input\":{{\"items\":{itemsJson}}}}}]}}}}";
-
-        var cDir = Path.Combine(tmp, "projects");
-        var p1 = Path.Combine(cDir, "proj1");
-        Directory.CreateDirectory(p1);
-        var s1 = Path.Combine(p1, "s1.jsonl");
-        var s2 = Path.Combine(p1, "s2.jsonl");
-        var decoy1 = "{\"type\":\"api-request-shape\",\"tools\":[{\"name\":\"mcp__ccd_turn__update_plan\"}]}";
-        var planActive = AsstPlan("[{\"content\":\"S1\",\"status\":\"completed\"},{\"content\":\"S2\",\"status\":\"in_progress\"},{\"content\":\"S3\",\"status\":\"pending\"}]");
-        var decoy2 = "{\"type\":\"user\",\"message\":{\"content\":\"cek mcp__ccd_turn__update_plan\"}}";
-        File.WriteAllLines(s1, new[] { decoy1, planActive, decoy2 });
-        File.WriteAllLines(s2, new[] { planActive });
-        File.SetLastWriteTime(s2, DateTime.Now.AddHours(-3));
-
-        var ct1 = AiTaskScan.Claude(cDir, DateTime.Now);
-        _ = AiTaskScan.Claude(cDir, DateTime.Now, maxTailBytes: 200);
-        bool claude1Ok = ct1 != null && ct1.Steps.Count == 3 && ct1.Steps[1].State == StepState.Active && ct1.Live && ct1.OtherLive == 0;
-
-        var s3 = Path.Combine(p1, "s3.jsonl");
-        File.WriteAllLines(s3, new[] { planActive });
-        var ct2 = AiTaskScan.Claude(cDir, DateTime.Now);
-        bool claude2Ok = ct2 != null && ct2.Live && ct2.OtherLive == 1;
-
-        var planDone = AsstPlan("[{\"content\":\"S1\",\"status\":\"completed\"},{\"content\":\"S2\",\"status\":\"completed\"}]");
-        File.WriteAllLines(s1, new[] { planDone });
-        File.Delete(s3);
-        var ct3 = AiTaskScan.Claude(cDir, DateTime.Now);
-        var ctEmpty = AiTaskScan.Claude(Path.Combine(tmp, "kosong"), DateTime.Now);
-        bool claude3Ok = ct3 != null && !ct3.Live && ct3.Steps.Count == 2 && ctEmpty == null;
-
-        bool scanOk = workersOk && claude1Ok && claude2Ok && claude3Ok;
-        Console.WriteLine(scanOk ? "AISCAN OK" : $"AISCAN GAGAL w={workersOk} c1={claude1Ok} c2={claude2Ok} c3={claude3Ok}");
+        bool scanOk = workersOk;
+        Console.WriteLine(scanOk ? "AISCAN OK" : $"AISCAN GAGAL w={workersOk}");
         if (!scanOk) fail++;
     }
     finally
