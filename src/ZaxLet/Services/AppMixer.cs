@@ -51,60 +51,91 @@ public static class AppMixer
         [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool m);
     }
 
-    /// <summary>Panggil f untuk tiap sesi aktif/tidak aktif (bukan kedaluwarsa) milik proses nyata. Gagal = tidak ada yang dipanggil.</summary>
-    static void Walk(Action<uint, IVol> f)
+    static AudioEndpoint.IEnumerator _enum;
+    static readonly Dictionary<uint, (string Name, string Path)> _proc = new();
+
+    /// <summary>Panggil f untuk tiap sesi aktif/tidak aktif (bukan kedaluwarsa) milik proses nyata. Kembalikan true dari f untuk menahan objek COM sesi.</summary>
+    static void Walk(Func<uint, IVol, bool> f)
     {
-        AudioEndpoint.IEnumerator en = null; AudioEndpoint.IDevice dev = null; object o = null; IEnum list = null;
+        AudioEndpoint.IDevice dev = null; object o = null; IEnum list = null;
         try
         {
-            en = (AudioEndpoint.IEnumerator)new AudioEndpoint.MMDeviceEnumeratorCom();
-            if (en.GetDefaultAudioEndpoint(AudioEndpoint.Render, 0, out dev) != 0) return;
+            _enum ??= (AudioEndpoint.IEnumerator)new AudioEndpoint.MMDeviceEnumeratorCom();
+            if (_enum.GetDefaultAudioEndpoint(AudioEndpoint.Render, 0, out dev) != 0) { ResetEnum(); return; }
             var iid = typeof(IManager2).GUID;
             if (dev.Activate(ref iid, 23, IntPtr.Zero, out o) != 0 || ((IManager2)o).GetSessionEnumerator(out list) != 0) return;
             list.GetCount(out int n);
             for (int i = 0; i < n; i++)
             {
                 object s = null;
+                bool keep = false;
                 try
                 {
                     if (list.GetSession(i, out s) != 0) continue;
                     var c = (IControl2)s;
                     if (c.GetState(out int st) != 0 || st == 2 || c.GetProcessId(out uint pid) != 0 || pid == 0) continue;   // 2 = kedaluwarsa; pid 0 = suara sistem
-                    f(pid, (IVol)s);
+                    keep = f(pid, (IVol)s);
                 }
-                finally { if (s != null) Marshal.ReleaseComObject(s); }
+                finally { if (s != null && !keep) Marshal.ReleaseComObject(s); }
             }
         }
-        catch { /* perangkat hilang atau sesi tertutup di tengah jalan */ }
+        catch { ResetEnum(); /* perangkat hilang atau sesi tertutup di tengah jalan */ }
         finally
         {
             if (list != null) Marshal.ReleaseComObject(list);
             if (o != null) Marshal.ReleaseComObject(o);
             if (dev != null) Marshal.ReleaseComObject(dev);
-            if (en != null) Marshal.ReleaseComObject(en);
         }
+    }
+
+    static void ResetEnum()
+    {
+        if (_enum == null) return;
+        try { Marshal.ReleaseComObject(_enum); } catch { }
+        _enum = null;
     }
 
     static (string Name, string Path)? Proc(uint pid)
     {
+        if (_proc.TryGetValue(pid, out var cached)) return cached;
         try
         {
             using var p = Process.GetProcessById((int)pid);
             string path = null;
             try { path = p.MainModule?.FileName; } catch { }
-            return (p.ProcessName, path);
+            var res = (p.ProcessName, path);
+            _proc[pid] = res;
+            return res;
         }
         catch { return null; }
+    }
+
+    public static bool SameApps(IReadOnlyList<Row> a, IReadOnlyList<Row> b)
+    {
+        if (a == null || b == null || a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+            if (!string.Equals(a[i].Name, b[i].Name, StringComparison.OrdinalIgnoreCase))
+                return false;
+        return true;
     }
 
     public static List<Row> List()
     {
         var map = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<uint>();
         Walk((pid, v) =>
         {
-            if (Proc(pid) is not var (name, path) || v.GetMasterVolume(out float vol) != 0 || v.GetMute(out bool mute) != 0) return;
+            seen.Add(pid);
+            if (Proc(pid) is not var (name, path) || v.GetMasterVolume(out float vol) != 0 || v.GetMute(out bool mute) != 0) return false;
             map[name] = map.TryGetValue(name, out var r) ? r with { Vol = Math.Max(r.Vol, vol), Mute = r.Mute && mute } : new Row(name, path, vol, mute);
+            return false;
         });
+        if (_proc.Count > seen.Count)
+        {
+            var dead = new List<uint>();
+            foreach (var k in _proc.Keys) if (!seen.Contains(k)) dead.Add(k);
+            foreach (var k in dead) _proc.Remove(k);
+        }
         var rows = new List<Row>(map.Values);
         rows.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
         return rows;
@@ -114,13 +145,67 @@ public static class AppMixer
     public static void Set(string name, float level)
     {
         var g = Guid.Empty;
+        float clamped = Math.Clamp(level, 0f, 1f);
         Walk((pid, v) =>
         {
             if (Proc(pid) is var (n, _) && string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
             {
-                v.SetMasterVolume(Math.Clamp(level, 0f, 1f), ref g);
-                if (level > 0) v.SetMute(false, ref g);
+                v.SetMasterVolume(clamped, ref g);
+                if (clamped > 0) v.SetMute(false, ref g);
             }
+            return false;
         });
     }
+
+    /// <summary>Bisukan atau bunyikan semua sesi milik aplikasi ber-nama itu.</summary>
+    public static void SetMute(string name, bool mute)
+    {
+        var g = Guid.Empty;
+        Walk((pid, v) =>
+        {
+            if (Proc(pid) is var (n, _) && string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
+                v.SetMute(mute, ref g);
+            return false;
+        });
+    }
+
+    /// <summary>Pegangan sesi audio selama menyeret slider agar tidak membaca ulang semua proses tiap gerakan.</summary>
+    public sealed class DragHandle : IDisposable
+    {
+        readonly List<IVol> _vols = new();
+
+        internal DragHandle(string name) => Walk((pid, v) =>
+        {
+            if (Proc(pid) is var (n, _) && string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
+            {
+                _vols.Add(v);
+                return true;
+            }
+            return false;
+        });
+
+        public void Set(float level)
+        {
+            var g = Guid.Empty;
+            float clamped = Math.Clamp(level, 0f, 1f);
+            foreach (var v in _vols)
+            {
+                try
+                {
+                    v.SetMasterVolume(clamped, ref g);
+                    if (clamped > 0) v.SetMute(false, ref g);
+                }
+                catch { }
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var v in _vols)
+                try { Marshal.ReleaseComObject(v); } catch { }
+            _vols.Clear();
+        }
+    }
+
+    public static DragHandle BeginDrag(string name) => new(name);
 }
