@@ -26,9 +26,9 @@ static class WorkerRows
 
         var now = DateTimeOffset.Now;
         bool first = true;
-        foreach (var (kind, grp) in AiTaskScan.Groups(rows))
+        foreach (var (title, grp) in AiTaskScan.Groups(rows))
         {
-            var hdr = UI.T(AiTaskParse.KindTitle(kind), 11, UI.Dim, true);
+            var hdr = UI.T(title, 11, UI.Dim, true);
             int running = grp.Count(r => r.State == "BERJALAN");
             if (running > 0)
                 hdr.Inlines.Add(new Run($" · {running} berjalan") { Foreground = UI.Faint, FontWeight = FontWeights.Normal });
