@@ -5,10 +5,6 @@ using System.Text.RegularExpressions;
 
 namespace ZaxLet;
 
-public enum StepState { Pending, Active, Done }
-
-public sealed record PlanStep(string Text, StepState State);
-
 public sealed record WorkerInfo(
     string Name,
     string Repo,
@@ -22,117 +18,11 @@ public sealed record WorkerInfo(
     string[] Detail);
 
 /// <summary>
-/// Parser murni untuk rencana tugas Claude (JSONL update_plan / TodoWrite / wrap_up)
-/// dan status worker Hydrogen (JSON di ~/.config/ponytail/workers). Tanpa WPF atau Settings.
+/// Parser murni untuk status worker Hydrogen (JSON di ~/.config/ponytail/workers). Tanpa WPF atau Settings.
 /// </summary>
 public static class AiTaskParse
 {
     static readonly Regex TokenRx = new(@"^Durasi: \d+ s; token: (\d+)", RegexOptions.Multiline | RegexOptions.Compiled);
-
-    /// <summary>Memutar ulang baris JSONL sesi Claude menjadi daftar langkah rencana terakhir.</summary>
-    public static List<PlanStep> ReplayPlan(IEnumerable<string> jsonlLines)
-    {
-        var steps = new List<PlanStep>();
-        if (jsonlLines == null) return steps;
-
-        foreach (var line in jsonlLines)
-        {
-            if (string.IsNullOrEmpty(line)) continue;
-            if (!line.Contains("update_plan", StringComparison.Ordinal)
-                && !line.Contains("TodoWrite", StringComparison.Ordinal)
-                && !line.Contains("wrap_up", StringComparison.Ordinal))
-                continue;
-
-            try
-            {
-                using var doc = JsonDocument.Parse(line);
-                var root = doc.RootElement;
-                if (Str(root, "type") != "assistant") continue;
-                if (!root.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object) continue;
-                if (!msg.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) continue;
-
-                foreach (var block in content.EnumerateArray())
-                {
-                    if (block.ValueKind != JsonValueKind.Object || Str(block, "type") != "tool_use") continue;
-                    var name = Str(block, "name");
-                    if (!block.TryGetProperty("input", out var input) || input.ValueKind != JsonValueKind.Object) continue;
-
-                    if (name == "mcp__ccd_turn__update_plan" || name == "update_plan")
-                        ApplyUpdatePlan(steps, input);
-                    else if (name == "mcp__ccd_turn__wrap_up" || name == "wrap_up")
-                        MarkAllDone(steps);
-                    else if (name == "TodoWrite")
-                        ApplyItems(steps, input, "todos");
-                }
-            }
-            catch { /* baris terpotong atau bukan JSON valid dilewati */ }
-        }
-        return steps;
-    }
-
-    static void ApplyUpdatePlan(List<PlanStep> steps, JsonElement input)
-    {
-        if (input.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
-        {
-            ApplyItems(steps, input, "items");
-            return;
-        }
-
-        if (input.TryGetProperty("advance", out var adv) && adv.ValueKind == JsonValueKind.True)
-        {
-            int active = steps.FindIndex(s => s.State == StepState.Active);
-            if (active >= 0)
-            {
-                steps[active] = steps[active] with { State = StepState.Done };
-                int next = steps.FindIndex(active + 1, s => s.State == StepState.Pending);
-                if (next >= 0) steps[next] = steps[next] with { State = StepState.Active };
-            }
-            else
-            {
-                int first = steps.FindIndex(s => s.State == StepState.Pending);
-                if (first >= 0) steps[first] = steps[first] with { State = StepState.Active };
-            }
-        }
-
-        if (input.TryGetProperty("done", out var done) && done.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var el in done.EnumerateArray())
-            {
-                if (el.TryGetInt32(out int idx1) && idx1 >= 1 && idx1 <= steps.Count)
-                    steps[idx1 - 1] = steps[idx1 - 1] with { State = StepState.Done };
-            }
-        }
-
-        if (input.TryGetProperty("start", out var start) && start.TryGetInt32(out int start1))
-        {
-            if (start1 >= 1 && start1 <= steps.Count)
-                steps[start1 - 1] = steps[start1 - 1] with { State = StepState.Active };
-        }
-    }
-
-    static void ApplyItems(List<PlanStep> steps, JsonElement input, string prop)
-    {
-        if (!input.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array) return;
-        steps.Clear();
-        foreach (var item in arr.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object) continue;
-            var text = Str(item, "content");
-            var st = Str(item, "status") switch
-            {
-                "in_progress" => StepState.Active,
-                "completed" => StepState.Done,
-                _ => StepState.Pending,
-            };
-            steps.Add(new PlanStep(text, st));
-        }
-    }
-
-    static void MarkAllDone(List<PlanStep> steps)
-    {
-        for (int i = 0; i < steps.Count; i++)
-            steps[i] = steps[i] with { State = StepState.Done };
-    }
 
     /// <summary>Mem-parse JSON status worker (tahan BOM UTF-8 dan file terpotong).</summary>
     public static WorkerInfo ParseWorker(string json)
