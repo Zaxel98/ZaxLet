@@ -13,7 +13,9 @@ namespace ZaxLet;
 public partial class App : Application
 {
     static Mutex _mutex;
-    WF.NotifyIcon _tray;    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    WF.NotifyIcon _tray;
+    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -222,18 +224,19 @@ public partial class App : Application
             else if (a.StartsWith("--timer=")) { TimerService.I.SetTotal(TimeSpan.FromSeconds(int.Parse(a[8..]))); TimerService.I.Start(); }
         }
         BuildTray();
-        _ = MediaService.I.StartAsync();
-        EyeService.I.Apply();
-        PrayerAlerts.Start();
-        WishBridge.Apply();
+        void Safe(Action act) { try { act(); } catch (Exception ex) { Log(ex); } }
+        Safe(() => _ = MediaService.I.StartAsync());
+        Safe(() => EyeService.I.Apply());
+        Safe(() => PrayerAlerts.Start());
+        Safe(() => WishBridge.Apply());
         Settings.Applied += WishBridge.Apply;
-        WeatherService.I.Apply();
+        Safe(() => WeatherService.I.Apply());
         Settings.Applied += WeatherService.I.Apply;   // nyala/mati dari Pengaturan berlaku langsung
-        HydrationService.I.Start();
-        DiscordRpc.I.Start();
-        _ = LocationService.RefreshAsync();
-        if (Settings.Cur.ShareAuto || Settings.Cur.VCamOn) ShareServer.I.Start();
-        if (Settings.Cur.VCamOn) VirtualCam.Start();
+        Safe(() => HydrationService.I.Start());
+        Safe(() => DiscordRpc.I.Start());
+        Safe(() => _ = LocationService.RefreshAsync());
+        Safe(() => { if (Settings.Cur.ShareAuto || Settings.Cur.VCamOn) ShareServer.I.Start(); });
+        Safe(() => { if (Settings.Cur.VCamOn) VirtualCam.Start(); });
     }
 
     /// <summary>Versi lama bernama "Island": pindahkan folder data dan nilai autostartnya sekali supaya pengaturan tidak hilang.</summary>
@@ -267,11 +270,14 @@ public partial class App : Application
             IslandWindow.Instance?.Alert(a != null ? L.F("ZaxLet {0} tersedia · klik untuk memperbarui", a.Version) : string.IsNullOrEmpty(UpdateService.Status) ? "ZaxLet " + UpdateService.Current : UpdateService.Status,
                 a != null ? 20 : 6, a != null ? () => _ = UpdateService.ApplyAsync() : null);
         });
-        var auto = new WF.ToolStripMenuItem(L.T("Mulai bersama Windows")) { Checked = IsAutostart(), CheckOnClick = true };
-        auto.CheckedChanged += (_, _) => SetAutostart(auto.Checked);
+        var auto = new WF.ToolStripMenuItem(L.T("Mulai bersama Windows"));
+        auto.Click += (_, _) => SetAutostart(!IsAutostart());
+        menu.Opening += (_, _) => auto.Checked = IsAutostart();
         menu.Items.Add(auto);
         menu.Items.Add(L.T("Keluar"), null, (_, _) => { _tray.Visible = false; Shutdown(); });
-        _tray = new WF.NotifyIcon { Icon = SD.Icon.ExtractAssociatedIcon(Environment.ProcessPath) ?? SD.SystemIcons.Application, Text = "ZaxLet", Visible = true, ContextMenuStrip = menu };
+        SD.Icon icon = null;
+        try { if (!string.IsNullOrEmpty(Environment.ProcessPath)) icon = SD.Icon.ExtractAssociatedIcon(Environment.ProcessPath); } catch { }
+        _tray = new WF.NotifyIcon { Icon = icon ?? SD.SystemIcons.Application, Text = "ZaxLet", Visible = true, ContextMenuStrip = menu };
         _tray.DoubleClick += (_, _) => IslandWindow.Instance?.OpenNow();
     }
 
@@ -286,17 +292,51 @@ public partial class App : Application
         catch (Exception ex) { Log(ex); }
     }
 
+    static string ExeFromRunValue(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.Trim();
+        if (s.StartsWith('"'))
+        {
+            int end = s.IndexOf('"', 1);
+            return end > 1 ? s[1..end] : null;
+        }
+        if (File.Exists(s)) return s;
+        int sp = s.IndexOf(' ');
+        return sp > 0 ? s[..sp] : s;
+    }
+
     public static bool IsAutostart()
     {
-        using var k = Registry.CurrentUser.OpenSubKey(RunKey);
-        return k?.GetValue("ZaxLet") != null;
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(RunKey);
+            var exe = ExeFromRunValue(k?.GetValue("ZaxLet") as string);
+            if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return false;
+            using var sa = Registry.CurrentUser.OpenSubKey(StartupApprovedKey);
+            if (sa?.GetValue("ZaxLet") is byte[] b && b.Length > 0 && (b[0] & 1) != 0) return false;
+            return true;
+        }
+        catch { return false; }
     }
 
     public static void SetAutostart(bool on)
     {
-        using var k = Registry.CurrentUser.OpenSubKey(RunKey, true);
-        if (on) k.SetValue("ZaxLet", $"\"{Environment.ProcessPath}\"");
-        else k.DeleteValue("ZaxLet", false);
+        if (on)
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return;
+            using var k = Registry.CurrentUser.CreateSubKey(RunKey);
+            k?.SetValue("ZaxLet", $"\"{exe}\"");
+        }
+        else
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(RunKey, true);
+            k?.DeleteValue("ZaxLet", false);
+        }
+        // hapus status nonaktif dari Task Manager > Startup apps agar entri Run benar-benar aktif/bersih
+        using var sa = Registry.CurrentUser.OpenSubKey(StartupApprovedKey, true);
+        sa?.DeleteValue("ZaxLet", false);
     }
 
     protected override void OnExit(ExitEventArgs e)

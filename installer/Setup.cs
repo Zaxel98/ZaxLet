@@ -16,6 +16,7 @@ static class Setup
     const string Title = AppName;        // nama yang tampil
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ZaxLet";
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     const string RuntimeUrl = "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe";
 
     [STAThread]
@@ -48,9 +49,36 @@ static class Setup
         catch { return null; }
     }
 
+    static string ExeFromRunValue(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        string s = raw.Trim();
+        if (s.StartsWith("\""))
+        {
+            int end = s.IndexOf('"', 1);
+            return end > 1 ? s.Substring(1, end - 1) : null;
+        }
+        if (File.Exists(s)) return s;
+        int sp = s.IndexOf(' ');
+        return sp > 0 ? s.Substring(0, sp) : s;
+    }
+
     public static bool AutostartOn()
     {
-        try { using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey)) return k != null && k.GetValue(AppName) != null; }
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey))
+            {
+                string exe = k == null ? null : ExeFromRunValue(k.GetValue(AppName) as string);
+                if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return false;
+            }
+            using (RegistryKey sa = Registry.CurrentUser.OpenSubKey(StartupApprovedKey))
+            {
+                byte[] b = sa == null ? null : sa.GetValue(AppName) as byte[];
+                if (b != null && b.Length > 0 && (b[0] & 1) != 0) return false;
+            }
+            return true;
+        }
         catch { return false; }
     }
 
@@ -125,11 +153,13 @@ static class Setup
         File.Copy(Application.ExecutablePath, uninst, true);
         Shortcut(StartMenuLink(), exe, dir);
         if (desktop) Shortcut(DesktopLink(), exe, dir);
-        using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey, true))
+        using (RegistryKey k = Registry.CurrentUser.CreateSubKey(RunKey))
         {
             if (autostart) k.SetValue(AppName, "\"" + exe + "\"");
             else k.DeleteValue(AppName, false);
         }
+        using (RegistryKey sa = Registry.CurrentUser.OpenSubKey(StartupApprovedKey, true))
+            if (sa != null) sa.DeleteValue(AppName, false);
 
         report(90, "Mendaftarkan pencopot…");
         using (RegistryKey k = Registry.CurrentUser.CreateSubKey(UninstKey))
@@ -173,7 +203,8 @@ static class Setup
         KillRunning();
         try { File.Delete(StartMenuLink()); } catch { }
         try { File.Delete(DesktopLink()); } catch { }
-        try { using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey, true)) k.DeleteValue(AppName, false); } catch { }
+        try { using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (k != null) k.DeleteValue(AppName, false); } catch { }
+        try { using (RegistryKey sa = Registry.CurrentUser.OpenSubKey(StartupApprovedKey, true)) if (sa != null) sa.DeleteValue(AppName, false); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree(UninstKey, false); } catch { }
         if (wipe)
         {
