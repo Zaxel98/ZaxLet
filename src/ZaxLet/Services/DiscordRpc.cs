@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -55,7 +56,7 @@ public sealed class DiscordRpc
                 else { await Session(); }
             }
             catch (Exception ex) { Status = ex is TimeoutException ? L.T("Discord belum terbuka") : ex.Message; }
-            Connected = InVoice = false; Channel = ""; Notify();
+            Connected = InVoice = false; Channel = ""; _chId = ""; lock (_names) { _speak.Clear(); } Speaking = ""; Notify();   // langganan ikut putus bersama pipa
             await Task.Delay(5000);
         }
     }
@@ -175,7 +176,13 @@ public sealed class DiscordRpc
             else tcs.TrySetResult(m);
             return;
         }
-        if (evt == "VOICE_CHANNEL_SELECT") _ = Refresh();
+        if (evt is "SPEAKING_START" or "SPEAKING_STOP" && m.TryGetProperty("data", out var sd) && sd.TryGetProperty("user_id", out var su) && su.GetString() is { } uid)
+        {
+            lock (_names) { if (evt == "SPEAKING_START") _speak.Add(uid); else _speak.Remove(uid); }
+            if (!_names.ContainsKey(uid) && DateTime.UtcNow - _namesAt > TimeSpan.FromSeconds(5)) { _namesAt = DateTime.UtcNow; _ = Refresh(); }   // orang baru masuk: ambil ulang daftar nama
+            UpdateSpeaking();
+        }
+        else if (evt == "VOICE_CHANNEL_SELECT") _ = Refresh();
         else if (evt == "VOICE_SETTINGS_UPDATE" && m.TryGetProperty("data", out var d)) ApplySettings(d);
     }
 
@@ -203,11 +210,52 @@ public sealed class DiscordRpc
             var vc = (await Command("GET_SELECTED_VOICE_CHANNEL", new { })).GetProperty("data");
             InVoice = vc.ValueKind == JsonValueKind.Object;
             Channel = InVoice && vc.TryGetProperty("name", out var nm) ? nm.GetString() : "";
+            await TrackSpeakers(InVoice ? vc : default);
             var vs = (await Command("GET_VOICE_SETTINGS", new { })).GetProperty("data");
             ApplySettings(vs);
         }
         catch (Exception ex) { Status = ex.Message; }
         Notify();
+    }
+
+    // ---------- siapa yang sedang bicara (event SPEAKING_START/STOP di bawah scope "rpc") ----------
+    string _chId = "";
+    DateTime _namesAt;
+    readonly Dictionary<string, string> _names = new();   // id pengguna -> nama di channel ini
+    readonly HashSet<string> _speak = new();
+    public string Speaking = "";
+
+    void UpdateSpeaking()
+    {
+        lock (_names) Speaking = string.Join(", ", _speak.Select(i => _names.GetValueOrDefault(i, "?")));
+        Notify();
+    }
+
+    async Task TrackSpeakers(JsonElement vc)
+    {
+        var id = vc.ValueKind == JsonValueKind.Object && vc.TryGetProperty("id", out var ci) ? ci.GetString() : "";
+        lock (_names)
+        {
+            _names.Clear();
+            if (vc.ValueKind == JsonValueKind.Object && vc.TryGetProperty("voice_states", out var vss) && vss.ValueKind == JsonValueKind.Array)
+                foreach (var v in vss.EnumerateArray())
+                    if (v.TryGetProperty("user", out var u) && u.TryGetProperty("id", out var uid))
+                        _names[uid.GetString()] = v.TryGetProperty("nick", out var nk) && nk.ValueKind == JsonValueKind.String && nk.GetString().Length > 0 ? nk.GetString() : u.TryGetProperty("username", out var un) ? un.GetString() : "?";
+        }
+        if (id == _chId) return;
+        await Subscribe(_chId, false);
+        lock (_names) _speak.Clear();
+        _chId = id;
+        await Subscribe(id, true);
+        UpdateSpeaking();
+    }
+
+    async Task Subscribe(string channel, bool on)
+    {
+        if (string.IsNullOrEmpty(channel)) return;
+        foreach (var evt in new[] { "SPEAKING_START", "SPEAKING_STOP" })
+            try { await Command(on ? "SUBSCRIBE" : "UNSUBSCRIBE", new { channel_id = channel }, evt); }
+            catch (Exception ex) { App.Log(ex); }   // mis. izin tidak cukup: sisanya tetap jalan
     }
 
     // ---------- aksi dari UI ----------

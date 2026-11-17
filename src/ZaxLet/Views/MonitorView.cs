@@ -27,6 +27,7 @@ public sealed class MonitorView : TabView
     readonly Bar _memBar = new(5);
     readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Height = 24 };
     readonly List<Border> _coreBars = new();
+    string _kill; DateTime _killUntil;
     readonly StackPanel _top = new(), _gpuBox = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
     readonly Border _batHost = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
     StackPanel _rightPanel;
@@ -243,7 +244,20 @@ public sealed class MonitorView : TabView
                 ((TextBlock)dot.Child).HorizontalAlignment = HorizontalAlignment.Center;
                 row.Children.Add(dot);
             }
-            row.Children.Add(UI.T(title, 12.5).At(0, 1));
+            bool armed = _kill == name && DateTime.Now < _killUntil;
+            row.Children.Add(UI.T(armed ? L.T("Akhiri") + " " + title + "? " + L.T("Klik kanan lagi") : title, 12.5, armed ? UI.Warn : UI.Fg).At(0, 1));
+            if (ProcGuard.CanKill(name, path))   // klik kanan = siapkan, klik kanan lagi dalam 5 dtk = akhiri (konfirmasi)
+            {
+                row.Background = Brushes.Transparent;
+                var n = name;
+                row.MouseRightButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    if (_kill == n && DateTime.Now < _killUntil) { _kill = null; ProcGuard.Kill(n); }
+                    else { _kill = n; _killUntil = DateTime.Now.AddSeconds(5); }
+                    Render();
+                };
+            }
             row.Children.Add(UI.T(bytes >= 1L << 30 ? $"{bytes / 1073741824.0:0.0}G" : $"{bytes >> 20}M", 12.5, UI.Dim).At(0, 2));
             _top.Children.Add(row);
         }

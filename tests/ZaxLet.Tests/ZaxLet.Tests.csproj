@@ -16,6 +16,7 @@
     <Compile Include="..\..\src\ZaxLet\Services\Dsp.cs" Link="Dsp.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\VocalModel.cs" Link="VocalModel.cs" />
     <Compile Include="..\..\src\ZaxLet\Core\DurText.cs" Link="DurText.cs" />
+    <Compile Include="..\..\src\ZaxLet\Core\ProcGuard.cs" Link="ProcGuard.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\Translit.cs" Link="Translit.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\TrackId.cs" Link="TrackId.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\YtChapters.cs" Link="YtChapters.cs" />

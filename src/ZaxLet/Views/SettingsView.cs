@@ -430,7 +430,8 @@ public sealed class SettingsView : TabView
             case "system":
                 yield return ("§Usage AI", null);
                 yield return ("Claude\nTanpa login terminal, angkanya dari catatan aplikasi Claude Desktop", Toggle(() => s.ClaudeOn, v => s.ClaudeOn = v));
-                yield return ("Codex", Toggle(() => s.CodexOn, v => s.CodexOn = v));
+                yield return ("Kotak kedua (Codex / Antigravity)", Toggle(() => s.CodexOn, v => s.CodexOn = v));
+                yield return ("~Isi kotak kedua\nAntigravity dibaca dari aplikasinya yang sedang terbuka", Choice(new[] { ("codex", "Codex"), ("antigravity", "Antigravity") }, () => s.Slot2, v => s.Slot2 = v));
                 yield return ("Tampilkan perkiraan biaya", Toggle(() => s.ShowCost, v => s.ShowCost = v));
                 yield return ("~Interval baca kuota", Dur(() => s.UsageRefreshSec, v => s.UsageRefreshSec = v, 1, 86400));
                 yield return ("~Kolom Code (data Ponytail)", Toggle(() => s.ShowPonytail, v => s.ShowPonytail = v));
@@ -543,6 +544,12 @@ public sealed class SettingsView : TabView
                 yield return ("~Webhook lokal\nSkrip atau alat di PC ini bisa menampilkan pesan di pill; salin contoh perintahnya", Act("Salin contoh", () =>
                 {
                     try { Clipboard.SetText("curl -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"Build selesai\\\",\\\"seconds\\\":6}\""); } catch { }
+                }, UI.Fg));
+                yield return ("~Hook Claude Code\nPill memberi tahu saat Claude selesai atau menunggu izin. Salin, lalu tempel ke \"hooks\" di ~/.claude/settings.json (ZaxLet tidak menulis ke sana)", Act("Salin hook", () =>
+                {
+                    string Cmd(string msg) => "curl -s -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"" + msg + "\\\",\\\"seconds\\\":6}\"";
+                    object Hook(string msg) => new[] { new { hooks = new[] { new { type = "command", command = Cmd(msg) } } } };
+                    try { Clipboard.SetText(System.Text.Json.JsonSerializer.Serialize(new { hooks = new { Stop = Hook("Claude selesai"), Notification = Hook("Claude menunggu izin") } }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })); } catch { }
                 }, UI.Fg));
                 yield return ("§Mode rapat", null);
                 yield return ("Deteksi rapat\nZoom, Meet, Teams, Webex, Skype, Slack, dan telepon WhatsApp dikenali dari pemakaian mikrofon", Toggle(() => s.MeetOn, v => s.MeetOn = v));

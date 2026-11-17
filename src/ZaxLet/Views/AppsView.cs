@@ -226,7 +226,7 @@ public sealed class AppsView : TabView
             // status voice channel + tombol bergantung keadaan (RPC lokal Discord)
             var st = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
             st.Children.Add(new System.Windows.Shapes.Ellipse { Width = 9, Height = 9, Fill = rpc.InVoice ? UI.B("#FF22D35A") : UI.Faint, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
-            st.Children.Add(UI.T(!rpc.Connected ? rpc.Status : rpc.InVoice ? "Voice: " + rpc.Channel : "Tidak sedang di voice channel", 12.5, rpc.InVoice ? UI.Fg : UI.Dim, rpc.InVoice));
+            st.Children.Add(UI.T(!rpc.Connected ? rpc.Status : rpc.InVoice ? "Voice: " + rpc.Channel + (rpc.Speaking.Length > 0 ? "  ·  " + rpc.Speaking : "") : "Tidak sedang di voice channel", 12.5, rpc.InVoice ? UI.Fg : UI.Dim, rpc.InVoice));
             sp.Children.Add(st);
             RBtn(rpc.Muted ? "Mic mati" : "Mic", "", rpc.Muted, () => _ = rpc.SetMute(!rpc.Muted));
             RBtn(rpc.Deaf ? "Deafen aktif" : "Deafen", "", rpc.Deaf, () => _ = rpc.SetDeaf(!rpc.Deaf));

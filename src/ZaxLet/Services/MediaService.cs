@@ -208,8 +208,10 @@ public sealed class MediaService
 
     async Task RefreshProps()
     {
+        var s = _s;   // _s bisa berganti selama await di bawah
+        if (s == null) return;
         GlobalSystemMediaTransportControlsSessionMediaProperties p;
-        try { p = await _s.TryGetMediaPropertiesAsync(); _propTries = 0; }
+        try { p = await s.TryGetMediaPropertiesAsync(); _propTries = 0; }
         catch (Exception ex)
         {
             // sesi baru kadang belum siap (0x80070015): coba lagi sebentar lagi
@@ -225,7 +227,7 @@ public sealed class MediaService
             _rawTitle = _vidTitle; _rawArtist = _vidArtist;
             var shown = TrackId.Parse(_rawTitle, _rawArtist).Show;   // judul YouTube "Artis - Judul (Audio)" + kanal "artisVEVO" -> pasangan yang rapi
             Title = shown.Title; Artist = shown.Artist; Album = p.AlbumTitle ?? "";
-            IsAd = MediaFilter.IsAd(_s?.SourceAppUserModelId, p.Title, p.Artist);
+            IsAd = MediaFilter.IsAd(s.SourceAppUserModelId, p.Title, p.Artist);
             if (IsAd) { Title = ZaxLet.L.T("Iklan"); Album = ""; }   // teks templat Spotify di slot judul diganti keterangan iklan
         }
         if (newTrack)
@@ -267,12 +269,13 @@ public sealed class MediaService
         var s = _s;
         if (s == null) return;   // event datang setelah sesi hilang
         var i = s.GetPlaybackInfo();
+        if (i == null) return;
         Playing = i.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         Shuffle = i.Controls.IsShuffleEnabled ? i.IsShuffleActive : null;   // null: pemutar ini tidak mendukung acak lewat Windows
     }
 
     public bool? Shuffle;
-    public void ToggleShuffle() { if (_s != null && Shuffle is { } on) _ = _s.TryChangeShuffleActiveAsync(!on); }
+    public void ToggleShuffle() { var s = _s; if (s != null && Shuffle is { } on) _ = s.TryChangeShuffleActiveAsync(!on); }
 
     /// <summary>Baca ulang durasi/posisi dari Windows. Peramban (YouTube) sering terlambat atau tidak mengirim event timeline, jadi dipanggil berkala.</summary>
     public void PollTimeline()
@@ -313,9 +316,11 @@ public sealed class MediaService
 
     void RefreshTimeline()
     {
-        if (_s == null) return;
+        var s = _s;
+        if (s == null) return;
         if ((DateTime.Now - _uiaAt).TotalSeconds < 6) return;   // posisi dari halaman YouTube sedang segar: lebih tepercaya daripada laporan peramban
-        var t = _s.GetTimelineProperties();
+        var t = s.GetTimelineProperties();
+        if (t == null) return;   // sesi sedang ditutup: WinRT bisa mengembalikan null
         var len = t.EndTime - t.StartTime;
         // peramban kadang melaporkan timeline kosong (posisi 0, durasi 0) di tengah lagu, mis. saat halaman mengosongkan state media:
         // abaikan, lanjutkan dari perkiraan terakhir yang sah daripada melompat ke awal
@@ -580,9 +585,10 @@ public sealed class MediaService
 
     void SeekAbs(TimeSpan to)
     {
-        if (_s == null) return;
+        var s = _s;
+        if (s == null) return;
         _pos = to; _posAt = DateTimeOffset.Now; _seekAt = DateTime.Now;
-        _ = _s.TryChangePlaybackPositionAsync(to.Ticks);
+        _ = s.TryChangePlaybackPositionAsync(to.Ticks);
     }
 
     // ---------- lirik ----------

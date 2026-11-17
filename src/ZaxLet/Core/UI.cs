@@ -326,6 +326,13 @@ public static class Icons
         return c;
     }
 
+    /// <summary>Kotak biru dengan huruf A untuk Antigravity.</summary>
+    public static UIElement AntigravityLogo(double s) => new Border
+    {
+        Width = s, Height = s, CornerRadius = new CornerRadius(s * .3), Background = UI.B("#FF4285F4"),
+        Child = new TextBlock { Text = "A", FontSize = s * .6, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+    };
+
     /// <summary>Kotak hijau dengan prompt terminal untuk Codex.</summary>
     public static UIElement CodexLogo(double s) => new Border
     {

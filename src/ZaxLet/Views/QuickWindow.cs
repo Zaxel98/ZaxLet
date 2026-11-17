@@ -45,6 +45,7 @@ public sealed class QuickWindow : Window
         };
         _box.TextChanged += (_, _) =>   // hasil hitungan tampil langsung saat mengetik
         {
+            _sleepArmed = false;
             var p = QuickCmd.Parse(_box.Text);
             _hint.Foreground = p.Kind == QuickCmd.Kind.Calc ? UI.Accent : UI.Faint;
             _hint.Text = p.Kind == QuickCmd.Kind.Calc ? (p.Arg.Contains('=') ? p.Arg : "= " + p.Arg) : L.T(QuickCmd.Help);
@@ -52,6 +53,8 @@ public sealed class QuickWindow : Window
         Deactivated += (_, _) => { if (_cur == this) Close(); };
         Closed += (_, _) => { if (_cur == this) _cur = null; };
     }
+
+    bool _sleepArmed;
 
     void Run(string text)
     {
@@ -83,6 +86,14 @@ public sealed class QuickWindow : Window
                 PerfOverlay.Toggle(); msg = ""; break;
             case QuickCmd.Kind.Bt:
                 msg = isl?.BtSummary() ?? ""; break;
+            case QuickCmd.Kind.Lock: Close(); SysActions.Lock(); return;
+            case QuickCmd.Kind.Sleep:
+                if (!_sleepArmed) { _sleepArmed = true; _hint.Text = L.T("Tidur? Tekan Enter sekali lagi"); _hint.Foreground = UI.Warn; return; }
+                Close(); SysActions.Sleep(); return;
+            case QuickCmd.Kind.Dark: case QuickCmd.Kind.Light:
+                SysActions.SetDark(c.Kind == QuickCmd.Kind.Dark); msg = L.T(c.Kind == QuickCmd.Kind.Dark ? "Tema Windows: gelap" : "Tema Windows: terang"); break;
+            case QuickCmd.Kind.Wifi: case QuickCmd.Kind.Bluetooth:
+                SysActions.Radio(c.Kind == QuickCmd.Kind.Wifi ? Windows.Devices.Radios.RadioKind.WiFi : Windows.Devices.Radios.RadioKind.Bluetooth, (int)c.Value, c.Kind == QuickCmd.Kind.Wifi ? "Wi-Fi" : "Bluetooth"); msg = ""; break;
             case QuickCmd.Kind.Calc:
                 try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;

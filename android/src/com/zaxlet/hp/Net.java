@@ -2,6 +2,7 @@ package com.zaxlet.hp;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -15,9 +16,11 @@ import javax.net.ssl.*;
 /** Pengaturan pasangan + koneksi TLS ke PC. Sertifikat PC dipin lewat sidik jari SHA-256 dari tautan pasangan. */
 final class Net {
     static SharedPreferences sp;
+    static Context app;
     static String active;   // host yang terakhir berhasil (LAN diutamakan, lalu Tailscale)
 
     static void init(Context c) {
+        app = c.getApplicationContext();
         if (sp == null) sp = c.getApplicationContext().getSharedPreferences("zaxlet", Context.MODE_PRIVATE);
         if (sp.getString("id", null) == null) sp.edit().putString("id", java.util.UUID.randomUUID().toString()).apply();
     }
@@ -68,18 +71,67 @@ final class Net {
 
     static int port() { try { return Integer.parseInt(get("tp")); } catch (Exception e) { return 47891; } }
 
-    /** Soket TLS ke PC: coba host yang terakhir berhasil, lalu LAN, lalu Tailscale. */
+    /** HP tersambung ke hotspot laptop (Wi-Fi): gateway-nya adalah laptop itu sendiri, tanpa perlu pairing ulang. Null bila bukan Wi-Fi. */
+    static String gateway() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) app.getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.Network n = cm.getActiveNetwork();
+            android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+            if (nc == null || !nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) return null;
+            for (android.net.RouteInfo r : cm.getLinkProperties(n).getRoutes())
+                if (r.isDefaultRoute() && r.getGateway() instanceof java.net.Inet4Address) return r.getGateway().getHostAddress();
+        } catch (Exception e) { }
+        return null;
+    }
+
+    /**
+     * HP yang membagi hotspot/USB tethering ke laptop: IP laptop tidak tetap, jadi pindai subnet antarmuka tether (bukan jaringan internet HP)
+     * dan kembalikan host yang membuka port ZaxLet. Kosong bila tidak sedang membagi tethering, jadi tidak memperlambat sambungan biasa.
+     */
+    static java.util.List<String> tetherHosts() {
+        java.util.List<String> found = new java.util.concurrent.CopyOnWriteArrayList<>();
+        try {
+            ConnectivityManager cm = (ConnectivityManager) app.getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.LinkProperties lp = cm.getLinkProperties(cm.getActiveNetwork());
+            String def = lp == null ? null : lp.getInterfaceName();
+            java.util.concurrent.ExecutorService ex = java.util.concurrent.Executors.newFixedThreadPool(48);
+            for (java.net.NetworkInterface ni : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback() || ni.getName().equals(def)) continue;
+                for (java.net.InterfaceAddress ia : ni.getInterfaceAddresses()) {
+                    if (!(ia.getAddress() instanceof java.net.Inet4Address) || !ia.getAddress().isSiteLocalAddress()) continue;
+                    final byte[] b = ia.getAddress().getAddress();
+                    for (int i = 1; i < 255; i++) {
+                        if (i == (b[3] & 0xFF)) continue;
+                        final String h = (b[0] & 0xFF) + "." + (b[1] & 0xFF) + "." + (b[2] & 0xFF) + "." + i;
+                        ex.execute(() -> {
+                            try (Socket s = new Socket()) { s.connect(new InetSocketAddress(h, port()), 250); found.add(h); } catch (Exception e) { }
+                        });
+                    }
+                }
+            }
+            ex.shutdown();
+            ex.awaitTermination(6, java.util.concurrent.TimeUnit.SECONDS);
+            ex.shutdownNow();
+        } catch (Exception e) { }
+        return found;
+    }
+
+    /** Soket TLS ke PC: host yang terakhir berhasil, gateway hotspot laptop, LAN, laptop di hotspot HP (pindai), lalu Tailscale. */
     static SSLSocket connect() throws Exception {
-        String[] order = { active, get("lan"), get("ts") };
+        String gw = gateway();
+        String[] order = { active, gw, get("lan"), "*tether*", get("ts") };
         StringBuilder why = new StringBuilder();   // semua alamat yang gagal, bukan hanya yang terakhir
         SSLSocketFactory f = factory();
-        for (String h : order) {
+        java.util.LinkedList<String> hosts = new java.util.LinkedList<>(java.util.Arrays.asList(order));
+        while (!hosts.isEmpty()) {
+            String h = hosts.removeFirst();
+            if ("*tether*".equals(h)) { hosts.addAll(0, tetherHosts()); continue; }   // pindai hanya bila alamat sebelumnya gagal
             if (h == null || h.isEmpty() || why.indexOf(h + ":") >= 0) continue;
             try {
                 Socket raw = new Socket();
                 raw.setKeepAlive(true);
                 raw.setTcpNoDelay(true);   // tanpa ini Nagle + delayed ACK menahan paket kecil (audio/kamera) puluhan ms
-                raw.connect(new InetSocketAddress(h, port()), 2500);
+                raw.connect(new InetSocketAddress(h, port()), h.equals(gw) ? 600 : 2500);   // gateway biasanya router: jangan menunggu lama bila bukan laptop
                 SSLSocket s = (SSLSocket) f.createSocket(raw, h, port(), true);
                 s.setSoTimeout(0);
                 s.startHandshake();

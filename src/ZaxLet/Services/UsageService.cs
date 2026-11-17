@@ -81,7 +81,7 @@ public sealed class UsageService
         if (!await _gate.WaitAsync(0)) return;
         try
         {
-            await Task.WhenAll(ClaudeQuota(), CodexQuota());
+            await Task.WhenAll(ClaudeQuota(), CodexQuota(), AgyQuota());
             Changed?.Invoke();
         }
         catch (Exception ex) { App.Log(ex); }
@@ -93,13 +93,20 @@ public sealed class UsageService
         if (!await _gate.WaitAsync(TimeSpan.FromSeconds(20))) return;
         try
         {
-            await Task.WhenAll(ClaudeQuota(), CodexQuota(), Task.Run(ScanAll));
+            await Task.WhenAll(ClaudeQuota(), CodexQuota(), AgyQuota(), Task.Run(ScanAll), Task.Run(ScanAgy));
             Fill(Claude, _cDay);
             Fill(Codex, _xDay);
             Changed?.Invoke();
         }
         catch (Exception ex) { App.Log(ex); }
         finally { _gate.Release(); }
+    }
+
+    void ScanAgy()
+    {
+        if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "antigravity") return;
+        (Agy.TodayTok, Agy.WeekTok) = AgyLog.Scan();
+        Agy.Updated = DateTime.Now;
     }
 
     static void Fill(ProviderUsage p, Dictionary<DateOnly, (long Tok, double Cost)> days)
@@ -313,10 +320,72 @@ public sealed class UsageService
         into.Add(new QuotaWindow { Label = label, Pct = u.GetDouble(), Reset = reset });
     }
 
+    // ---------- kuota Antigravity: language server lokal aplikasinya (127.0.0.1, token CSRF dari file daemon-nya) ----------
+    public readonly ProviderUsage Agy = new() { Name = "Antigravity" };
+    DateTime _agyNext = DateTime.MinValue;
+
+    async Task AgyQuota()
+    {
+        if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "antigravity" || DateTime.UtcNow < _agyNext) return;
+        try
+        {
+            string port = null, tok = null;
+            var dir = Path.Combine(Home, ".gemini", "antigravity", "daemon");
+            if (Directory.Exists(dir))
+                foreach (var f in new DirectoryInfo(dir).GetFiles("hub_*.json").OrderByDescending(x => x.LastWriteTimeUtc))
+                {
+                    try
+                    {
+                        using var d = JsonDocument.Parse(File.ReadAllText(f.FullName));
+                        using var p = System.Diagnostics.Process.GetProcessById(d.RootElement.GetProperty("pid").GetInt32());   // file lama dari sesi yang sudah mati: lewati
+                        if (p.HasExited) continue;
+                        port = d.RootElement.GetProperty("httpPort").GetInt32().ToString();
+                        tok = d.RootElement.GetProperty("csrfToken").GetString();
+                        break;
+                    }
+                    catch { }
+                }
+            if (port == null) { Agy.Error = L.T("buka Antigravity"); _agyNext = DateTime.UtcNow.AddSeconds(30); return; }
+            async Task<JsonDocument> Rpc(string method)
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/{method}")
+                { Content = new StringContent("{\"metadata\":{\"ideName\":\"antigravity\",\"extensionName\":\"antigravity\",\"locale\":\"en\"}}", Encoding.UTF8, "application/json") };
+                req.Headers.Add("X-Codeium-Csrf-Token", tok);
+                req.Headers.Add("Connect-Protocol-Version", "1");
+                using var res = await Http.SendAsync(req);
+                if (!res.IsSuccessStatusCode) throw new UsageException($"HTTP {(int)res.StatusCode}");
+                return JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            }
+            using (var us = await Rpc("GetUserStatus"))
+                Agy.Plan = us.RootElement.TryGetProperty("userStatus", out var u) && u.TryGetProperty("planStatus", out var ps) && ps.TryGetProperty("planInfo", out var pi) && pi.TryGetProperty("planName", out var pn) && pn.ValueKind == JsonValueKind.String ? pn.GetString() : null;
+            // kelompok model, tiap kelompok punya bucket weekly dan/atau 5h (sama seperti popup Usage Antigravity)
+            var wins = new List<QuotaWindow>();
+            using (var qs = await Rpc("RetrieveUserQuotaSummary"))
+                if (qs.RootElement.TryGetProperty("response", out var rsp) && rsp.TryGetProperty("groups", out var groups) && groups.ValueKind == JsonValueKind.Array)
+                    foreach (var g in groups.EnumerateArray())
+                    {
+                        var gn = g.TryGetProperty("displayName", out var dn) && dn.ValueKind == JsonValueKind.String ? dn.GetString() : "?";
+                        gn = gn.Replace("Gemini Models", "Gemini").Replace("Claude and GPT models", "Claude + GPT");
+                        if (!g.TryGetProperty("buckets", out var bs) || bs.ValueKind != JsonValueKind.Array) continue;
+                        foreach (var b in bs.EnumerateArray())
+                        {
+                            if (!b.TryGetProperty("remainingFraction", out var rf) || rf.ValueKind != JsonValueKind.Number) continue;
+                            var win = b.TryGetProperty("window", out var wn) && wn.ValueKind == JsonValueKind.String ? wn.GetString() : "";
+                            DateTimeOffset? reset = b.TryGetProperty("resetTime", out var rt) && rt.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(rt.GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var rd) ? rd : null;
+                            wins.Add(new QuotaWindow { Label = gn + " · " + (win == "5h" ? "5h" : "weekly"), Pct = Math.Clamp((1 - rf.GetDouble()) * 100, 0, 100), Reset = reset });
+                        }
+                    }
+            Agy.Windows = wins;
+            Agy.Error = wins.Count == 0 ? L.T("kuota tidak ditemukan di respons Antigravity") : null;
+            _agyNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
+        }
+        catch (Exception ex) { Agy.Error = Why(ex); _agyNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
+    }
+
     // ---------- kuota Codex ----------
     async Task CodexQuota()
     {
-        if (!Settings.Cur.CodexOn || DateTime.UtcNow < _codexNext) return;
+        if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "codex" || DateTime.UtcNow < _codexNext) return;
         try
         {
             var path = Path.Combine(CodexDir, "auth.json");

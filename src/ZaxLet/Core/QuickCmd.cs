@@ -8,11 +8,11 @@ namespace ZaxLet;
 /// </summary>
 public static class QuickCmd
 {
-    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Unknown }
+    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, Dark, Light, Wifi, Bluetooth, Unknown }
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi";
+    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
@@ -50,6 +50,13 @@ public static class QuickCmd
                 return new Cmd(Kind.Hide);
             case "perf": case "fps": case "performa":
                 return new Cmd(Kind.Perf);
+            case "kunci": case "lock": return new Cmd(Kind.Lock);
+            case "tidur": case "sleep": return new Cmd(Kind.Sleep);   // pemanggil wajib meminta konfirmasi
+            case "gelap": case "dark": return new Cmd(Kind.Dark);
+            case "terang": case "light": return new Cmd(Kind.Light);
+            case "wifi": case "bluetooth":
+                var k = verb == "wifi" ? Kind.Wifi : Kind.Bluetooth;   // Value: 1 nyala, 0 mati, -1 balik
+                return arg.ToLowerInvariant() switch { "" => new Cmd(k, "", -1), "on" or "nyala" => new Cmd(k, arg, 1), "off" or "mati" => new Cmd(k, arg, 0), _ => new Cmd(Kind.Unknown, verb + " on / off") };
             case "bt": case "baterai": case "battery":
                 return new Cmd(Kind.Bt);
             case "buka": case "open": case "ke":

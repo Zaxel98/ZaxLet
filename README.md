@@ -23,6 +23,7 @@
 - A "Shazam-style" button identifies a song with no usable title by listening to the PC's audio (needs your own free AudD token).
 - Lyrics in other scripts can be shown in Latin letters: romaji (Japanese), pinyin (Mandarin), Korean, Russian and other Cyrillic, Greek and Arabic. Only Japanese kanji and Mandarin need the optional Latin script pack (one download).
 - Lyric timing can be shifted per song (saved), and a "Wrong lyrics?" button throws out the shown lyrics and looks for another version.
+- Volume and shuffle in the Music tab, Spotify ads recognised (no lyrics lookup, not counted), and a weekly recap of your top songs and artists, kept only on this PC. With nothing playing, the tab shows the last song, the recap and an Open player button.
 - Complex features come with a step-by-step guide that opens the first time (phone connection, Discord), and an info button to open it again. Advanced users get extra rows through Settings > General > Advanced mode.
 
 **Phone**
@@ -30,6 +31,7 @@
 - Send files both ways through the Shelf, or use the phone camera as a webcam.
 - Send text both ways: share text to ZaxLet HP and it lands on the PC clipboard; the Shelf has a "Text to phone" button for the other direction.
 - One-time codes (OTP) in notifications get a Copy button, and the code stays out of the clipboard history.
+- Pair by scanning a QR code in the phone app. The app restarts itself after a reboot, reconnects when the network changes, can send the phone's audio to the PC, and reports its battery level (tooltip on the phone dot, with a low-battery warning).
 
 **Everyday tools**
 - Timer, Pomodoro and stopwatch; eye-break and water reminders. Focus mode in the Timer tab holds phone notifications (OTP codes still pass) and summarises them afterwards.
@@ -39,6 +41,9 @@
 - Calendar with to-dos, and prayer times computed offline, with an optional adhan sound of your own choosing.
 - Clipboard history (kept in memory only; copies from password managers are skipped).
 - Screenshots (full, area, window) and screen recording.
+- Quick action box (own shortcut): `t 10m`, `fokus 25`, `catat <text>`, `w <link>`, `minum 250`, `tema neon`, `buka monitor`, `perf`, `bt`, plus a calculator and unit converter (`= 12*5`, `5 km mi`).
+- Performance overlay for games (FPS, CPU, GPU, VRAM, RAM, disk, network; click-through, off by default), optionally in the Monitor tab too. Optional auto-clear of the standby RAM cache (needs admin, off by default).
+- Battery of Bluetooth headsets that report it to Windows, with a low-battery warning.
 
 **In the island itself**
 - Scroll over the island for volume, double-click the closed island to play or pause, swipe two fingers sideways to switch tabs.
@@ -46,6 +51,7 @@
 - Right-click hides the island (move to the top edge to peek, right-click again to keep it shown). Optionally it moves away by itself when it covers another app's buttons.
 - One-choice notification style (Quiet, Balanced, Full) for new users, with every switch still available for advanced ones; accent colour can follow Windows; an optional keyboard shortcut opens and closes the island; apps whose music should never appear can be ignored; scripts on the same PC can show a message in the pill through a token-protected local webhook.
 - Themes (Black, Aurora, Matcha, Senja, Neon), island size, monitor choice, and a choice of always shown, only when something is happening, or hidden until opened from the tray. Music and lyrics can stay on screen over borderless fullscreen games.
+- A context line in the idle pill (weather and next prayer, today's tasks, water left, tomorrow's schedule), an automatic battery saver, and a Ctrl+F search across all settings.
 - Updates itself from GitHub Releases (checked against SHA-256), and settings can be backed up to one file.
 
 **System and AI usage**

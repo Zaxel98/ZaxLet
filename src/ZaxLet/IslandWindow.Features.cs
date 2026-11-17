@@ -18,7 +18,7 @@ public partial class IslandWindow
     [DllImport("user32.dll")] static extern short GetKeyState(int vk);
     [DllImport("user32.dll")] static extern bool AddClipboardFormatListener(IntPtr h);
 
-    static IslandWindow() { TabMeta["wish"] = ("", "Wishlist");TabMeta["clip"] = ("", "Clipboard"); }
+    static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["wish"] = ("", "Wishlist");TabMeta["clip"] = ("", "Clipboard"); }
 
     // ---------- tema, mode tampil, musik di layar penuh ----------
     static readonly Dictionary<string, Brush> ThemeBrushes = BuildThemes();

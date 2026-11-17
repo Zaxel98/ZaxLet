@@ -15,20 +15,7 @@ public sealed class AudioFlow
     public static readonly AudioFlow I = new();
 
     // ---- COM WASAPI (hanya bagian yang dipakai) ----
-    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
-
-    [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMMDeviceEnumerator
-    {
-        [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
-        [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
-    }
-
-    [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMMDevice
-    {
-        [PreserveSig] int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
-    }
+    // Enumerator/IMMDevice dipakai bersama AudioEndpoint: dua kelas [ComImport] ber-CLSID sama membuat `new` gagal (InvalidCast) selama RCW yang lain hidup.
 
     [ComImport, Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface IAudioClient
@@ -121,7 +108,7 @@ public sealed class AudioFlow
         IntPtr pf = IntPtr.Zero;
         try
         {
-            var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            var en = (AudioEndpoint.IEnumerator)new AudioEndpoint.MMDeviceEnumeratorCom();
             Ok(en.GetDefaultAudioEndpoint(0, 0, out var dev));   // eRender, eConsole
             var iidAc = typeof(IAudioClient).GUID;
             Ok(dev.Activate(ref iidAc, 23, IntPtr.Zero, out var o));

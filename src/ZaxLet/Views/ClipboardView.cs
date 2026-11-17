@@ -61,8 +61,20 @@ public sealed class ClipboardView : TabView
             row.Margin = new Thickness(0, 0, 0, 4);
             var text = UI.T(ClipboardHistory.OneLine(item.Text), 12.5, UI.Fg);
             var cell = new Border { Background = UI.Card, CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 6, 10, 6), Cursor = System.Windows.Input.Cursors.Hand, Child = text };
-            cell.ToolTip = item.Text.Length > 400 ? item.Text[..400] + "…" : item.Text;
+            cell.ToolTip = (item.Text.Length > 400 ? item.Text[..400] + "…" : item.Text) + L.T("\nKlik: salin · seret: ke aplikasi lain");
             cell.MouseLeftButtonUp += (_, _) => { ClipboardHistory.CopyBack(item); text.Text = L.T("Disalin ✓"); };
+            Point? down = null;   // seret ke aplikasi lain: pola yang sama dengan ShelfView
+            cell.PreviewMouseLeftButtonDown += (_, e) => down = e.GetPosition(cell);
+            cell.MouseMove += (_, e) =>
+            {
+                if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || down == null) return;
+                var d = e.GetPosition(cell) - down.Value;
+                if (Math.Abs(d.X) < 6 && Math.Abs(d.Y) < 6) return;
+                down = null;
+                IslandWindow.Instance?.KeepOpen(true);
+                try { DragDrop.DoDragDrop(cell, new DataObject(DataFormats.UnicodeText, item.Text), DragDropEffects.Copy); }
+                finally { IslandWindow.Instance?.KeepOpen(false); }
+            };
             row.Children.Add(cell);
             var pin = UI.IconBtn("", () => ClipboardHistory.TogglePin(item), 11, null);
             ((TextBlock)pin.Child).Foreground = item.Pinned ? UI.Accent : UI.Faint;

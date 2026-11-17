@@ -99,7 +99,8 @@ public sealed class Settings
 
     // usage
     public bool ClaudeOn { get; set; } = true;
-    public bool CodexOn { get; set; } = true;
+    public bool CodexOn { get; set; } = true;                  // kotak kedua tab Usage dan pill menyala
+    public string Slot2 { get; set; } = "codex";               // codex | antigravity: isi kotak kedua (bisa tukar)
     // notifikasi HP di pill idle
     public bool NotifOn { get; set; } = true;
     public double NotifShowSec { get; set; } = 6;

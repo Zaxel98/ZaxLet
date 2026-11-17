@@ -28,7 +28,7 @@ public partial class IslandWindow : Window
         ["settings"] = ("", "Atur"),
         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
     };
-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "shelf", "wish", "clip", "tools", "timer", "eye", "settings" };
+    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "eye", "settings" };
     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
     public static string[] TabOrder
     {
@@ -44,7 +44,7 @@ public partial class IslandWindow : Window
     public FrameworkElement PillElement => Pill;
 
     const double OpenW = 640, TabH = 200, TabBarH = 46, Flare = 12, IdleH = 36, IdleH2 = 60;   // TabH sama untuk semua tab
-    static readonly Brush BattGreen = UI.B("#FF22D35A"), ArrowBlue = UI.B("#FF3B82F6"), UpTeal = UI.B("#FF2DD4BF"), ClaudeCol = UI.B("#FFE8967A"), CodexCol = UI.B("#FF86EFAC");
+    static readonly Brush BattGreen = UI.B("#FF22D35A"), ArrowBlue = UI.B("#FF3B82F6"), UpTeal = UI.B("#FF2DD4BF"), ClaudeCol = UI.B("#FFE8967A"), CodexCol = UI.B("#FF86EFAC"), AgyCol = UI.B("#FF8AB4F8");
 
     readonly Dictionary<string, Func<TabView>> _make = new();
     readonly Dictionary<string, TabView> _views = new();
@@ -84,7 +84,7 @@ public partial class IslandWindow : Window
     const int HideHotkeyId = 0x151A, CapHotkeyId = 0x151B, OpenHotkeyId = 0x151C, QuickHotkeyId = 0x151D;
     readonly TextBlock TimeText = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 17, FontWeight = FontWeights.Bold, Foreground = Brushes.White, Margin = new Thickness(7, 0, 7, 0) };
     readonly StackPanel _batBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(7, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
-    readonly UsageChip _chipC = new("C", ClaudeCol), _chipX = new("X", CodexCol);
+    readonly UsageChip _chipC = new("C", ClaudeCol), _chipX = new("X", CodexCol), _chipA = new("A", AgyCol);
     readonly StackPanel _usageBox = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _speed = Pct();
     readonly StackPanel _wave = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(7, 0, 7, 0), Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
@@ -109,6 +109,7 @@ public partial class IslandWindow : Window
         _make["eye"] = () => new EyeView();
         _make["water"] = () => new WaterView();
         _make["apps"] = () => new AppsView();
+        _make["ctrl"] = () => new ControlView();
         _make["clip"] = () => new ClipboardView();
         _make["wish"] = () => new WishlistView();
         BuildTabBar();
@@ -614,8 +615,9 @@ public partial class IslandWindow : Window
 
         // tengah: usage AI, unduh, waveform
         bool c = _chipC.Update(UsageService.I.Claude, full && s.IdleUsage && s.ClaudeOn && s.IdleUsageProviders != "codex");
-        bool x = _chipX.Update(UsageService.I.Codex, full && s.IdleUsage && s.CodexOn && s.IdleUsageProviders != "claude");
-        _usageBox.Visibility = c || x ? Visibility.Visible : Visibility.Collapsed;
+        bool x = _chipX.Update(UsageService.I.Codex, full && s.IdleUsage && s.CodexOn && s.Slot2 == "codex" && s.IdleUsageProviders != "claude");
+        bool a = _chipA.Update(UsageService.I.Agy, full && s.IdleUsage && s.CodexOn && s.Slot2 == "antigravity" && s.IdleUsageProviders != "claude");
+        _usageBox.Visibility = c || x || a ? Visibility.Visible : Visibility.Collapsed;
         _voiceDot.Visibility = full && DiscordRpc.I.InVoice ? Visibility.Visible : Visibility.Collapsed;   // titik hijau: sedang di voice channel
         UpdatePhoneDot(full);
         UpdateMicBtn(full);
@@ -652,7 +654,7 @@ public partial class IslandWindow : Window
         if (Row2.Text != (text ?? "")) Row2.Text = text ?? "";
         Row2.Foreground = br;
 
-        var key = $"{clock.Length}|{c}|{x}|{sp}|{_chipC.Key}|{_chipX.Key}|{_speed.Tag}|{_batText.Text}|{_batText.Visibility}|{_waveOn}|{text != null}|{shownRows}|{_phoneDot.Visibility}|{_voiceDot.Visibility}|{_micBtn.Visibility}|{MeetingService.I.MicMuted}|{mini}|{clock}";
+        var key = $"{clock.Length}|{c}|{x}|{a}|{sp}|{_chipC.Key}|{_chipX.Key}|{_chipA.Key}|{_speed.Tag}|{_batText.Text}|{_batText.Visibility}|{_waveOn}|{text != null}|{shownRows}|{_phoneDot.Visibility}|{_voiceDot.Visibility}|{_micBtn.Visibility}|{MeetingService.I.MicMuted}|{mini}|{clock}";
         if (key != _idleKey)
         {
             _idleKey = key;
@@ -783,7 +785,7 @@ public partial class IslandWindow : Window
     void ApplyGap()
     {
         var m = new Thickness(Settings.Cur.IdleGap / 2.0, 0, Settings.Cur.IdleGap / 2.0, 0);
-        TimeText.Margin = _batBox.Margin = _speed.Margin = _wave.Margin = _chipC.Margin = _chipX.Margin = _voiceDot.Margin = _phoneDot.Margin = _micBtn.Margin = m;
+        TimeText.Margin = _batBox.Margin = _speed.Margin = _wave.Margin = _chipC.Margin = _chipX.Margin = _chipA.Margin = _voiceDot.Margin = _phoneDot.Margin = _micBtn.Margin = m;
         _usageBox.Margin = new Thickness(0);
     }
 
@@ -803,7 +805,7 @@ public partial class IslandWindow : Window
         _speed.MinWidth = UI.TextWidth(s.IdleSpeedStyle == "both" ? "↓ 88K  ↑ 88K" : "↓ 88K", 13, FontWeights.SemiBold);
         _batText.MinWidth = UI.TextWidth("88%", 14, FontWeights.Bold);   // 2 digit: lebar tetap tanpa ruang kosong; "100%" hanya menggeser sekali
         _batText.TextAlignment = TextAlignment.Right;
-        _chipC.Fix(); _chipX.Fix();
+        _chipC.Fix(); _chipX.Fix(); _chipA.Fix();
     }
 
     void BuildIdleWidgets()
@@ -828,7 +830,7 @@ public partial class IslandWindow : Window
             _idleKey = ""; RefreshIdle();
         };
         PhoneNotifs.Changed += () => { _rows.RemoveAll(r => !r.N.Key.StartsWith("test") && !PhoneNotifs.IsActive(r.N.Key)); RefreshIdle(); };   // dibalas/dihapus di HP atau disilang = baris hilang
-        _usageBox.Children.Add(_chipC); _usageBox.Children.Add(_chipX);
+        _usageBox.Children.Add(_chipC); _usageBox.Children.Add(_chipX); _usageBox.Children.Add(_chipA);
         _speed.Margin = new Thickness(7, 0, 7, 0);
         for (int i = 0; i < 4; i++)
         {

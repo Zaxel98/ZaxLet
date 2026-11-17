@@ -350,6 +350,11 @@ miscOk = miscOk && PillVisibility.Want(false, false, false, false, false, false,
     && PillVisibility.Want(false, false, false, true, false, false, false, false, true)                // ...tapi tampil saat mengintip
     && !PillVisibility.Want(false, false, false, false, false, true, true, true, false)                // Alt ditahan mengalahkan semuanya
     && PillVisibility.Want(false, true, false, false, false, false, true, false, false);               // disembunyikan tapi ada notifikasi: tampil
+miscOk = miscOk && QuickCmd.Parse("kunci").Kind == QuickCmd.Kind.Lock && QuickCmd.Parse("Tidur").Kind == QuickCmd.Kind.Sleep && QuickCmd.Parse("gelap").Kind == QuickCmd.Kind.Dark && QuickCmd.Parse("light").Kind == QuickCmd.Kind.Light
+          && QuickCmd.Parse("wifi off") is { Kind: QuickCmd.Kind.Wifi, Value: 0 } && QuickCmd.Parse("wifi") is { Kind: QuickCmd.Kind.Wifi, Value: -1 } && QuickCmd.Parse("bluetooth nyala") is { Kind: QuickCmd.Kind.Bluetooth, Value: 1 }
+          && QuickCmd.Parse("wifi maybe").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("bt").Kind == QuickCmd.Kind.Bt;
+miscOk = miscOk && ProcGuard.CanKill("notepad++", @"C:\Program Files\Notepad++\notepad++.exe") && !ProcGuard.CanKill("svchost", @"C:\Windows\System32\svchost.exe") && !ProcGuard.CanKill("explorer", @"c:\windows\explorer.exe")
+          && !ProcGuard.CanKill("zaxlet", @"D:\x\ZaxLet.exe") && !ProcGuard.CanKill("System", null) && !ProcGuard.CanKill("x", "");
 Console.WriteLine(miscOk ? "MISC OK" : $"MISC GAGAL {AccentColor.FromAbgr(unchecked((int)0xFFD77800))}");
 if (!miscOk) fail++;
 if (!bridgeOk) fail++;

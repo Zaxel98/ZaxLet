@@ -31,6 +31,8 @@ public sealed class PerfOverlay : Window
         bool want = _force ?? (s.PerfShow == "on" || s.PerfShow == "game" && fullscreen);
         if (want && _cur == null) { _cur = new PerfOverlay(); _cur.Show(); }
         else if (!want && _cur != null) _cur.Close();
+        // fitur FPS mati (overlay "off" tanpa pintasan, atau metrik FPS dilepas): hentikan sesi ETW dan pembantu admin (pipa putus -> pembantu keluar)
+        if (!(PerfFormat.Items(s.PerfItems).Contains("fps") && (want || s.PerfShow != "off"))) FpsSource.Stop();
     }
 
     public static bool IsOn => _cur != null;

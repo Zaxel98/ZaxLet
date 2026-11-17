@@ -15,17 +15,17 @@ public static class AudioEndpoint
 {
     public const int Render = 0, Capture = 1;
 
-    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
+    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] internal class MMDeviceEnumeratorCom { }
 
     [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IEnumerator
+    internal interface IEnumerator
     {
         [PreserveSig] int EnumAudioEndpoints(int flow, int mask, out IntPtr devices);
         [PreserveSig] int GetDefaultAudioEndpoint(int flow, int role, out IDevice device);
     }
 
     [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IDevice
+    internal interface IDevice
     {
         [PreserveSig] int Activate(ref Guid iid, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
     }
