@@ -22,13 +22,13 @@ public partial class IslandWindow : Window
 
     public static readonly Dictionary<string, (string Glyph, string Label)> TabMeta = new()
     {
-        ["music"] = ("", "Musik"), ["usage"] = ("", "Usage"), ["monitor"] = ("", "Monitor"),
+        ["music"] = ("", "Musik"), ["usage"] = ("", "Usage"), ["aitask"] = ("", "AI Task"), ["monitor"] = ("", "Monitor"),
         ["calendar"] = ("", "Hari ini"), ["prayer"] = ("", "Sholat"), ["shelf"] = ("", "Shelf"),
         ["tools"] = ("", "Tangkap"), ["timer"] = ("", "Timer"), ["eye"] = ("", "Mata"),
         ["settings"] = ("", "Atur"),
         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
     };
-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "eye", "settings" };
+    public static readonly string[] DefaultOrder = { "music", "usage", "aitask", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "eye", "settings" };
     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
     public static string[] TabOrder
     {
@@ -100,6 +100,7 @@ public partial class IslandWindow : Window
 
         _make["music"] = () => new MusicView();
         _make["usage"] = () => new UsageView();
+        _make["aitask"] = () => new AiTaskView();
         _make["monitor"] = () => new MonitorView();
         _make["calendar"] = () => new CalendarView();
         _make["prayer"] = () => new PrayerView();
