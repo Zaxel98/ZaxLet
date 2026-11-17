@@ -45,4 +45,19 @@ public sealed class Marquee : Grid
         Timeline.SetDesiredFrameRate(a, 30);
         _x.BeginAnimation(TranslateTransform.XProperty, a);
     }
+
+    // ukur teks tanpa batas lebar dan beri lebar penuh saat Arrange supaya Grid tidak memotong ujung kalimat sebelum digeser
+    protected override Size MeasureOverride(Size constraint)
+    {
+        _t.Measure(new Size(double.PositiveInfinity, constraint.Height));
+        return new Size(
+            double.IsInfinity(constraint.Width) ? _t.DesiredSize.Width : Math.Min(_t.DesiredSize.Width, constraint.Width),
+            double.IsInfinity(constraint.Height) ? _t.DesiredSize.Height : Math.Min(_t.DesiredSize.Height, constraint.Height));
+    }
+
+    protected override Size ArrangeOverride(Size arrangeSize)
+    {
+        _t.Arrange(new Rect(0, 0, Math.Max(arrangeSize.Width, _t.DesiredSize.Width), arrangeSize.Height));
+        return arrangeSize;
+    }
 }
