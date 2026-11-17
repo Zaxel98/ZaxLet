@@ -363,7 +363,9 @@ if (!bridgeOk) fail++;
 {
     var wJson = "\uFEFF{\"name\":\"scope1\",\"repo\":\"toy\",\"state\":\"SELESAI\",\"phase\":\"selesai\",\"model\":\"m\",\"timeoutMin\":8,\"startedAt\":\"2026-11-17T10:00:00+07:00\",\"updatedAt\":\"2026-11-17T10:02:00+07:00\",\"pid\":21092,\"detail\":[\"VONIS: OK\"]}";
     var w = AiTaskParse.ParseWorker(wJson);
-    bool wrkOk = w != null && w.Name == "scope1" && w.Repo == "toy" && w.State == "SELESAI" && w.TimeoutMin == 8 && w.Pid == 21092
+    var wTitle = AiTaskParse.ParseWorker("{\"name\":\"aud-x\",\"state\":\"BERJALAN\",\"title\":\"Ringkas fitur\"}");
+    bool wrkOk = w != null && w.Name == "scope1" && w.Repo == "toy" && w.State == "SELESAI" && w.TimeoutMin == 8 && w.Pid == 21092 && w.Title == ""
+        && wTitle != null && wTitle.Title == "Ringkas fitur"
         && AiTaskParse.ParseWorker("{\"name\":\"x\",\"sta") == null
         && AiTaskParse.ParseWorker("{\"name\":\"x\"}") == null;
 
@@ -394,8 +396,20 @@ if (!bridgeOk) fail++;
     bool tokOk = AiTaskParse.Tokens(new[] { "File berubah:", " M clamp.go", "Durasi: 42 s; token: 33610", "Reviewer (x) - durasi: 54 s; token: 22136" }) == 33610
         && AiTaskParse.Tokens(new[] { "File berubah:" }) == 0;
 
-    bool aiOk = wrkOk && effOk && stgOk && verOk && tokOk;
-    Console.WriteLine(aiOk ? "AITASK OK" : $"AITASK GAGAL wrk={wrkOk} eff={effOk} stg={stgOk} ver={verOk} tok={tokOk}");
+    bool kindOk = AiTaskParse.Kind("aud-app-svc") == "audit"
+        && AiTaskParse.Kind("audit-x") == "audit"
+        && AiTaskParse.Kind("ver-capture") == "verify"
+        && AiTaskParse.Kind("verify-x") == "verify"
+        && AiTaskParse.Kind("zax-aiusage") == "other"
+        && AiTaskParse.Kind("Aud-X") == "audit";
+
+    bool descOk = AiTaskParse.Describe(wRun with { Title = "  Judul kustom  " }) == "Judul kustom"
+        && AiTaskParse.Describe(wRun with { Name = "aud-app-svc", Title = "" }) == "Audit · app svc"
+        && AiTaskParse.Describe(wRun with { Name = "ver-capture", Title = "" }) == "Verify · capture"
+        && AiTaskParse.Describe(wRun with { Name = "zax-aiusage", Title = "" }) == "zax aiusage";
+
+    bool aiOk = wrkOk && effOk && stgOk && verOk && tokOk && kindOk && descOk;
+    Console.WriteLine(aiOk ? "AITASK OK" : $"AITASK GAGAL wrk={wrkOk} eff={effOk} stg={stgOk} ver={verOk} tok={tokOk} kind={kindOk} desc={descOk}");
     if (!aiOk) fail++;
 }
 
@@ -427,8 +441,48 @@ if (!bridgeOk) fail++;
             && rows[2].Info.Name == "B" && rows[2].State == "SELESAI"
             && emptyRows.Count == 0;
 
-        bool scanOk = workersOk;
-        Console.WriteLine(scanOk ? "AISCAN OK" : $"AISCAN GAGAL w={workersOk}");
+        WorkerRow MkRow(string name, string state, string phase, DateTimeOffset started) =>
+            new(new WorkerInfo(name, "r", state, phase, "m", 8, started, started, 1, Array.Empty<string>()), state);
+
+        var p1 = AiTaskScan.PageOne(new System.Collections.Generic.List<WorkerRow>
+        {
+            MkRow("s2", "BERJALAN", "Hydrogen bekerja", nowOff),
+            MkRow("s4", "BERJALAN", "reviewer membaca diff", nowOff),
+            MkRow("s3", "BERJALAN", "memeriksa hasil", nowOff),
+            MkRow("done", "SELESAI", "selesai", nowOff),
+        }, 2);
+        var p2 = AiTaskScan.PageOne(new System.Collections.Generic.List<WorkerRow>
+        {
+            MkRow("run1", "BERJALAN", "Hydrogen bekerja", nowOff),
+            MkRow("d1", "SELESAI", "selesai", nowOff),
+            MkRow("d2", "SELESAI", "selesai", nowOff),
+            MkRow("d3", "SELESAI", "selesai", nowOff),
+        }, 2);
+        var p3 = AiTaskScan.PageOne(new System.Collections.Generic.List<WorkerRow>
+        {
+            MkRow("late", "BERJALAN", "Hydrogen bekerja", nowOff.AddMinutes(-1)),
+            MkRow("early", "BERJALAN", "Hydrogen bekerja", nowOff.AddMinutes(-5)),
+        }, 2);
+        bool pageOneOk = p1.Shown.Count == 2 && p1.Shown[0].Info.Name == "s4" && p1.Shown[1].Info.Name == "s3" && p1.MoreRunning == 1
+            && p2.Shown.Count == 2 && p2.Shown[0].Info.Name == "run1" && p2.Shown[1].Info.Name == "d1" && p2.MoreRunning == 0
+            && p3.Shown.Count == 2 && p3.Shown[0].Info.Name == "early" && p3.Shown[1].Info.Name == "late";
+
+        var grps = AiTaskScan.Groups(new System.Collections.Generic.List<WorkerRow>
+        {
+            MkRow("ver-1", "BERJALAN", "p", nowOff),
+            MkRow("zax-1", "SELESAI", "p", nowOff),
+            MkRow("aud-1", "BERJALAN", "p", nowOff),
+            MkRow("ver-2", "SELESAI", "p", nowOff),
+            MkRow("aud-2", "SELESAI", "p", nowOff),
+            MkRow("zax-2", "MATI", "p", nowOff),
+        });
+        bool groupsOk = grps.Count == 3
+            && grps[0].Kind == "audit" && grps[0].Rows.Count == 2 && grps[0].Rows[0].Info.Name == "aud-1" && grps[0].Rows[1].Info.Name == "aud-2"
+            && grps[1].Kind == "verify" && grps[1].Rows.Count == 2 && grps[1].Rows[0].Info.Name == "ver-1" && grps[1].Rows[1].Info.Name == "ver-2"
+            && grps[2].Kind == "other" && grps[2].Rows.Count == 2 && grps[2].Rows[0].Info.Name == "zax-1" && grps[2].Rows[1].Info.Name == "zax-2";
+
+        bool scanOk = workersOk && pageOneOk && groupsOk;
+        Console.WriteLine(scanOk ? "AISCAN OK" : $"AISCAN GAGAL w={workersOk} p1={pageOneOk} grp={groupsOk}");
         if (!scanOk) fail++;
     }
     finally
