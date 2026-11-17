@@ -235,6 +235,7 @@ public partial class App : Application
         Safe(() => HydrationService.I.Start());
         Safe(() => DiscordRpc.I.Start());
         Safe(() => _ = LocationService.RefreshAsync());
+        Safe(() => UsageService.I.StartAgyLoop());
         Safe(() => { if (Settings.Cur.ShareAuto || Settings.Cur.VCamOn) ShareServer.I.Start(); });
         Safe(() => { if (Settings.Cur.VCamOn) VirtualCam.Start(); });
     }

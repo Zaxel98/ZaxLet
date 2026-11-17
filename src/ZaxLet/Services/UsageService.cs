@@ -88,6 +88,19 @@ public sealed class UsageService
         finally { _gate.Release(); }
     }
 
+    /// <summary>Kuota Antigravity dibaca tiap menit di latar belakang (hanya localhost, murah), tanpa menunggu tab AI atau pill idle. Claude/Codex tidak ikut: server mereka membatasi lewat 429.</summary>
+    public void StartAgyLoop() => _ = Task.Run(async () =>
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(15));   // AgyQuota sendiri menjaga jarak 60 dtk (_agyNext); tick pendek agar tidak meleset ke 2 menit
+            if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "antigravity" || !await _gate.WaitAsync(0)) continue;
+            try { await AgyQuota(); Changed?.Invoke(); }
+            catch (Exception ex) { App.Log(ex); }
+            finally { _gate.Release(); }
+        }
+    });
+
     public async Task RefreshAsync()
     {
         if (!await _gate.WaitAsync(TimeSpan.FromSeconds(20))) return;
@@ -378,7 +391,7 @@ public sealed class UsageService
                     }
             Agy.Windows = wins;
             Agy.Error = wins.Count == 0 ? L.T("kuota tidak ditemukan di respons Antigravity") : null;
-            _agyNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
+            _agyNext = DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.Cur.UsageRefreshSec, 1, 60));   // lokal dan murah: paling lambat tiap menit, interval Claude/Codex tidak berlaku
         }
         catch (Exception ex) { Agy.Error = Why(ex); _agyNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
     }
