@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -166,10 +167,10 @@ public sealed class UsageView : TabView
         g.Margin = new Thickness(0, 1, 0, 0);
         g.Children.Add(UI.T(label, 12, UI.Dim));
         g.Children.Add(UI.T(UI.Tok(tok), 12, UI.Dim).At(0, 1));
-        if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00"), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 8, 0) }.At(0, 2));
+        if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 8, 0) }.At(0, 2));
         if (code)
         {
-            var t = p.Sessions == 0 ? "—" : (Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00") + " · " : "") + p.Turns + " turn";
+            var t = p.Sessions == 0 ? "—" : (Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00", CultureInfo.InvariantCulture) + " · " : "") + p.Turns + " turn";
             g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = 100, TextAlignment = TextAlignment.Right }.At(0, 3));
         }
         if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = 60, TextAlignment = TextAlignment.Right }.At(0, 4));
