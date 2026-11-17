@@ -26,7 +26,7 @@ static class WorkerRows
 
         var now = DateTimeOffset.Now;
         bool first = true;
-        foreach (var (title, grp) in AiTaskScan.Groups(rows))
+        foreach (var (title, grp) in AiTaskScan.Groups(rows).Take(3))   // hanya 3 tugas terbaru; sisanya disembunyikan
         {
             var hdr = UI.T(title, 11, UI.Dim, true);
             int running = grp.Count(r => r.State == "BERJALAN");
