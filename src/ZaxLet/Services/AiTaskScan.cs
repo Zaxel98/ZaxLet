@@ -69,7 +69,7 @@ public static class AiTaskScan
         return (shown, moreRunning);
     }
 
-    /// <summary>Mengelompokkan worker menurut jenis (audit, verify, other), membuang kelompok kosong, menjaga urutan masukan.</summary>
+    /// <summary>Mengelompokkan worker menurut jenis (audit, verify, other), kelompok dengan tugas BERJALAN di atas, membuang kelompok kosong, menjaga urutan masukan.</summary>
     public static List<(string Kind, List<WorkerRow> Rows)> Groups(List<WorkerRow> rows)
     {
         var result = new List<(string Kind, List<WorkerRow> Rows)>();
@@ -80,7 +80,9 @@ public static class AiTaskScan
             var list = rows.Where(r => AiTaskParse.Kind(r.Info.Name) == kind).ToList();
             if (list.Count > 0) result.Add((kind, list));
         }
-        return result;
+        return result
+            .OrderByDescending(g => g.Rows.Any(r => r.State == "BERJALAN"))
+            .ToList();
     }
 
     /// <summary>Memeriksa apakah proses dengan PID tersebut masih berjalan.</summary>

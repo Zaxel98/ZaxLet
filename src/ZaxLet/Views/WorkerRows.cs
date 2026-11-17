@@ -29,6 +29,9 @@ static class WorkerRows
         foreach (var (kind, grp) in AiTaskScan.Groups(rows))
         {
             var hdr = UI.T(AiTaskParse.KindTitle(kind), 11, UI.Dim, true);
+            int running = grp.Count(r => r.State == "BERJALAN");
+            if (running > 0)
+                hdr.Inlines.Add(new Run($" · {running} berjalan") { Foreground = UI.Faint, FontWeight = FontWeights.Normal });
             hdr.Margin = new Thickness(0, first ? 0 : 9, 0, 0);
             first = false;
             host.Children.Add(hdr);
