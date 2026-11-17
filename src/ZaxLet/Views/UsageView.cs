@@ -20,7 +20,10 @@ public sealed class UsageView : TabView
 
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-    readonly StackPanel _claude = new(), _codex = new();
+    readonly StackPanel _claude = new(), _codex = new(), _page2 = new() { Visibility = Visibility.Collapsed };
+    readonly Grid _main = UI.Cols(-1, 1, -1);
+    bool _more;   // halaman 2: semua worker + pemakaian 5 jam
+    const int PageWorkers = 2;
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(60) };
     readonly DispatcherTimer _redraw = new() { Interval = TimeSpan.FromSeconds(20) };
     readonly DispatcherTimer _workerT = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -29,13 +32,14 @@ public sealed class UsageView : TabView
 
     public UsageView()
     {
-        var g = UI.Cols(-1, 1, -1);
-        g.Children.Add(_claude);
-        g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(0, 2, 0, 2) }.At(0, 1));
-        g.Children.Add(_codex.At(0, 2));
+        _main.Children.Add(_claude);
+        _main.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(0, 2, 0, 2) }.At(0, 1));
+        _main.Children.Add(_codex.At(0, 2));
         _claude.Margin = new Thickness(0, 0, 14, 0);
         _codex.Margin = new Thickness(14, 0, 0, 0);
-        Children.Add(g);
+        _page2.VerticalAlignment = VerticalAlignment.Center;
+        Children.Add(_main);
+        Children.Add(_page2);
         _t.Tick += async (_, _) => await UsageService.I.RefreshAsync();
         _redraw.Tick += (_, _) => Render();
         _workerT.Tick += (_, _) => _ = RefreshWorkersAsync();
@@ -44,6 +48,7 @@ public sealed class UsageView : TabView
     public override void OnShow()
     {
         UsageService.I.Changed += OnChanged;
+        _more = false;
         _t.Start(); _redraw.Start(); _workerT.Start();
         Render();
         _ = UsageService.I.RefreshAsync();
@@ -93,15 +98,68 @@ public sealed class UsageView : TabView
     void Render()
     {
         var s = Settings.Cur;
+        bool agy = s.CodexOn && s.Slot2 == "antigravity";
+        if (_more && (!agy || _workerRows.Count <= PageWorkers)) _more = false;   // tidak ada lagi yang disembunyikan
+        _main.Visibility = _more ? Visibility.Collapsed : Visibility.Visible;
+        _page2.Visibility = _more ? Visibility.Visible : Visibility.Collapsed;
+        if (_more) { BuildPage2(s); return; }
         _claude.Visibility = s.ClaudeOn ? Visibility.Visible : Visibility.Collapsed;
         _codex.Visibility = s.CodexOn ? Visibility.Visible : Visibility.Collapsed;
         if (s.ClaudeOn) Fill(_claude, UsageService.I.Claude);
         if (s.CodexOn)
         {
-            bool agy = s.Slot2 == "antigravity";
             Fill(_codex, agy ? UsageService.I.Agy : UsageService.I.Codex);
-            if (agy) WorkerRows.AddWorkerRows(_codex, _workerRows, 3);
+            if (agy)
+            {
+                // halaman 1: yang berjalan dan paling dekat selesai dulu (tahap terbesar, lalu yang paling lama); selesai/mati hanya mengisi sisa slot
+                var first = _workerRows.Where(r => r.State == "BERJALAN")
+                    .OrderByDescending(r => AiTaskParse.Stage(r.Info.Phase)).ThenBy(r => r.Info.Started)
+                    .Concat(_workerRows.Where(r => r.State != "BERJALAN")).ToList();
+                WorkerRows.AddWorkerRows(_codex, first, PageWorkers);
+                int rest = _workerRows.Count - PageWorkers;
+                if (rest > 0)
+                {
+                    var row = UI.Cols(-1, 0);
+                    row.Margin = new Thickness(0, 3, 0, 0);
+                    row.Children.Add(UI.T("+" + rest, 11, UI.Dim));
+                    row.Children.Add(UI.Btn(UI.T("More", 10.5, UI.Dim), () => { _more = true; Render(); }, UI.Card, 8, new Thickness(8, 1, 8, 2)).At(0, 1));
+                    _codex.Children.Add(row);
+                }
+            }
         }
+    }
+
+    /// <summary>Halaman 2: pemakaian 5 jam AI yang tampil di halaman 1 (bersebelahan) lalu semua worker.</summary>
+    void BuildPage2(Settings s)
+    {
+        _page2.Children.Clear();
+        var top = UI.Cols(-1, 14, -1, 8, 0);
+        int col = 0;
+        if (s.ClaudeOn && FiveHour(top, UsageService.I.Claude, col)) col += 2;
+        FiveHour(top, UsageService.I.Agy, col);
+        top.Children.Add(UI.Btn(UI.T("Kembali", 11.5, UI.Dim), () => { _more = false; Render(); }, UI.Card, 9, new Thickness(9, 3, 9, 3)).At(0, 4));
+        _page2.Children.Add(top);
+
+        var list = new StackPanel();
+        WorkerRows.AddWorkerRows(list, _workerRows, int.MaxValue);
+        _page2.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, MaxHeight = 120, Margin = new Thickness(0, 6, 0, 0), Content = list });
+    }
+
+    static bool FiveHour(Grid host, ProviderUsage u, int col)
+    {
+        var w = u.Windows.FirstOrDefault(x => (x.Label == "5-hour" || x.Label.EndsWith("5h")) && !(u.Error != null && x.Reset != null && x.Reset < DateTimeOffset.Now));
+        if (w == null) return false;
+        var cell = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var t = new TextBlock { Foreground = UI.Fg, TextTrimming = TextTrimming.CharacterEllipsis };
+        t.Inlines.Add(new Run(u.Name + "  5h  ") { FontSize = 11, Foreground = UI.Dim });
+        t.Inlines.Add(new Run($"{Math.Round(w.Pct)}%") { FontSize = 13, FontWeight = FontWeights.SemiBold });
+        if (w.Reset != null) t.Inlines.Add(new Run("  " + UI.Span(w.Reset.Value - DateTimeOffset.Now)) { FontSize = 10.5, Foreground = UI.Faint });
+        cell.Children.Add(t);
+        var bar = new Bar(4) { Margin = new Thickness(0, 2, 0, 0) };
+        cell.Children.Add(bar);
+        bar.Set(w.Pct / 100, w.Pct >= Settings.Cur.CritAt ? UI.Bad : w.Pct >= Settings.Cur.WarnAt ? UI.Warn : UI.Fg);
+        host.Children.Add(cell.At(0, col));
+        return true;
     }
 
     static void Fill(StackPanel host, ProviderUsage u)
