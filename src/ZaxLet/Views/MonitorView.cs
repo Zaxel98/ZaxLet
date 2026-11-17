@@ -23,7 +23,7 @@ public sealed class MonitorView : TabView
     readonly TextBlock _cpu = new() { Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
     readonly TextBlock _gpu = UI.T("", 14, null, true), _temp = UI.T("", 12, UI.Dim), _mem = UI.T("", 12.5), _bat = UI.T("", 12.5);
     readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5);
-    readonly Spark _cpuSpark = new(110, 22, Blue, 40, 1.0), _downSpark = new(46, 16, Blue), _upSpark = new(46, 16, Teal);
+    readonly Spark _cpuSpark = new(90, 22, Blue, 40, 1.0), _downSpark = new(46, 16, Blue), _upSpark = new(46, 16, Teal);
     readonly Bar _memBar = new(5);
     readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Height = 24 };
     readonly List<Border> _coreBars = new();
@@ -41,17 +41,21 @@ public sealed class MonitorView : TabView
     {
         var left = new StackPanel();
 
-        // CPU: cincin C + persen + grafik riwayat, GPU di kanan
-        var a = UI.Cols(0, 0, -1, 0);
+        // CPU: cincin C + persen + suhu + grafik riwayat, GPU di kanan
+        var a = UI.Cols(0, 0, 0, -1, 0);
         a.Children.Add(_rC);
         a.Children.Add(_cpu.At(0, 1));
-        _cpuSpark.Margin = new Thickness(12, 0, 12, 0);
+        _temp.Margin = new Thickness(8, 0, 0, 0);
+        _temp.VerticalAlignment = VerticalAlignment.Center;
+        _temp.Visibility = Visibility.Collapsed;
+        a.Children.Add(_temp.At(0, 2));
+        _cpuSpark.Margin = new Thickness(10, 0, 10, 0);
         _cpuSpark.VerticalAlignment = VerticalAlignment.Center;
-        a.Children.Add(_cpuSpark.At(0, 2));
+        a.Children.Add(_cpuSpark.At(0, 3));
         _gpuBox.Children.Add(_rG);
         _gpu.Margin = new Thickness(7, 0, 0, 0);
         _gpuBox.Children.Add(_gpu);
-        a.Children.Add(_gpuBox.At(0, 3));
+        a.Children.Add(_gpuBox.At(0, 4));
         left.Children.Add(a);
 
         left.Children.Add(_coreBox);
@@ -85,13 +89,11 @@ public sealed class MonitorView : TabView
         n.Children.Add(_upSpark);
         left.Children.Add(n);
 
-        // baterai: ikon berpetir + persen + sisa waktu; suhu CPU bila ada
-        var b = UI.Cols(0, 0, -1, 0);
+        // baterai: ikon berpetir + persen + sisa waktu
+        var b = UI.Cols(0, -1);
         b.Margin = new Thickness(0, 7, 0, 0);
         b.Children.Add(_batHost);
         b.Children.Add(_bat.At(0, 1));
-        _temp.VerticalAlignment = VerticalAlignment.Center;
-        b.Children.Add(_temp.At(0, 3));
         left.Children.Add(b);
 
         var g = UI.Cols(-1, 1, 232);
@@ -196,7 +198,8 @@ public sealed class MonitorView : TabView
         _cpu.Inlines.Add(new System.Windows.Documents.Run(Math.Round(_s.Cpu * 100).ToString()) { FontSize = 22, FontWeight = FontWeights.SemiBold });
         _cpu.Inlines.Add(new System.Windows.Documents.Run(" %") { FontSize = 12, Foreground = UI.Dim });
         _cpuSpark.Push(_s.Cpu);
-        _temp.Text = _s.CpuTemp is { } c ? $"{Math.Round(c)}°C" : "";
+        if (_s.CpuTemp is { } c) { _temp.Text = $"{Math.Round(c)}°C"; _temp.Visibility = Visibility.Visible; }
+        else { _temp.Text = ""; _temp.Visibility = Visibility.Collapsed; }
 
         double gu = _s.GpuUtil ?? 0;
         _rG.Set(gu, _s.GpuUtil == null ? UI.Faint : Level(gu));
