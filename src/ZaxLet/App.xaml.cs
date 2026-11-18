@@ -233,6 +233,7 @@ public partial class App : Application
         Safe(() => WeatherService.I.Apply());
         Settings.Applied += WeatherService.I.Apply;   // nyala/mati dari Pengaturan berlaku langsung
         Safe(() => HydrationService.I.Start());
+        Safe(() => SysAlerts.I.Start());
         Safe(() => DiscordRpc.I.Start());
         Safe(() => _ = LocationService.RefreshAsync());
         Safe(() => UsageService.I.StartAgyLoop());

@@ -106,6 +106,12 @@ public sealed class SysMon
         await Task.WhenAll(Task.Run(SampleTop), Task.Run(SampleGpu), SampleCpuTemp());
     }
 
+    /// <summary>Ambil suhu CPU dan GPU saja tanpa daftar proses (dipakai layanan peringatan ringan).</summary>
+    public async Task SampleTempsAsync()
+    {
+        await Task.WhenAll(_noNvidia ? Task.CompletedTask : Task.Run(SampleGpu), SampleCpuTemp());
+    }
+
     void SampleTop()
     {
         // jumlahkan per nama proses; ingat PID terbesar tiap nama untuk mengambil jalur exe (ikon + nama deskriptif)
