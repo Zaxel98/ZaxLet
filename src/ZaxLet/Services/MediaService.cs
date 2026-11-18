@@ -19,6 +19,33 @@ namespace ZaxLet;
 /// <summary>Now-playing lewat SMTC (semua pemutar yang tampil di kartu media Windows) + lirik tersinkron dari LRCLIB.</summary>
 public sealed class MediaService
 {
+    static readonly int[] SleepPresets = { 15, 30, 45, 60 };
+    const int SleepFadeSec = 20;
+    const int SleepFadeSteps = 40;   // 500 ms per langkah selama ~20 detik
+
+    public enum SleepModeKind { Off, Timed, EndOfTrack, Fading }
+    public SleepModeKind SleepMode { get; private set; } = SleepModeKind.Off;
+    public int SleepPresetMinutes { get; private set; }
+    DateTime _sleepEndUtc;
+    System.Threading.Timer _sleepT;
+    readonly object _sleepLk = new();
+    float? _fadeOrigVol;
+    int _fadeStep;
+    bool _pausingForSleep;
+
+    public TimeSpan SleepRemaining
+    {
+        get
+        {
+            lock (_sleepLk)
+            {
+                if (SleepMode != SleepModeKind.Timed) return TimeSpan.Zero;
+                var rem = _sleepEndUtc - DateTime.UtcNow;
+                return rem > TimeSpan.Zero ? rem : TimeSpan.Zero;
+            }
+        }
+    }
+
     public static readonly MediaService I = new();
 
     public event Action Changed;
@@ -144,6 +171,7 @@ public sealed class MediaService
         Settings.Applied += () => { if (Settings.Cur.MediaIgnore != _ignoreSig) Ui(async () => { _ignoreSig = Settings.Cur.MediaIgnore; await RefreshAll(); }); };   // daftar abaikan berubah: pilih ulang sesi
         try
         {
+            if (Application.Current != null) Application.Current.Exit += (_, _) => RestoreSleepVolume();
             _ignoreSig = Settings.Cur.MediaIgnore;
             _uiaT = new System.Threading.Timer(_ => PollYouTube(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);   // jalan hanya saat ada sesi (SyncPoll)
             Settings.Applied += () => Ui(SyncPoll);
@@ -184,6 +212,7 @@ public sealed class MediaService
                 HasSession = Playing = false;
                 Title = Artist = Album = "";
                 Cover = null; CoverColor = null; Lyrics = new(); LyricState = ""; _key = "";
+                CancelSleepTimer();
                 Changed?.Invoke();
                 return;
             }
@@ -240,11 +269,13 @@ public sealed class MediaService
         }
         if (newTrack)
         {
+            bool hadBase = _baseKey.Length > 0;
             _baseKey = _key = key;
             Translit.Begin(Array.Empty<string>());
             _coverTries = 0;
             Lyrics = new(); LyricState = "loading";
             Cover = null; CoverColor = null;
+            if (hadBase) OnTrackChangedForSleep();
             _ = BeginTrack(key);
         }
         // sebagian pemutar mengirim sampul terlambat: coba lagi beberapa kali selama lagunya sama
@@ -278,8 +309,11 @@ public sealed class MediaService
         if (s == null) return;   // event datang setelah sesi hilang
         var i = s.GetPlaybackInfo();
         if (i == null) return;
+        bool wasPlaying = Playing;
         Playing = i.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         Shuffle = i.Controls.IsShuffleEnabled ? i.IsShuffleActive : null;   // null: pemutar ini tidak mendukung acak lewat Windows
+        if (wasPlaying && !Playing && !_pausingForSleep && SleepMode is SleepModeKind.Timed or SleepModeKind.Fading)
+            CancelSleepTimer();
     }
 
     public bool? Shuffle;
@@ -429,6 +463,7 @@ public sealed class MediaService
         if (chap == null || _chapIdx >= 0 && p >= _chapAt && p < _chapEnd) return;
         int i = Math.Max(0, chap.FindLastIndex(c => c.At <= p));
         if (i == _chapIdx) return;
+        int prevIdx = _chapIdx;
         _chapIdx = i; _chapAt = chap[i].At;
         _chapEnd = i + 1 < chap.Count ? chap[i + 1].At : _chapOpen ? TimeSpan.MaxValue : RawDuration > _chapAt ? RawDuration : _chapAt + TimeSpan.FromMinutes(5);
         _rawTitle = chap[i].Text; _rawArtist = "";
@@ -436,6 +471,7 @@ public sealed class MediaService
         Title = shown.Title; Artist = shown.Artist; Album = "";
         Lyrics = new(); Translit.Begin(Array.Empty<string>());
         _key = _baseKey + "#" + i;
+        if (prevIdx >= 0) OnTrackChangedForSleep();
         if (Settings.Cur.MusicLyrics) { LyricState = "loading"; _ = LoadLyrics(_key, Title, Artist, ""); } else LyricState = "off";
         Ui(() => Changed?.Invoke());
     }
@@ -1072,5 +1108,186 @@ public sealed class MediaService
             return Color.FromRgb((byte)(r * k), (byte)(g * k), (byte)(b * k));
         }
         catch { return null; }
+    }
+
+    // ---------- pengatur waktu tidur musik ----------
+    public void CycleSleepTimer()
+    {
+        int nextMin = 0;
+        bool endOfTrack = false;
+        lock (_sleepLk)
+        {
+            if (SleepMode == SleepModeKind.Off) nextMin = SleepPresets[0];
+            else if (SleepMode == SleepModeKind.Timed)
+            {
+                int idx = Array.IndexOf(SleepPresets, SleepPresetMinutes);
+                if (idx >= 0 && idx + 1 < SleepPresets.Length) nextMin = SleepPresets[idx + 1];
+                else if (idx == SleepPresets.Length - 1) endOfTrack = true;
+            }
+        }
+        if (endOfTrack) SetSleepEndOfTrack();
+        else if (nextMin > 0) SetSleepMinutes(nextMin);
+        else CancelSleepTimer();
+    }
+
+    public void SetSleepMinutes(int minutes)
+    {
+        minutes = Math.Clamp(minutes, 1, 480);
+        lock (_sleepLk)
+        {
+            RestoreSleepVolumeLocked();
+            SleepMode = SleepModeKind.Timed;
+            SleepPresetMinutes = minutes;
+            _sleepEndUtc = DateTime.UtcNow.AddMinutes(minutes);
+            _sleepT ??= new System.Threading.Timer(_ => OnSleepTick(), null, Timeout.Infinite, Timeout.Infinite);
+            _sleepT.Change(TimeSpan.FromMinutes(minutes), Timeout.InfiniteTimeSpan);
+        }
+        Ui(() => Changed?.Invoke());
+    }
+
+    public void SetSleepEndOfTrack()
+    {
+        lock (_sleepLk)
+        {
+            RestoreSleepVolumeLocked();
+            SleepMode = SleepModeKind.EndOfTrack;
+            SleepPresetMinutes = 0;
+            _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+        Ui(() => Changed?.Invoke());
+    }
+
+    public void CancelSleepTimer()
+    {
+        bool had;
+        lock (_sleepLk)
+        {
+            had = SleepMode != SleepModeKind.Off || _fadeOrigVol != null;
+            SleepMode = SleepModeKind.Off;
+            SleepPresetMinutes = 0;
+            _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);
+            RestoreSleepVolumeLocked();
+        }
+        if (had) Ui(() => Changed?.Invoke());
+    }
+
+    void RestoreSleepVolume()
+    {
+        lock (_sleepLk)
+        {
+            _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);
+            RestoreSleepVolumeLocked();
+        }
+    }
+
+    void RestoreSleepVolumeLocked()
+    {
+        if (_fadeOrigVol is not float v) return;
+        _fadeOrigVol = null;
+        try { AudioEndpoint.SetVolume(v, unmute: false); } catch (Exception ex) { App.Log(ex); }
+    }
+
+    void OnSleepTick()
+    {
+        bool notify = false;
+        lock (_sleepLk)
+        {
+            if (SleepMode == SleepModeKind.Timed)
+            {
+                var rem = _sleepEndUtc - DateTime.UtcNow;
+                if (rem > TimeSpan.FromMilliseconds(50))
+                {
+                    _sleepT?.Change(rem, Timeout.InfiniteTimeSpan);
+                    return;
+                }
+                float? vol = null;
+                try { vol = AudioEndpoint.Volume(); } catch (Exception ex) { App.Log(ex); }
+                if (vol is float v && v > 0.01f)
+                {
+                    _fadeOrigVol = v;
+                    _fadeStep = 0;
+                    SleepMode = SleepModeKind.Fading;
+                    int stepMs = SleepFadeSec * 1000 / SleepFadeSteps;
+                    _sleepT?.Change(stepMs, stepMs);
+                    notify = true;
+                }
+                else
+                {
+                    FinishSleepLocked();
+                    notify = true;
+                }
+            }
+            else if (SleepMode == SleepModeKind.Fading)
+            {
+                _fadeStep++;
+                if (_fadeStep < SleepFadeSteps)
+                {
+                    float target = (_fadeOrigVol ?? 0f) * (1f - (float)_fadeStep / SleepFadeSteps);
+                    try { AudioEndpoint.SetVolume(target, unmute: false); } catch (Exception ex) { App.Log(ex); }
+                }
+                else
+                {
+                    try { AudioEndpoint.SetVolume(0f, unmute: false); } catch (Exception ex) { App.Log(ex); }
+                    FinishSleepLocked();
+                    notify = true;
+                }
+            }
+        }
+        if (notify) Ui(() => Changed?.Invoke());
+    }
+
+    void FinishSleepLocked()
+    {
+        SleepMode = SleepModeKind.Off;
+        SleepPresetMinutes = 0;
+        _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);
+        _pausingForSleep = true;
+        _ = PauseAndRestoreAsync();
+    }
+
+    async Task PauseAndRestoreAsync()
+    {
+        try
+        {
+            if (Playing && _s != null) await _s.TryPauseAsync();
+            await Task.Delay(250);
+        }
+        catch (Exception ex) { App.Log(ex); }
+        finally
+        {
+            lock (_sleepLk)
+            {
+                RestoreSleepVolumeLocked();
+                _pausingForSleep = false;
+            }
+            Ui(() => Changed?.Invoke());
+        }
+    }
+
+    void OnTrackChangedForSleep()
+    {
+        SleepModeKind mode;
+        lock (_sleepLk) mode = SleepMode;
+        if (mode == SleepModeKind.EndOfTrack)
+        {
+            lock (_sleepLk)
+            {
+                SleepMode = SleepModeKind.Off;
+                SleepPresetMinutes = 0;
+                _pausingForSleep = true;
+            }
+            _ = PauseAfterTrackChangeAsync();
+        }
+        else if (mode is SleepModeKind.Timed or SleepModeKind.Fading)
+        {
+            CancelSleepTimer();
+        }
+    }
+
+    async Task PauseAfterTrackChangeAsync()
+    {
+        try { if (Playing && _s != null) await _s.TryPauseAsync(); }
+        catch (Exception ex) { App.Log(ex); }
+        finally { lock (_sleepLk) _pausingForSleep = false; Ui(() => Changed?.Invoke()); }
     }
 }

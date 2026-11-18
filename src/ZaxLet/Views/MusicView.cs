@@ -41,6 +41,8 @@ public sealed class MusicView : TabView
     readonly Bar _vol = new(4);
     readonly TextBlock _volPct = UI.T("", 11, UI.Dim);
     TextBlock _volIcon;
+    readonly TextBlock _sleepTxt = UI.T("Tidur", 11, UI.Dim);
+    readonly Border _sleepBtn;
     bool _volDrag;
     int _lastIdx = -2;
     DateTime _lastFull = DateTime.MinValue, _lastPoll = DateTime.MinValue;
@@ -132,7 +134,14 @@ public sealed class MusicView : TabView
         volHit.MouseLeftButtonDown += (_, e) => { _volDrag = true; volHit.CaptureMouse(); VolFrom(e, true); };
         volHit.MouseMove += (_, e) => { if (volHit.IsMouseCaptured) VolFrom(e, false); };
         volHit.MouseLeftButtonUp += (_, e) => { if (volHit.IsMouseCaptured) { VolFrom(e, true); volHit.ReleaseMouseCapture(); } _volDrag = false; };
-        left.Children.Add(volRow);
+        _sleepBtn = UI.Btn(_sleepTxt, () => { _m.CycleSleepTimer(); Render(); }, UI.Card, 9, new Thickness(8, 2, 8, 3));
+        _sleepBtn.HorizontalAlignment = HorizontalAlignment.Right; _sleepBtn.VerticalAlignment = VerticalAlignment.Center;
+        volRow.Margin = new Thickness(0);
+        var bottomRow = UI.Cols(-1, 0);
+        bottomRow.Margin = new Thickness(0, 9, 0, 0);
+        bottomRow.Children.Add(volRow);
+        bottomRow.Children.Add(_sleepBtn.At(0, 1));
+        left.Children.Add(bottomRow);
 
         // kanan: lirik karaoke (tadi, sekarang, berikutnya) + sinkron cepat
         _lyrics.RenderTransform = _slide;
@@ -342,6 +351,35 @@ public sealed class MusicView : TabView
         var rem = _m.Duration - pos;
         _rem.Text = _m.Duration > TimeSpan.Zero ? "-" + Fmt(rem < TimeSpan.Zero ? TimeSpan.Zero : rem) : "";
         _bar.Set(_m.Duration > TimeSpan.Zero ? pos.TotalSeconds / _m.Duration.TotalSeconds : 0);
+        RenderSleep();
+    }
+
+    void RenderSleep()
+    {
+        switch (_m.SleepMode)
+        {
+            case MediaService.SleepModeKind.Timed:
+                var rem = _m.SleepRemaining;
+                _sleepTxt.Text = rem.TotalMinutes >= 1 ? L.F("Tidur · {0}m", (int)Math.Ceiling(rem.TotalMinutes)) : L.F("Tidur · {0}d", Math.Max(1, (int)Math.Ceiling(rem.TotalSeconds)));
+                _sleepTxt.Foreground = UI.Accent;
+                _sleepBtn.ToolTip = L.T("Pengatur waktu tidur aktif (klik untuk ubah)");
+                break;
+            case MediaService.SleepModeKind.EndOfTrack:
+                _sleepTxt.Text = L.T("Tidur · akhir");
+                _sleepTxt.Foreground = UI.Accent;
+                _sleepBtn.ToolTip = L.T("Pengatur waktu tidur: Akhir lagu (klik untuk matikan)");
+                break;
+            case MediaService.SleepModeKind.Fading:
+                _sleepTxt.Text = L.T("Tidur · mengecil…");
+                _sleepTxt.Foreground = UI.Accent;
+                _sleepBtn.ToolTip = L.T("Volume sedang mengecil (klik untuk batal)");
+                break;
+            default:
+                _sleepTxt.Text = L.T("Tidur");
+                _sleepTxt.Foreground = UI.Dim;
+                _sleepBtn.ToolTip = L.T("Pengatur waktu tidur: Mati (klik untuk atur)");
+                break;
+        }
     }
 
     void PaintLyrics()
