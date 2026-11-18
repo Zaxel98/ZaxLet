@@ -121,6 +121,7 @@ public sealed class Settings
     public string IslandShape { get; set; } = "notch";        // notch (bahu cekung) | pill (kapsul bulat gaya Dynamic Island)
     public string Theme { get; set; } = "black";               // black | aurora | matcha | senja | neon
     public int IslandScale { get; set; } = 100;                // persen ukuran island; 0 = otomatis menurut lebar layar
+    public int IslandOffsetX { get; set; }                     // geser horizontal dari tengah monitor (px), -600..600
     public string ShowMode { get; set; } = "always";           // always | activity (hanya saat ada aktivitas) | hidden (sampai dibuka dari tray)
     public bool FsMusic { get; set; }                          // lagu dan lirik tetap tampil di atas aplikasi layar penuh (tidak bisa diklik)
     public int MonitorIdx { get; set; }                        // 0 = monitor utama

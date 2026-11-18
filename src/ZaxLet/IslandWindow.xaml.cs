@@ -304,11 +304,18 @@ public partial class IslandWindow : Window
         PositionTop();
     }
 
-    void PositionTop()
+    void PositionTop(double? pillW = null)
     {
         var b = Scr.Bounds;
+        var wa = Scr.WorkingArea;
         double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        Left = (b.Left + b.Width / 2.0) / dpi - Width / 2;   // tengah monitor pilihan (piksel ke DIP)
+        double w = (pillW ?? (_open ? OpenW : (_idle.W > 0 ? _idle.W : Pill.Width))) * Zoom;
+        if (Settings.Cur.IslandShape != "pill") w += 2 * Flare * Zoom;
+        double half = w / 2.0;
+        double minCx = wa.Left / dpi + half, maxCx = wa.Right / dpi - half;
+        double cx = (b.Left + b.Width / 2.0 + Math.Clamp(Settings.Cur.IslandOffsetX, -600, 600)) / dpi;
+        cx = minCx <= maxCx ? Math.Clamp(cx, minCx, maxCx) : (minCx + maxCx) / 2.0;
+        Left = cx - Width / 2.0;   // tengah monitor pilihan + geseran (piksel ke DIP), dijepit ke area kerja
         Top = b.Top / dpi;
     }
 
@@ -467,6 +474,7 @@ public partial class IslandWindow : Window
 
     void SetSize(double w, double h)
     {
+        PositionTop(w);
         var e = new QuinticEase { EasingMode = EasingMode.EaseOut };
         var d = TimeSpan.FromMilliseconds(300);
         Pill.BeginAnimation(WidthProperty, Fast(new DoubleAnimation(w, d) { EasingFunction = e }));
@@ -547,7 +555,7 @@ public partial class IslandWindow : Window
         Native.GetCursorPos(out var pt);
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var sb = Scr.Bounds;
-        double cx = sb.Left + sb.Width / 2.0, top = sb.Top;
+        double cx = (Left + Width / 2.0) * dpi, top = sb.Top;
         double halfW = (_peek ? Pill.ActualWidth * Zoom / 2 + 8 : 100) * dpi;
         bool inX = Math.Abs(pt.X - cx) <= halfW;
         if (!_peek && pt.Y <= top + 2 && pt.Y >= top - 2 && inX) { _peek = true; SyncVisible(); RefreshIdle(); }
