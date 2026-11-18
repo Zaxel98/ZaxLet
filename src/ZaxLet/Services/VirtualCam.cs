@@ -32,11 +32,13 @@ public static class VirtualCam
     static CancellationTokenSource _cts;
     static Thread _t;
     static volatile bool _run;
+    static volatile bool _paused;
     static bool _phoneOn;
     static int _idleTicks;
     static long _seq = -1;
 
     public static bool Running => _run;
+    public static bool Paused { get => _paused; set => _paused = value; }
 
     /// <summary>Apakah softcam.dll sudah terdaftar di Windows (muncul sebagai kamera)?</summary>
     public static bool Registered
@@ -136,6 +138,7 @@ public static class VirtualCam
         catch (Exception ex) { App.Log(ex); Status = "softcam.dll tidak bisa dimuat: " + ex.Message; return; }
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
+        _paused = false;
         _run = true;
         Status = "Aktif";
         _t = new Thread(() => Loop(cam, ct)) { IsBackground = true, Name = "vcam" };
@@ -145,6 +148,7 @@ public static class VirtualCam
     public static void Stop()
     {
         _run = false;
+        _paused = false;
         _cts?.Cancel();
         _t?.Join(1500);   // kamera dihapus oleh Loop saat keluar agar tidak use-after-free bila Join habis waktu
         if (_phoneOn) { ShareServer.I.Command("cam off"); _phoneOn = false; }
@@ -169,38 +173,52 @@ public static class VirtualCam
             Make();
             int tick = 0;
             var diffSince = DateTime.MaxValue;
+            bool wasPaused = false;
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    var s = Settings.Cur;
-                    bool fresh = false;
-                    if (PhoneCam.Seq != _seq && PhoneCam.Latest is { } jpg)
+                    if (_paused)
                     {
-                        _seq = PhoneCam.Seq;
-                        src?.Dispose();
-                        src = Image.FromStream(new MemoryStream(jpg));
-                        fresh = true;
-                    }
-                    else if (src == null || !PhoneCam.Active) { Placeholder(g, PhoneCam.Active ? "" : (ShareServer.I.AppCount == 0 ? "Buka aplikasi ZaxLet HP di HP" : "Menyalakan kamera HP…")); src?.Dispose(); src = null; }
-
-                    var want = s.VCamAuto && src != null && src.Width > src.Height ? "16:9" : s.VCamRatio;
-                    if (want != _ratio)
-                    {
-                        if (diffSince == DateTime.MaxValue) diffSince = DateTime.Now;
-                        else if ((DateTime.Now - diffSince).TotalSeconds > 1.5)
+                        if (!wasPaused)
                         {
-                            var (nw, nh) = SizeFor(want);
-                            scDeleteCamera(cam);
-                            W = nw; H = nh; _ratio = want;
-                            cam = scCreateCamera(W, H, Fps);
-                            if (cam == IntPtr.Zero) { Status = "Kamera virtual gagal dibuat ulang"; _run = false; break; }
-                            Make();
-                            fresh = true; diffSince = DateTime.MaxValue;
+                            Placeholder(g, L.T("Sebentar ya"));
+                            wasPaused = true;
                         }
                     }
-                    else diffSince = DateTime.MaxValue;
-                    if (fresh && src != null) Compose(g, src, s);
+                    else
+                    {
+                        var s = Settings.Cur;
+                        bool fresh = false;
+                        if (PhoneCam.Seq != _seq && PhoneCam.Latest is { } jpg)
+                        {
+                            _seq = PhoneCam.Seq;
+                            src?.Dispose();
+                            src = Image.FromStream(new MemoryStream(jpg));
+                            fresh = true;
+                        }
+                        else if (src == null || !PhoneCam.Active) { Placeholder(g, PhoneCam.Active ? "" : (ShareServer.I.AppCount == 0 ? "Buka aplikasi ZaxLet HP di HP" : "Menyalakan kamera HP…")); src?.Dispose(); src = null; }
+                        else if (wasPaused) fresh = true;
+                        wasPaused = false;
+
+                        var want = s.VCamAuto && src != null && src.Width > src.Height ? "16:9" : s.VCamRatio;
+                        if (want != _ratio)
+                        {
+                            if (diffSince == DateTime.MaxValue) diffSince = DateTime.Now;
+                            else if ((DateTime.Now - diffSince).TotalSeconds > 1.5)
+                            {
+                                var (nw, nh) = SizeFor(want);
+                                scDeleteCamera(cam);
+                                W = nw; H = nh; _ratio = want;
+                                cam = scCreateCamera(W, H, Fps);
+                                if (cam == IntPtr.Zero) { Status = "Kamera virtual gagal dibuat ulang"; _run = false; break; }
+                                Make();
+                                fresh = true; diffSince = DateTime.MaxValue;
+                            }
+                        }
+                        else diffSince = DateTime.MaxValue;
+                        if (fresh && src != null) Compose(g, src, s);
+                    }
 
                     var bd = canvas.LockBits(new Rectangle(0, 0, W, H), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
                     try { scSendFrame(cam, bd.Scan0); } finally { canvas.UnlockBits(bd); }
