@@ -27,6 +27,7 @@ public sealed class DiscordRpc
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     const string Redirect = "http://localhost";
     NamedPipeClientStream _pipe;
+    readonly SemaphoreSlim _writeLock = new(1, 1);
     readonly Dictionary<string, TaskCompletionSource<JsonElement>> _pending = new();
     TaskCompletionSource<bool> _ready;
     bool _started;
@@ -70,18 +71,28 @@ public sealed class DiscordRpc
             try { await p.ConnectAsync(400); _pipe = p; } catch { p.Dispose(); }
         }
         if (_pipe == null) throw new TimeoutException();
-        _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        var reader = Task.Run(ReadLoop);
-        await Write(0, JsonSerializer.Serialize(new { v = 1, client_id = Settings.Cur.DiscordClientId }));
-        await Wait(_ready.Task, 6000);
+        Task reader = null;
+        try
+        {
+            _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            reader = Task.Run(ReadLoop);
+            await Write(0, JsonSerializer.Serialize(new { v = 1, client_id = Settings.Cur.DiscordClientId }));
+            await Wait(_ready.Task, 6000);
 
-        var tok = LoadToken();
-        if (tok == null || tok.Expires < DateTime.UtcNow.AddMinutes(5)) tok = await Obtain(tok);
-        await Command("AUTHENTICATE", new { access_token = tok.Access });
-        foreach (var evt in new[] { "VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE" }) await Command("SUBSCRIBE", new { }, evt);
-        Connected = true; Status = L.T("Tersambung ke Discord");
-        await Refresh();
-        await reader;   // selesai saat Discord menutup pipa
+            var tok = LoadToken();
+            if (tok == null || tok.Expires < DateTime.UtcNow.AddMinutes(5)) tok = await Obtain(tok);
+            await Command("AUTHENTICATE", new { access_token = tok.Access });
+            foreach (var evt in new[] { "VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE" }) await Command("SUBSCRIBE", new { }, evt);
+            Connected = true; Status = L.T("Tersambung ke Discord");
+            await Refresh();
+            await reader;   // selesai saat Discord menutup pipa
+        }
+        finally
+        {
+            var p = Interlocked.Exchange(ref _pipe, null);
+            p?.Dispose();   // tutup pipa dulu agar ReadLoop berhenti sebelum sesi berikutnya
+            if (reader != null) try { await reader; } catch { }
+        }
     }
 
     static async Task Wait(Task t, int ms) { if (await Task.WhenAny(t, Task.Delay(ms)) != t) throw new TimeoutException(); await t; }
@@ -129,8 +140,15 @@ public sealed class DiscordRpc
         BitConverter.GetBytes(op).CopyTo(buf, 0);
         BitConverter.GetBytes(b.Length).CopyTo(buf, 4);
         b.CopyTo(buf, 8);
-        await _pipe.WriteAsync(buf);
-        await _pipe.FlushAsync();
+        await _writeLock.WaitAsync();
+        try
+        {
+            var pipe = _pipe;
+            if (pipe == null) throw new IOException("pipa ditutup");
+            await pipe.WriteAsync(buf);
+            await pipe.FlushAsync();
+        }
+        finally { _writeLock.Release(); }
     }
 
     async Task ReadLoop()
@@ -151,7 +169,7 @@ public sealed class DiscordRpc
             }
         }
         catch { /* pipa tertutup */ }
-        finally { foreach (var p in _pending.Values) p.TrySetCanceled(); _pending.Clear(); }
+        finally { lock (_pending) { foreach (var p in _pending.Values) p.TrySetCanceled(); _pending.Clear(); } }
     }
 
     async Task ReadFull(byte[] buf, int n)
@@ -159,7 +177,9 @@ public sealed class DiscordRpc
         int got = 0;
         while (got < n)
         {
-            int r = await _pipe.ReadAsync(buf.AsMemory(got, n - got));
+            var pipe = _pipe;
+            if (pipe == null) throw new IOException("pipa ditutup");
+            int r = await pipe.ReadAsync(buf.AsMemory(got, n - got));
             if (r <= 0) throw new IOException("pipa ditutup");
             got += r;
         }
@@ -170,7 +190,9 @@ public sealed class DiscordRpc
         var evt = m.TryGetProperty("evt", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
         if (evt == "READY") { _ready?.TrySetResult(true); return; }
         var nonce = m.TryGetProperty("nonce", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
-        if (nonce != null && _pending.Remove(nonce, out var tcs))
+        TaskCompletionSource<JsonElement> tcs = null;
+        if (nonce != null) { lock (_pending) _pending.Remove(nonce, out tcs); }
+        if (tcs != null)
         {
             if (evt == "ERROR") tcs.TrySetException(new Exception(m.GetProperty("data").GetProperty("message").GetString()));
             else tcs.TrySetResult(m);
@@ -178,8 +200,13 @@ public sealed class DiscordRpc
         }
         if (evt is "SPEAKING_START" or "SPEAKING_STOP" && m.TryGetProperty("data", out var sd) && sd.TryGetProperty("user_id", out var su) && su.GetString() is { } uid)
         {
-            lock (_names) { if (evt == "SPEAKING_START") _speak.Add(uid); else _speak.Remove(uid); }
-            if (!_names.ContainsKey(uid) && DateTime.UtcNow - _namesAt > TimeSpan.FromSeconds(5)) { _namesAt = DateTime.UtcNow; _ = Refresh(); }   // orang baru masuk: ambil ulang daftar nama
+            bool needRefresh = false;
+            lock (_names)
+            {
+                if (evt == "SPEAKING_START") _speak.Add(uid); else _speak.Remove(uid);
+                if (!_names.ContainsKey(uid) && DateTime.UtcNow - _namesAt > TimeSpan.FromSeconds(5)) { _namesAt = DateTime.UtcNow; needRefresh = true; }   // orang baru masuk: ambil ulang daftar nama
+            }
+            if (needRefresh) _ = Refresh();
             UpdateSpeaking();
         }
         else if (evt == "VOICE_CHANNEL_SELECT") _ = Refresh();
@@ -191,9 +218,13 @@ public sealed class DiscordRpc
         var nonce = Interlocked.Increment(ref _nonce).ToString();
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_pending) _pending[nonce] = tcs;
-        await Write(1, JsonSerializer.Serialize(new { cmd, args, evt, nonce }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull }));
-        await Wait(tcs.Task, timeoutMs);
-        return tcs.Task.Result;
+        try
+        {
+            await Write(1, JsonSerializer.Serialize(new { cmd, args, evt, nonce }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull }));
+            await Wait(tcs.Task, timeoutMs);
+            return tcs.Task.Result;
+        }
+        finally { lock (_pending) _pending.Remove(nonce); }
     }
 
     void ApplySettings(JsonElement d)
