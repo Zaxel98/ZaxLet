@@ -23,6 +23,8 @@ public sealed class SettingsWindow : Window
     readonly Grid _host = new() { ClipToBounds = true };
     readonly Border _idleBox = new() { Background = Brushes.Black, CornerRadius = new CornerRadius(18), Height = 78, Margin = new Thickness(0, 0, 0, 12) };
     readonly Rectangle _mirror = new();
+    FrameworkElement _pill;
+    SizeChangedEventHandler _onPillSize;
     TabView _pv;
     string _key = "music";
 
@@ -69,7 +71,16 @@ public sealed class SettingsWindow : Window
 
         Loaded += (_, _) => { _sv.OnShow(); AttachMirror(); BuildBar(); ShowTab(_key); };
         Settings.Applied += OnApplied;
-        Closed += (_, _) => { Settings.Applied -= OnApplied; _pv?.OnHide(); _pv = null; _i = null; };
+        Closed += (_, _) =>
+        {
+            Settings.Applied -= OnApplied;
+            _sv.OnHide();
+            if (_pill != null && _onPillSize != null) { _pill.SizeChanged -= _onPillSize; _pill = null; _onPillSize = null; }
+            _mirror.Fill = null;
+            _pv?.OnHide();
+            _pv = null;
+            _i = null;
+        };
         SourceInitialized += (_, _) => DarkTitle();
     }
 
@@ -81,7 +92,10 @@ public sealed class SettingsWindow : Window
         if (pill == null) return;
         _mirror.Fill = new VisualBrush(pill) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
         void Fit() { _mirror.Width = Math.Max(10, pill.ActualWidth); _mirror.Height = Math.Max(10, pill.ActualHeight); }
-        pill.SizeChanged += (_, _) => Fit();
+        if (_pill != null && _onPillSize != null) _pill.SizeChanged -= _onPillSize;
+        _pill = pill;
+        _onPillSize = (_, _) => Fit();
+        _pill.SizeChanged += _onPillSize;
         Fit();
     }
 
