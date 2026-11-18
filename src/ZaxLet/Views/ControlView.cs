@@ -18,6 +18,8 @@ public sealed class ControlView : TabView
     public override string Label => "Control Panel";
     public override bool CenterV => false;
 
+    const double DeviceChipMaxWidth = 175;
+
     static readonly Style FocusRing = MakeFocusRing();
     static Style MakeFocusRing()
     {
@@ -58,6 +60,8 @@ public sealed class ControlView : TabView
         }
     }
 
+    readonly WrapPanel _devices = new();
+    readonly TextBlock _devErr = UI.T("", 11, UI.Bad);
     readonly StackPanel _list = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(1500) };
     readonly List<RowUI> _rowUIs = new();
@@ -67,16 +71,86 @@ public sealed class ControlView : TabView
 
     public ControlView()
     {
-        var root = UI.Rows(0, 0, -1);
-        root.Children.Add(UI.T("Volume aplikasi", 15, null, true));
-        root.Children.Add(UI.T(L.T("Hanya perangkat keluaran suara utama"), 11, UI.Dim).At(1));
-        root.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list, Margin = new Thickness(0, 8, 0, 0) }.At(2));
+        _devErr.Visibility = Visibility.Collapsed;
+        var devHead = UI.Cols(-1, 0);
+        devHead.Children.Add(UI.T("Perangkat keluaran", 13, null, true));
+        devHead.Children.Add(_devErr.At(0, 1));
+
+        var devScroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            MaxHeight = 56,
+            Margin = new Thickness(0, 4, 0, 6),
+            Content = _devices
+        };
+
+        var root = UI.Rows(0, 0, 0, 0, -1);
+        root.Children.Add(devHead);
+        root.Children.Add(devScroll.At(1));
+        root.Children.Add(UI.T("Volume aplikasi", 13, null, true).At(2));
+        root.Children.Add(UI.T("Mengikuti perangkat keluaran utama", 11, UI.Dim).At(3));
+        root.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list, Margin = new Thickness(0, 6, 0, 0) }.At(4));
         Children.Add(root);
         _t.Tick += (_, _) => { if (!_drag) Render(); };   // baca ulang berkala: aplikasi muncul/hilang, volume diubah dari tempat lain
     }
 
-    public override void OnShow() { Render(); _t.Start(); }
+    public override void OnShow()
+    {
+        _devErr.Text = "";
+        _devErr.Visibility = Visibility.Collapsed;
+        RenderDevices();
+        Render();
+        _t.Start();
+    }
     public override void OnHide() { _t.Stop(); EndDrag(); }
+
+    void RenderDevices()
+    {
+        _devices.Children.Clear();
+        var devs = AudioOutput.List();
+        if (devs.Count == 0)
+        {
+            _devices.Children.Add(UI.T("Tidak ada perangkat keluaran aktif.", 11.5, UI.Dim));
+            return;
+        }
+        foreach (var d in devs)
+        {
+            var inner = new StackPanel { Orientation = Orientation.Horizontal };
+            if (d.IsDefault)
+            {
+                var mark = UI.Icon("\uE73E", 10, UI.Accent);
+                mark.Margin = new Thickness(0, 0, 5, 0);
+                inner.Children.Add(mark);
+            }
+            var label = UI.T(d.Name, 11.5, d.IsDefault ? UI.Fg : UI.Dim, d.IsDefault);
+            label.MaxWidth = DeviceChipMaxWidth;
+            inner.Children.Add(label);
+
+            var id = d.Id;
+            var btn = UI.Btn(inner, () => SelectDevice(id), d.IsDefault ? UI.AccentBg : UI.Card, 8, new Thickness(8, 4, 8, 4));
+            btn.Margin = new Thickness(0, 0, 6, 4);
+            btn.ToolTip = d.Name;
+            AutomationProperties.SetName(btn, d.IsDefault ? L.F("{0} (utama)", d.Name) : d.Name);
+            _devices.Children.Add(btn);
+        }
+    }
+
+    void SelectDevice(string id)
+    {
+        if (AudioOutput.SetDefault(id))
+        {
+            _devErr.Text = "";
+            _devErr.Visibility = Visibility.Collapsed;
+            RenderDevices();
+            _lastRows = null;
+            Render();
+        }
+        else
+        {
+            _devErr.Text = L.T("Tidak bisa mengganti perangkat");
+            _devErr.Visibility = Visibility.Visible;
+        }
+    }
 
     void EndDrag()
     {
