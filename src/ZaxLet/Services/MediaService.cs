@@ -30,6 +30,7 @@ public sealed class MediaService
     System.Threading.Timer _sleepT;
     readonly object _sleepLk = new();
     float? _fadeOrigVol;
+    float? _fadeLastSetVol;
     int _fadeStep;
     bool _pausingForSleep;
 
@@ -1182,6 +1183,7 @@ public sealed class MediaService
 
     void RestoreSleepVolumeLocked()
     {
+        _fadeLastSetVol = null;
         if (_fadeOrigVol is not float v) return;
         _fadeOrigVol = null;
         try { AudioEndpoint.SetVolume(v, unmute: false); } catch (Exception ex) { App.Log(ex); }
@@ -1205,6 +1207,7 @@ public sealed class MediaService
                 if (vol is float v && v > 0.01f)
                 {
                     _fadeOrigVol = v;
+                    _fadeLastSetVol = v;
                     _fadeStep = 0;
                     SleepMode = SleepModeKind.Fading;
                     int stepMs = SleepFadeSec * 1000 / SleepFadeSteps;
@@ -1219,17 +1222,42 @@ public sealed class MediaService
             }
             else if (SleepMode == SleepModeKind.Fading)
             {
-                _fadeStep++;
-                if (_fadeStep < SleepFadeSteps)
+                float? cur = null;
+                try { cur = AudioEndpoint.Volume(); } catch (Exception ex) { App.Log(ex); }
+                if (cur is float cv && _fadeLastSetVol is float lv && Math.Abs(cv - lv) > 0.05f)
                 {
-                    float target = (_fadeOrigVol ?? 0f) * (1f - (float)_fadeStep / SleepFadeSteps);
-                    try { AudioEndpoint.SetVolume(target, unmute: false); } catch (Exception ex) { App.Log(ex); }
+                    // Pengguna menggeser volume sendiri: hentikan fade tanpa menimpa pilihan pengguna
+                    SleepMode = SleepModeKind.Off;
+                    SleepPresetMinutes = 0;
+                    _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);
+                    _fadeOrigVol = null;
+                    _fadeLastSetVol = null;
+                    notify = true;
                 }
                 else
                 {
-                    try { AudioEndpoint.SetVolume(0f, unmute: false); } catch (Exception ex) { App.Log(ex); }
-                    FinishSleepLocked();
-                    notify = true;
+                    _fadeStep++;
+                    if (_fadeStep < SleepFadeSteps)
+                    {
+                        float target = (_fadeOrigVol ?? 0f) * (1f - (float)_fadeStep / SleepFadeSteps);
+                        try
+                        {
+                            AudioEndpoint.SetVolume(target, unmute: false);
+                            _fadeLastSetVol = target;
+                        }
+                        catch (Exception ex) { App.Log(ex); }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            AudioEndpoint.SetVolume(0f, unmute: false);
+                            _fadeLastSetVol = 0f;
+                        }
+                        catch (Exception ex) { App.Log(ex); }
+                        FinishSleepLocked();
+                        notify = true;
+                    }
                 }
             }
         }
@@ -1240,6 +1268,7 @@ public sealed class MediaService
     {
         SleepMode = SleepModeKind.Off;
         SleepPresetMinutes = 0;
+        _fadeLastSetVol = null;
         _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);
         _pausingForSleep = true;
         _ = PauseAndRestoreAsync();
@@ -1266,22 +1295,18 @@ public sealed class MediaService
 
     void OnTrackChangedForSleep()
     {
-        SleepModeKind mode;
-        lock (_sleepLk) mode = SleepMode;
-        if (mode == SleepModeKind.EndOfTrack)
+        bool pause = false;
+        lock (_sleepLk)
         {
-            lock (_sleepLk)
+            if (SleepMode == SleepModeKind.EndOfTrack)
             {
                 SleepMode = SleepModeKind.Off;
                 SleepPresetMinutes = 0;
                 _pausingForSleep = true;
+                pause = true;
             }
-            _ = PauseAfterTrackChangeAsync();
         }
-        else if (mode is SleepModeKind.Timed or SleepModeKind.Fading)
-        {
-            CancelSleepTimer();
-        }
+        if (pause) _ = PauseAfterTrackChangeAsync();
     }
 
     async Task PauseAfterTrackChangeAsync()
