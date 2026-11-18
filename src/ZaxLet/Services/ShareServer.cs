@@ -17,23 +17,32 @@ namespace ZaxLet;
 /// <summary>Daftar file di shelf. Hanya menyimpan path (file tidak disalin); file kiriman HP disimpan di inbox.</summary>
 public static class Shelf
 {
+    static readonly object _lock = new();
     public static event Action Changed;
     public static List<string> Items = (Store.Load<List<string>>("shelf.json") ?? new()).Where(File.Exists).ToList();
     public static string Inbox => Path.Combine(Settings.Dir, "inbox");
 
+    public static List<string> Snapshot() { lock (_lock) return Items.ToList(); }
+
     public static void Add(string path)
     {
         if (!File.Exists(path) && !Directory.Exists(path)) return;
-        if (Items.Contains(path, StringComparer.OrdinalIgnoreCase)) return;
-        Items.Add(path);
-        Save();
+        lock (_lock)
+        {
+            if (Items.Contains(path, StringComparer.OrdinalIgnoreCase)) return;
+            Items.Add(path);
+            Store.Save("shelf.json", Items);
+        }
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke());
     }
 
-    public static void Remove(string path) { Items.Remove(path); Save(); }
-
-    static void Save()
+    public static void Remove(string path)
     {
-        Store.Save("shelf.json", Items);
+        lock (_lock)
+        {
+            Items.Remove(path);
+            Store.Save("shelf.json", Items);
+        }
         System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke());
     }
 }
@@ -144,31 +153,33 @@ public sealed class ShareServer
 
     public void Forget(PhoneDevice d, bool block)
     {
-        if (block) d.Blocked = true; else Devices.Remove(d);
-        SaveDevices();
-    }
-
-    void SaveDevices()
-    {
-        Store.Save("devices.json", Devices);
+        lock (Devices)
+        {
+            if (block) d.Blocked = true; else Devices.Remove(d);
+            Store.Save("devices.json", Devices);
+        }
         System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => DevicesChanged?.Invoke());
     }
 
     PhoneDevice Touch(string id, string ua, IPAddress ip, string nameHint = null)
     {
         if (string.IsNullOrEmpty(id) || id.Length > 64) return null;
+        PhoneDevice d;
+        bool isNew, save;
         lock (Devices)
         {
-            var d = Devices.FirstOrDefault(x => x.Id == id);
-            bool isNew = d == null;
+            d = Devices.FirstOrDefault(x => x.Id == id);
+            isNew = d == null;
             if (isNew) Devices.Add(d = new PhoneDevice { Id = id, Name = string.IsNullOrWhiteSpace(nameHint) ? DeviceName(ua) : nameHint.Trim() });
             var wasOnline = d.Online;
             d.Ip = (ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip).ToString();
             d.LastSeen = DateTime.Now;
-            if (isNew || !wasOnline) SaveDevices();
-            if (isNew) IslandWindow.Instance?.Alert(L.F("HP tersambung · {0}", d.Name), 5);
-            return d;
+            save = isNew || !wasOnline;
+            if (save) Store.Save("devices.json", Devices);
         }
+        if (save) System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => DevicesChanged?.Invoke());
+        if (isNew) IslandWindow.Instance?.Alert(L.F("HP tersambung · {0}", d.Name), 5);
+        return d;
     }
 
     static string DeviceName(string ua)
@@ -338,7 +349,7 @@ public sealed class ShareServer
                 else if (rq[0] == "GET" && path == "/ping") await Send(ns, 200, "text/plain", "ok");
                 else if (rq[0] == "GET" && path == "/ctl" && hdr.TryGetValue("sec-websocket-key", out var ck) && dev != null) await CtlSocket(ns, ck, dev);
                 else if (rq[0] == "GET" && path == "/shelf.json")
-                    await Send(ns, 200, "application/json", System.Text.Json.JsonSerializer.Serialize(Shelf.Items.Select((p, i) => new { i, name = Path.GetFileName(p), size = File.Exists(p) ? new FileInfo(p).Length : 0 })));
+                    await Send(ns, 200, "application/json", System.Text.Json.JsonSerializer.Serialize(Shelf.Snapshot().Select((p, i) => new { i, name = Path.GetFileName(p), size = File.Exists(p) ? new FileInfo(p).Length : 0 })));
                 else if (rq[0] == "GET" && path == "/zaxlet.apk" && File.Exists(ApkPath)) await SendFile(ns, ApkPath, "application/vnd.android.package-archive");
                 else if (rq[0] == "GET" && path == "/cam") await Send(ns, 200, "text/html; charset=utf-8", CamPage());
                 else if (rq[0] == "GET" && path == "/cam/ws" && hdr.TryGetValue("sec-websocket-key", out var wk)) await CamSocket(ns, wk, dev?.Name ?? "HP");
@@ -509,7 +520,7 @@ public sealed class ShareServer
 
     async Task Download(Stream ns, int idx)
     {
-        var items = Shelf.Items.ToList();
+        var items = Shelf.Snapshot();
         if (idx < 0 || idx >= items.Count || !File.Exists(items[idx])) { await Send(ns, 404, "text/plain", "not found"); return; }
         var fi = new FileInfo(items[idx]);
         var h = $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {fi.Length}\r\nContent-Disposition: attachment; filename*=UTF-8''{Uri.EscapeDataString(fi.Name)}\r\nConnection: close\r\n\r\n";
@@ -564,7 +575,7 @@ public sealed class ShareServer
     string Page()
     {
         var sb = new StringBuilder();
-        var items = Shelf.Items.ToList();
+        var items = Shelf.Snapshot();
         for (int i = 0; i < items.Count; i++)
             sb.Append($"<a class=f href=\"/d/{i}?t={Token}\">{WebUtility.HtmlEncode(Path.GetFileName(items[i]))}</a>");
         if (items.Count == 0) sb.Append("<p class=m>Shelf kosong</p>");
