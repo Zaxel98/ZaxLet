@@ -499,4 +499,37 @@ if (!bridgeOk) fail++;
     }
 }
 
+// Cek mandiri proyeksi habis kuota (BurnRate)
+{
+    var t0 = new DateTimeOffset(2026, 11, 18, 10, 0, 0, TimeSpan.FromHours(7));
+    var pExhaust = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 30), new BurnSample(t0.AddMinutes(20), 40) }, TimeSpan.FromHours(2));
+    bool exhaustOk = pExhaust.HasData && pExhaust.WillExhaust && Math.Abs(pExhaust.RatePerHour - 60) < 1e-6 && BurnRate.Format(pExhaust) == "Habis ±1 jam lagi";
+
+    var pSafe = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(15), 15), new BurnSample(t0.AddMinutes(30), 20) }, TimeSpan.FromHours(2));
+    bool safeOk = pSafe.HasData && !pSafe.WillExhaust && BurnRate.Format(pSafe) == "Aman";
+
+    var pFew = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(20), 30) }, TimeSpan.FromHours(2));
+    var pShort = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(4), 20), new BurnSample(t0.AddMinutes(8), 30) }, TimeSpan.FromHours(2));
+    var pFlat = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 20), new BurnSample(t0.AddMinutes(20), 20) }, TimeSpan.FromHours(2));
+    bool fewOk = !pFew.HasData && !pShort.HasData && !pFlat.HasData && BurnRate.Format(pFew) == "";
+
+    var samples = new System.Collections.Generic.List<BurnSample>();
+    DateTimeOffset? lastReset = null;
+    var r1 = t0.AddHours(2);
+    BurnRate.Record(samples, t0, 20, r1, ref lastReset);
+    BurnRate.Record(samples, t0.AddMinutes(10), 35, r1, ref lastReset);
+    BurnRate.Record(samples, t0.AddMinutes(20), 50, r1, ref lastReset);
+    bool beforeDrop = BurnRate.Project(samples, TimeSpan.FromHours(2)).HasData;
+    BurnRate.Record(samples, t0.AddMinutes(30), 10, r1, ref lastReset); // Pct turun tajam -> kosongkan
+    bool afterDrop = samples.Count == 1 && !BurnRate.Project(samples, TimeSpan.FromHours(2)).HasData;
+    BurnRate.Record(samples, t0.AddMinutes(40), 15, r1, ref lastReset);
+    BurnRate.Record(samples, t0.AddMinutes(50), 20, r1.AddHours(5), ref lastReset); // jendela reset berubah -> kosongkan
+    bool afterReset = samples.Count == 1;
+    bool dropOk = beforeDrop && afterDrop && afterReset;
+
+    bool burnOk = exhaustOk && safeOk && fewOk && dropOk;
+    Console.WriteLine(burnOk ? "BURN OK" : $"BURN GAGAL exh={exhaustOk} safe={safeOk} few={fewOk} drop={dropOk}");
+    if (!burnOk) fail++;
+}
+
 return fail;

@@ -188,8 +188,19 @@ public sealed class UsageView : TabView
             pct.Inlines.Add(new Run(w.Label + "  ") { FontSize = 11.5, Foreground = UI.Dim });
             pct.Inlines.Add(new Run($"{Math.Round(w.Pct)}%") { FontSize = tight ? 13 : 18, FontWeight = FontWeights.SemiBold });
             row.Children.Add(pct);
-            if (w.Reset != null)
-                row.Children.Add(UI.T("in " + UI.Span(w.Reset.Value - DateTimeOffset.Now), 11.5, UI.Dim).At(0, 1));
+            var burn = UsageService.I.Burn(u.Name, w);
+            if (w.Reset != null || burn.HasData)
+            {
+                var right = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 11.5 };
+                if (w.Reset != null)
+                    right.Inlines.Add(new Run("in " + UI.Span(w.Reset.Value - DateTimeOffset.Now)) { Foreground = UI.Dim });
+                if (burn.HasData)
+                {
+                    if (w.Reset != null) right.Inlines.Add(new Run(" · ") { Foreground = UI.Faint });
+                    right.Inlines.Add(new Run(BurnRate.Format(burn)) { Foreground = burn.WillExhaust ? UI.Bad : UI.Dim });
+                }
+                row.Children.Add(right.At(0, 1));
+            }
             host.Children.Add(row);
             var bar = new Bar(4) { Margin = new Thickness(0, 2, 0, 2) };
             host.Children.Add(bar);
@@ -241,6 +252,8 @@ public sealed class UsageView : TabView
                 t.Inlines.Add(new Run((w.Label.EndsWith("5h") ? "5h" : "weekly") + "  ") { FontSize = 11, Foreground = UI.Dim });
                 t.Inlines.Add(new Run($"{Math.Round(w.Pct)}%") { FontSize = 13, FontWeight = FontWeights.SemiBold });
                 if (w.Reset != null) t.Inlines.Add(new Run("  " + UI.Span(w.Reset.Value - DateTimeOffset.Now)) { FontSize = 10.5, Foreground = UI.Faint });
+                var burn = UsageService.I.Burn(u.Name, w);
+                if (burn.HasData) t.Inlines.Add(new Run(" · " + BurnRate.Format(burn)) { FontSize = 10.5, Foreground = burn.WillExhaust ? UI.Bad : UI.Dim });
                 cell.Children.Add(t);
                 var bar = new Bar(4) { Margin = new Thickness(0, 2, 0, 0) };
                 cell.Children.Add(bar);
