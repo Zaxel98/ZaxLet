@@ -31,7 +31,7 @@ public sealed class MonitorView : TabView
     readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Height = 24 };
     readonly List<Border> _coreBars = new();
     string _kill; DateTime _killUntil;
-    readonly StackPanel _top = new(), _gpuBox = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+    readonly StackPanel _top = new(), _diskBox = new() { Margin = new Thickness(0, 6, 0, 0) }, _gpuBox = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
     readonly Border _batHost = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
     StackPanel _rightPanel;
     Border _ovBtn, _acBtn;
@@ -119,6 +119,9 @@ public sealed class MonitorView : TabView
         b.Children.Add(_bat.At(0, 1));
         left.Children.Add(b);
 
+        // ruang disk per drive tetap
+        left.Children.Add(_diskBox);
+
         var g = UI.Cols(-1, 1, 232);
         g.Children.Add(left);
         g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(14, 2, 14, 2) }.At(0, 1));
@@ -140,7 +143,7 @@ public sealed class MonitorView : TabView
             var iv = TimeSpan.FromSeconds(PowerSaver.On ? 3 : 1);   // hemat baterai: sampel tiap 3 dtk
             if (_t.Interval != iv) _t.Interval = iv;
             _s.Sample(); Render(); await _s.SampleSlowAsync();
-            if (_visible) await PingAsync();
+            if (_visible) { await PingAsync(); await DisksAsync(); }
         };
     }
 
@@ -163,7 +166,8 @@ public sealed class MonitorView : TabView
     {
         _visible = true;
         if (_warm) Render();
-        _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync(); _ = PingAsync();
+        if (_s.Drives.Count > 0 && _diskBox.Children.Count == 0) RenderDisks();
+        _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync(); _ = PingAsync(); _ = DisksAsync();
     }
     bool _visible;   // Warm() menggambar saat tab belum terbuka: probe sensor tidak boleh ikut menyala
     public override void OnHide() { _visible = false; _t.Stop(); _probe?.Dispose(); _probe = null; }
@@ -175,6 +179,36 @@ public sealed class MonitorView : TabView
             if (await _s.SamplePingAsync() && _visible) RenderPing();
         }
         catch (Exception ex) { App.Log(ex); }
+    }
+
+    async Task DisksAsync()
+    {
+        try
+        {
+            if (await _s.SampleDisksAsync() && _visible) RenderDisks();
+        }
+        catch (Exception ex) { App.Log(ex); }
+    }
+
+    static Brush DiskBrush(SysMon.DriveSpace d) =>
+        d.FreeFrac < 0.08 || d.FreeGb < 10 ? UI.Bad :
+        d.FreeFrac < 0.15 ? UI.Warn :
+        Blue;
+
+    void RenderDisks()
+    {
+        _diskBox.Children.Clear();
+        foreach (var d in _s.Drives)
+        {
+            var row = UI.Cols(24, -1, 0);
+            row.Margin = new Thickness(0, 2, 0, 0);
+            row.Children.Add(UI.T(d.Letter, 11.5, UI.Fg, true).At(0, 0));
+            var bar = new Bar(5) { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 8, 0) };
+            bar.Set(d.UsedFrac, DiskBrush(d));
+            row.Children.Add(bar.At(0, 1));
+            row.Children.Add(UI.T(L.F("sisa {0:0.#} GB dari {1:0.#} GB", d.FreeGb, d.TotalGb), 11, UI.Dim).At(0, 2));
+            _diskBox.Children.Add(row);
+        }
     }
 
     void RenderPerf(Settings st)

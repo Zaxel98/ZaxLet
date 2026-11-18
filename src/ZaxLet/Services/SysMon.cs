@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -28,10 +29,13 @@ public sealed class SysMon
     public readonly PerfFormat.PingRing GwPing = new(), NetPing = new();
     public bool NetUp { get; private set; }
     public bool HasGateway { get; private set; }
+    public IReadOnlyList<DriveSpace> Drives { get; private set; } = Array.Empty<DriveSpace>();
+
+    public readonly record struct DriveSpace(string Letter, double FreeGb, double TotalGb, double UsedFrac, double FreeFrac);
 
     static readonly IPAddress InternetPingAddr = new(new byte[] { 1, 1, 1, 1 });
-    DateTime _pingAt = DateTime.MinValue;
-    int _pingBusy;
+    DateTime _pingAt = DateTime.MinValue, _diskAt = DateTime.MinValue;
+    int _pingBusy, _diskBusy;
     string _lastGw;
 
     Native.ProcPerf[] _prev;
@@ -194,6 +198,45 @@ public sealed class SysMon
             return reply.Status == IPStatus.Success ? reply.RoundtripTime : null;
         }
         catch { return null; }
+    }
+
+    /// <summary>Baca kapasitas dan sisa ruang tiap drive tetap; di-cache paling sering 60 detik dan dijalankan di thread latar.</summary>
+    public async Task<bool> SampleDisksAsync()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _diskAt).TotalSeconds < 60) return false;
+        if (Interlocked.CompareExchange(ref _diskBusy, 1, 0) != 0) return false;
+        try
+        {
+            _diskAt = now;
+            Drives = await Task.Run(ReadFixedDrives);
+            return true;
+        }
+        finally { Interlocked.Exchange(ref _diskBusy, 0); }
+    }
+
+    public static List<DriveSpace> ReadFixedDrives()
+    {
+        var list = new List<DriveSpace>();
+        try
+        {
+            foreach (var d in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (d.DriveType != DriveType.Fixed || !d.IsReady) continue;
+                    long total = d.TotalSize;
+                    if (total <= 0) continue;
+                    double totalGb = total / 1073741824.0;
+                    double freeGb = Math.Max(0, d.AvailableFreeSpace) / 1073741824.0;
+                    double freeFrac = Math.Clamp(freeGb / totalGb, 0, 1);
+                    list.Add(new DriveSpace(d.Name.TrimEnd('\\', '/'), freeGb, totalGb, 1.0 - freeFrac, freeFrac));
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return list;
     }
 
     /// <summary>Ambil suhu CPU dan GPU saja tanpa daftar proses (dipakai layanan peringatan ringan).</summary>
