@@ -99,6 +99,59 @@ public static class PerfFormat
     public static string Mhz(double? v) => v is null ? null : v >= 1000 ? $"{v / 1000:0.00} GHz" : $"{v:0} MHz";
     public static string Gb(double gb) => gb >= 10 ? $"{gb:0.0}" : $"{gb:0.00}";
 
+    public static int? PingRound(double? ms) => ms is { } v ? (int)Math.Round(v) : null;
+    public static string PingMs(double? ms) => ms is { } v ? $"{Math.Round(v):0} ms" : "—";
+
+    /// <summary>Tingkat warna latensi: -1 = belum ada/mati, 0 = normal (&lt;80 ms), 1 = kuning (80-200 ms), 2 = merah (&gt;200 ms atau hilang).</summary>
+    public static int PingTier(double? ms, bool hasSample) =>
+        ms is not { } v ? (hasSample ? 2 : -1) : v < 80 ? 0 : v <= 200 ? 1 : 2;
+
+    /// <summary>Ring buffer kecil (~20 sampel) untuk rata-rata, jitter sederhana, dan persentase paket hilang.</summary>
+    public sealed class PingRing
+    {
+        public const int Capacity = 20;
+        readonly long[] _buf = new long[Capacity];
+        int _head, _count;
+
+        public int Count => _count;
+        public long? Latest { get; private set; }
+        public double? AvgMs { get; private set; }
+        public double? JitterMs { get; private set; }
+        public int LossPct { get; private set; }
+
+        public void Reset()
+        {
+            _head = _count = 0;
+            Latest = null;
+            AvgMs = JitterMs = null;
+            LossPct = 0;
+        }
+
+        public void Push(long? ms)
+        {
+            _buf[_head] = ms ?? -1;
+            _head = (_head + 1) % Capacity;
+            if (_count < Capacity) _count++;
+            Latest = ms;
+
+            int valid = 0, lost = 0, jitCount = 0;
+            long sum = 0, jitSum = 0, prev = -1;
+            int start = (_head - _count + Capacity) % Capacity;
+            for (int i = 0; i < _count; i++)
+            {
+                long v = _buf[(start + i) % Capacity];
+                if (v < 0) { lost++; continue; }
+                sum += v;
+                valid++;
+                if (prev >= 0) { jitSum += Math.Abs(v - prev); jitCount++; }
+                prev = v;
+            }
+            AvgMs = valid > 0 ? (double)sum / valid : null;
+            JitterMs = jitCount > 0 ? (double)jitSum / jitCount : (valid > 0 ? 0 : null);
+            LossPct = _count > 0 ? (int)Math.Round(lost * 100.0 / _count) : 0;
+        }
+    }
+
     /// <summary>Baris overlay: tiap kelompok (CPU, RAM, GPU, VRAM) berisi nilai metrik yang dipilih dan tersedia, dipisah " · ". Kelompok kosong dilewati.</summary>
     public static List<(string Group, string Text)> Compose(HashSet<string> items, IReadOnlyDictionary<string, string> v)
     {

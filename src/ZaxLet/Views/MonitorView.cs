@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -23,6 +24,8 @@ public sealed class MonitorView : TabView
     readonly TextBlock _cpu = new() { Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
     readonly TextBlock _gpu = UI.T("", 14, null, true), _temp = UI.T("", 12, UI.Dim), _mem = UI.T("", 12.5), _bat = UI.T("", 12.5);
     readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5);
+    readonly TextBlock _gwPing = UI.T("—", 11.5, UI.Dim, true), _gwMeta = UI.T("", 10.5, UI.Dim);
+    readonly TextBlock _netPing = UI.T("—", 11.5, UI.Dim, true), _netMeta = UI.T("", 10.5, UI.Dim);
     readonly Spark _cpuSpark = new(90, 22, Blue, 40, 1.0), _downSpark = new(46, 16, Blue), _upSpark = new(46, 16, Teal);
     readonly Bar _memBar = new(5);
     readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Height = 24 };
@@ -89,6 +92,26 @@ public sealed class MonitorView : TabView
         n.Children.Add(_upSpark);
         left.Children.Add(n);
 
+        // ping: latensi gateway (LAN) & internet (1.1.1.1), diukur hanya saat tab terlihat
+        var p = UI.Cols(-1, -1);
+        p.Margin = new Thickness(0, 5, 0, 0);
+        var gwRow = new StackPanel { Orientation = Orientation.Horizontal };
+        gwRow.Children.Add(UI.T("Gateway", 11.5, UI.Dim));
+        _gwPing.Margin = new Thickness(6, 0, 0, 0);
+        _gwMeta.Margin = new Thickness(5, 0, 0, 0);
+        gwRow.Children.Add(_gwPing);
+        gwRow.Children.Add(_gwMeta);
+        p.Children.Add(gwRow.At(0, 0));
+
+        var netRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
+        netRow.Children.Add(UI.T("Internet", 11.5, UI.Dim));
+        _netPing.Margin = new Thickness(6, 0, 0, 0);
+        _netMeta.Margin = new Thickness(5, 0, 0, 0);
+        netRow.Children.Add(_netPing);
+        netRow.Children.Add(_netMeta);
+        p.Children.Add(netRow.At(0, 1));
+        left.Children.Add(p);
+
         // baterai: ikon berpetir + persen + sisa waktu
         var b = UI.Cols(0, -1);
         b.Margin = new Thickness(0, 7, 0, 0);
@@ -117,6 +140,7 @@ public sealed class MonitorView : TabView
             var iv = TimeSpan.FromSeconds(PowerSaver.On ? 3 : 1);   // hemat baterai: sampel tiap 3 dtk
             if (_t.Interval != iv) _t.Interval = iv;
             _s.Sample(); Render(); await _s.SampleSlowAsync();
+            if (_visible) await PingAsync();
         };
     }
 
@@ -139,10 +163,19 @@ public sealed class MonitorView : TabView
     {
         _visible = true;
         if (_warm) Render();
-        _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync();
+        _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync(); _ = PingAsync();
     }
     bool _visible;   // Warm() menggambar saat tab belum terbuka: probe sensor tidak boleh ikut menyala
     public override void OnHide() { _visible = false; _t.Stop(); _probe?.Dispose(); _probe = null; }
+
+    async Task PingAsync()
+    {
+        try
+        {
+            if (await _s.SamplePingAsync() && _visible) RenderPing();
+        }
+        catch (Exception ex) { App.Log(ex); }
+    }
 
     void RenderPerf(Settings st)
     {
@@ -225,6 +258,7 @@ public sealed class MonitorView : TabView
 
         _down.Text = Rate(_s.NetDownKb); _downSpark.Push(_s.NetDownKb);
         _up.Text = Rate(_s.NetUpKb); _upSpark.Push(_s.NetUpKb);
+        RenderPing();
 
         if (_s.BatPct < 0) { _batHost.Child = null; _bat.Text = ""; }
         else
@@ -264,6 +298,32 @@ public sealed class MonitorView : TabView
             row.Children.Add(UI.T(bytes >= 1L << 30 ? $"{bytes / 1073741824.0:0.0}G" : $"{bytes >> 20}M", 12.5, UI.Dim).At(0, 2));
             _top.Children.Add(row);
         }
+    }
+
+    static Brush PingBrush(int tier) => tier switch { 0 => UI.Fg, 1 => UI.Warn, 2 => UI.Bad, _ => UI.Dim };
+
+    void RenderPing()
+    {
+        RenderTarget(_s.NetUp && _s.HasGateway, _s.GwPing, _gwPing, _gwMeta);
+        RenderTarget(_s.NetUp, _s.NetPing, _netPing, _netMeta);
+    }
+
+    static void RenderTarget(bool active, PerfFormat.PingRing ring, TextBlock val, TextBlock meta)
+    {
+        if (!active || ring.Count == 0)
+        {
+            val.Text = "—";
+            val.Foreground = UI.Dim;
+            meta.Text = "";
+            return;
+        }
+        val.Text = PerfFormat.PingMs(ring.Latest);
+        val.Foreground = PingBrush(PerfFormat.PingTier(ring.Latest, ring.Count > 0));
+        var avg = PerfFormat.PingRound(ring.AvgMs);
+        var jit = PerfFormat.PingRound(ring.JitterMs);
+        meta.Text = avg is { } a
+            ? L.F("rata {0} · ±{1} · {2}%", a, jit ?? 0, ring.LossPct)
+            : L.F("hilang {0}%", ring.LossPct);
     }
 
     static string Rate(double kb) => kb >= 1024 ? $"{kb / 1024:0.0} MB/s" : $"{kb:0} KB/s";

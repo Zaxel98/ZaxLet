@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using WF = System.Windows.Forms;
 
@@ -22,6 +25,14 @@ public sealed class SysMon
     public double BatPct = -1; public bool Charging; public string BatLeft = "";
     public double? GpuUtil, GpuTemp, GpuPower, CpuTemp;
     public List<(string Name, long Bytes, string Path)> Top = new();
+    public readonly PerfFormat.PingRing GwPing = new(), NetPing = new();
+    public bool NetUp { get; private set; }
+    public bool HasGateway { get; private set; }
+
+    static readonly IPAddress InternetPingAddr = new(new byte[] { 1, 1, 1, 1 });
+    DateTime _pingAt = DateTime.MinValue;
+    int _pingBusy;
+    string _lastGw;
 
     Native.ProcPerf[] _prev;
     long _rx, _tx; DateTime _netAt;
@@ -104,6 +115,85 @@ public sealed class SysMon
         if ((DateTime.Now - _slowAt).TotalSeconds < 3) return;
         _slowAt = DateTime.Now;
         await Task.WhenAll(Task.Run(SampleTop), Task.Run(SampleGpu), SampleCpuTemp());
+    }
+
+    /// <summary>Ping Gateway (LAN) dan 1.1.1.1 (Internet) tiap ~3 dtk (atau ~6 dtk saat PowerSaver). Hanya dipanggil saat tab Monitor terlihat.</summary>
+    public async Task<bool> SamplePingAsync()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _pingAt).TotalSeconds < (PowerSaver.On ? 6 : 2.8)) return false;
+        if (Interlocked.CompareExchange(ref _pingBusy, 1, 0) != 0) return false;
+        try
+        {
+            _pingAt = now;
+            var (up, gw) = FindGateway();
+            NetUp = up;
+            if (!up)
+            {
+                HasGateway = false;
+                _lastGw = null;
+                GwPing.Reset();
+                NetPing.Reset();
+                return true;
+            }
+            if (gw == null)
+            {
+                HasGateway = false;
+                _lastGw = null;
+                GwPing.Reset();
+            }
+            else
+            {
+                HasGateway = true;
+                var gwStr = gw.ToString();
+                if (gwStr != _lastGw) { _lastGw = gwStr; GwPing.Reset(); }
+            }
+
+            var gwTask = gw != null ? PingOneAsync(gw) : Task.FromResult<long?>(null);
+            var netTask = PingOneAsync(InternetPingAddr);
+            await Task.WhenAll(gwTask, netTask);
+            if (gw != null) GwPing.Push(gwTask.Result);
+            NetPing.Push(netTask.Result);
+            return true;
+        }
+        finally { Interlocked.Exchange(ref _pingBusy, 0); }
+    }
+
+    static (bool netUp, IPAddress gw) FindGateway()
+    {
+        bool anyUp = false;
+        IPAddress ipv6 = null;
+        try
+        {
+            if (!NetworkInterface.GetIsNetworkAvailable()) return (false, null);
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                anyUp = true;
+                foreach (var g in nic.GetIPProperties().GatewayAddresses)
+                {
+                    var a = g.Address;
+                    if (a == null || IPAddress.IsLoopback(a)) continue;
+                    if (a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.Any.Equals(a))
+                        return (true, a);
+                    if (ipv6 == null && a.AddressFamily == AddressFamily.InterNetworkV6 && !IPAddress.IPv6Any.Equals(a) && !IPAddress.IPv6None.Equals(a))
+                        ipv6 = a;
+                }
+            }
+        }
+        catch { }
+        return (anyUp, ipv6);
+    }
+
+    static async Task<long?> PingOneAsync(IPAddress addr)
+    {
+        try
+        {
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync(addr, 1000);
+            return reply.Status == IPStatus.Success ? reply.RoundtripTime : null;
+        }
+        catch { return null; }
     }
 
     /// <summary>Ambil suhu CPU dan GPU saja tanpa daftar proses (dipakai layanan peringatan ringan).</summary>
