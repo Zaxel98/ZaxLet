@@ -40,7 +40,10 @@ public sealed class UsageService
 
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(12) };
+    const double AlertSec = 8;
+    const double ResetSlackMin = 2;   // toleransi geser beberapa detik pada reset_after_seconds Codex
     readonly SemaphoreSlim _gate = new(1, 1);
+    readonly Dictionary<string, (int Level, DateTimeOffset? Reset)> _alerted = new();
     DateTime _claudeNext = DateTime.MinValue, _codexNext = DateTime.MinValue;
     TimeSpan _claudeBackoff = TimeSpan.FromMinutes(2);
 
@@ -132,6 +135,54 @@ public sealed class UsageService
             if (d > today.AddDays(-7)) { p.WeekTok += v.Tok; p.WeekCost += v.Cost; }
         }
         p.Updated = DateTime.Now;
+    }
+
+    static void Ui(Action a) => System.Windows.Application.Current?.Dispatcher.BeginInvoke(a);
+
+    static string WinLabel(string label) => label switch
+    {
+        "5-hour" => L.T("5 jam"),
+        "Weekly" => L.T("Mingguan"),
+        _ => label
+    };
+
+    void CheckAlerts(ProviderUsage p)
+    {
+        if (p.Windows.Count == 0) return;
+        var s = Settings.Cur;
+        var now = DateTimeOffset.Now;
+        string msg = null;
+        int bestLevel = 0;
+        lock (_alerted)
+        {
+            foreach (var w in p.Windows)
+            {
+                if (w == null || string.IsNullOrEmpty(w.Label) || double.IsNaN(w.Pct) || w.Pct < 0) continue;
+                if (w.Reset is { } r && r < now) continue;
+                int level = w.Pct >= s.CritAt ? 2 : w.Pct >= s.WarnAt ? 1 : 0;
+                var key = p.Name + "|" + w.Label;
+                _alerted.TryGetValue(key, out var prev);
+                bool resetChanged = prev.Reset != null && w.Reset != null
+                    ? Math.Abs((w.Reset.Value - prev.Reset.Value).TotalMinutes) > ResetSlackMin
+                    : prev.Reset != w.Reset;
+                if (resetChanged) prev = default;
+                if (level == 0)
+                {
+                    if (prev.Level != 0 || resetChanged) _alerted[key] = (0, w.Reset);
+                    continue;
+                }
+                if (level > prev.Level)
+                {
+                    _alerted[key] = (level, w.Reset);
+                    if (level >= bestLevel)
+                    {
+                        bestLevel = level;
+                        msg = L.F("{0} · {1}: kuota {2}% terpakai", p.Name, WinLabel(w.Label), Math.Round(w.Pct));
+                    }
+                }
+            }
+        }
+        if (msg != null) Ui(() => IslandWindow.Instance?.Alert(msg, AlertSec));
     }
 
     // ---------- kuota Claude ----------
@@ -239,6 +290,7 @@ public sealed class UsageService
             _claudeNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
             _claudeBackoff = TimeSpan.FromMinutes(2);
             SaveCache();
+            CheckAlerts(Claude);
         }
         catch (Exception ex)
         {
@@ -319,6 +371,7 @@ public sealed class UsageService
             Claude.Error = L.F("dari aplikasi Claude Desktop, {0} lalu", UI.Span(age));
             _claudeNext = DateTime.UtcNow.AddSeconds(30);   // berkasnya lokal dan murah: begitu Claude Desktop menulis catatan baru, langsung tampil
             SaveCache();
+            CheckAlerts(Claude);
             return true;
         }
         catch (Exception ex) { App.Log(ex); return false; }
@@ -392,6 +445,7 @@ public sealed class UsageService
             Agy.Windows = wins;
             Agy.Error = wins.Count == 0 ? L.T("kuota tidak ditemukan di respons Antigravity") : null;
             _agyNext = DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.Cur.UsageRefreshSec, 1, 60));   // lokal dan murah: paling lambat tiap menit, interval Claude/Codex tidak berlaku
+            CheckAlerts(Agy);
         }
         catch (Exception ex) { Agy.Error = Why(ex); _agyNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
     }
@@ -432,6 +486,7 @@ public sealed class UsageService
             Codex.Error = null;
             _codexNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
             SaveCache();
+            CheckAlerts(Codex);
         }
         catch (Exception ex) { Codex.Error = Why(ex); _codexNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
     }
