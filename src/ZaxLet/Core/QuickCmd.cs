@@ -8,11 +8,11 @@ namespace ZaxLet;
 /// </summary>
 public static class QuickCmd
 {
-    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Unknown }
+    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Unknown }
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali";
+    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
@@ -69,6 +69,8 @@ public static class QuickCmd
                     _ => null
                 };
                 return pm != null ? new Cmd(Kind.Power, pm) : new Cmd(Kind.Unknown, "daya hemat / seimbang / performa / kembali");
+            case "jaga": case "awake":
+                return ParseAwake(arg);
             case "bt": case "baterai": case "battery":
                 return new Cmd(Kind.Bt);
             case "buka": case "open": case "ke":
@@ -91,5 +93,18 @@ public static class QuickCmd
         return int.TryParse(sub, out var mins) && mins is >= 1 and <= 480
             ? new Cmd(Kind.MusicSleep, sub, mins)
             : new Cmd(Kind.Unknown, "tidur musik 30 / akhir / mati (1-480 menit)");
+    }
+
+    static Cmd ParseAwake(string arg)
+    {
+        var lo = arg.ToLowerInvariant();
+        if (lo.Length == 0) return new Cmd(Kind.Awake, "toggle");
+        if (lo is "on" or "nyala") return new Cmd(Kind.Awake, "on");
+        if (lo is "off" or "mati") return new Cmd(Kind.Awake, "off");
+        if (lo is "status" or "cek" or "?") return new Cmd(Kind.Awake, "status");
+        if (lo.EndsWith("m") && lo.Length > 1) lo = lo[..^1].Trim();
+        return int.TryParse(lo, out var mins) && mins is >= 1 and <= 1440
+            ? new Cmd(Kind.Awake, "timer", mins)
+            : new Cmd(Kind.Unknown, "jaga [menit / on / off / status] (1-1440 menit)");
     }
 }

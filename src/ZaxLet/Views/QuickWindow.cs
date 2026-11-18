@@ -101,6 +101,8 @@ public sealed class QuickWindow : Window
                 SysActions.Radio(c.Kind == QuickCmd.Kind.Wifi ? Windows.Devices.Radios.RadioKind.WiFi : Windows.Devices.Radios.RadioKind.Bluetooth, (int)c.Value, c.Kind == QuickCmd.Kind.Wifi ? "Wi-Fi" : "Bluetooth"); msg = ""; break;
             case QuickCmd.Kind.Power:
                 SysActions.PowerPlan(c.Arg); msg = ""; break;
+            case QuickCmd.Kind.Awake:
+                msg = SysActions.Awake(c.Arg, (int)c.Value); break;
             case QuickCmd.Kind.Calc:
                 try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;
