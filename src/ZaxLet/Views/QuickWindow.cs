@@ -90,6 +90,11 @@ public sealed class QuickWindow : Window
             case QuickCmd.Kind.Sleep:
                 if (!_sleepArmed) { _sleepArmed = true; _hint.Text = L.T("Tidur? Tekan Enter sekali lagi"); _hint.Foreground = UI.Warn; return; }
                 Close(); SysActions.Sleep(); return;
+            case QuickCmd.Kind.MusicSleep:
+                if (c.Value < 0) { MediaService.I.SetSleepEndOfTrack(); msg = L.T("Tidur musik: akhir lagu"); }
+                else if (c.Value == 0) { MediaService.I.CancelSleepTimer(); msg = L.T("Tidur musik dimatikan"); }
+                else { int mins = (int)c.Value; MediaService.I.SetSleepMinutes(mins); msg = L.F("Tidur musik {0} menit", mins); }
+                break;
             case QuickCmd.Kind.Dark: case QuickCmd.Kind.Light:
                 SysActions.SetDark(c.Kind == QuickCmd.Kind.Dark); msg = L.T(c.Kind == QuickCmd.Kind.Dark ? "Tema Windows: gelap" : "Tema Windows: terang"); break;
             case QuickCmd.Kind.Wifi: case QuickCmd.Kind.Bluetooth:

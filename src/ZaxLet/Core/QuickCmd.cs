@@ -8,11 +8,11 @@ namespace ZaxLet;
 /// </summary>
 public static class QuickCmd
 {
-    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, Dark, Light, Wifi, Bluetooth, Unknown }
+    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Unknown }
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on";
+    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
@@ -51,7 +51,9 @@ public static class QuickCmd
             case "perf": case "fps": case "performa":
                 return new Cmd(Kind.Perf);
             case "kunci": case "lock": return new Cmd(Kind.Lock);
-            case "tidur": case "sleep": return new Cmd(Kind.Sleep);   // pemanggil wajib meminta konfirmasi
+            case "tidur": case "sleep":
+                if (arg.Length == 0) return new Cmd(Kind.Sleep);   // pemanggil wajib meminta konfirmasi
+                return ParseMusicSleep(arg);
             case "gelap": case "dark": return new Cmd(Kind.Dark);
             case "terang": case "light": return new Cmd(Kind.Light);
             case "wifi": case "bluetooth":
@@ -64,5 +66,20 @@ public static class QuickCmd
             default:
                 return new Cmd(Kind.Unknown, Help);
         }
+    }
+
+    static Cmd ParseMusicSleep(string arg)
+    {
+        var lo = arg.ToLowerInvariant();
+        if (lo is not ("musik" or "music") && !lo.StartsWith("musik ") && !lo.StartsWith("music "))
+            return new Cmd(Kind.Unknown, "tidur  ·  tidur musik 30 / akhir / mati");
+        int sp = lo.IndexOf(' ');
+        string sub = sp < 0 ? "" : lo[(sp + 1)..].Trim();
+        if (sub is "akhir" or "akhir lagu" or "end") return new Cmd(Kind.MusicSleep, sub, -1);
+        if (sub is "mati" or "off" or "batal" or "0") return new Cmd(Kind.MusicSleep, sub, 0);
+        if (sub.EndsWith("m") && sub.Length > 1) sub = sub[..^1].Trim();
+        return int.TryParse(sub, out var mins) && mins is >= 1 and <= 480
+            ? new Cmd(Kind.MusicSleep, sub, mins)
+            : new Cmd(Kind.Unknown, "tidur musik 30 / akhir / mati (1-480 menit)");
     }
 }
