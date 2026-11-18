@@ -21,6 +21,7 @@ public class AudioService extends Service {
     private AudioRecord rec;
     private Ws ws;
     private AudioManager am;
+    private Thread audThread;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -47,8 +48,8 @@ public class AudioService extends Service {
         } catch (Throwable e) { err = "Audio gagal: " + e.getMessage(); alive = true; shutdown(); return START_NOT_STICKY; }
         am = (AudioManager) getSystemService(AUDIO_SERVICE);
         alive = true; stopping = false;
-        Thread t = new Thread(this::run, "zaxlet-aud");
-        t.start();
+        audThread = new Thread(this::run, "zaxlet-aud");
+        audThread.start();
         return START_NOT_STICKY;
     }
 
@@ -56,19 +57,30 @@ public class AudioService extends Service {
         byte[] buf = new byte[1920];   // 10 ms
         try {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
-            ws = new Ws("/aud/ws");   // sambung dulu: bila PC tidak terjangkau, speaker HP tidak sempat dibisukan
-            ws.sock.setSendBufferSize(16384);   // buffer kirim kecil: jaringan tersendat = potongan lama dibuang AudioRecord, bukan menumpuk jadi detik tundaan
-            rec.startRecording();
-            mute(true);
+            Ws w = new Ws("/aud/ws");   // sambung dulu: bila PC tidak terjangkau, speaker HP tidak sempat dibisukan
+            synchronized (this) {
+                if (stopping) { w.close(); return; }
+                ws = w;
+            }
+            w.sock.setSendBufferSize(16384);   // buffer kirim kecil: jaringan tersendat = potongan lama dibuang AudioRecord, bukan menumpuk jadi detik tundaan
+            synchronized (this) {
+                if (stopping) return;
+                rec.startRecording();
+                mute(true);
+            }
             int tick = 0;
             while (!stopping) {
                 int n = rec.read(buf, 0, buf.length);
                 if (n < 0) break;
-                if (n > 0) ws.sendBinary(buf, n);
-                if (++tick % 50 == 0 && am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);   // tombol volume tidak boleh membunyikan speaker
+                if (n > 0) w.sendBinary(buf, n);
+                if (++tick % 50 == 0) {
+                    synchronized (this) {
+                        if (!stopping && am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);   // tombol volume tidak boleh membunyikan speaker
+                    }
+                }
             }
         } catch (Throwable e) { if (!stopping) err = "Audio berhenti: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()); }
-        shutdown();
+        finally { cleanup(); }
     }
 
     /** Volume lama disimpan di prefs: bila proses mati saat senyap, sesi berikutnya tetap memulihkan volume asli (bukan 0). */
@@ -87,10 +99,18 @@ public class AudioService extends Service {
 
     private synchronized void shutdown() {
         if (!alive) return;
-        alive = false; stopping = true;
+        stopping = true;
         try { if (ws != null) ws.close(); } catch (Exception e) { }
-        try { if (rec != null) { rec.stop(); rec.release(); } } catch (Exception e) { }
-        try { if (mp != null) mp.stop(); } catch (Exception e) { }
+        try { if (rec != null) rec.stop(); } catch (Exception e) { }
+        if (audThread == null) cleanup();
+    }
+
+    // lepas rec dan pulihkan volume hanya setelah zaxlet-aud keluar agar tidak berpacu dengan rec.read/setStreamVolume
+    private synchronized void cleanup() {
+        alive = false; stopping = true; audThread = null;
+        try { if (ws != null) { ws.close(); ws = null; } } catch (Exception e) { }
+        try { if (rec != null) { rec.stop(); rec.release(); rec = null; } } catch (Exception e) { }
+        try { if (mp != null) { mp.stop(); mp = null; } } catch (Exception e) { }
         if (am != null) mute(false);
         stopForeground(true);
         stopSelf();

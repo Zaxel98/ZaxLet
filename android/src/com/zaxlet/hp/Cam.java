@@ -37,21 +37,23 @@ final class Cam {
 
     boolean running() { return running; }
 
-    void start(int height, int fps, boolean front) {
+    synchronized void start(int height, int fps, boolean front) {
         stop();
         running = true;
+        sending = false;
         minGap = 1000 / Math.max(1, fps);
         th = new HandlerThread("cam");
         th.start();
         h = new Handler(th.getLooper());
+        final HandlerThread myTh = th;
         h.post(() -> {
-            try { open(height, front); }
-            catch (Throwable e) { error = e.toString(); stop(); }
+            try { open(height, front, myTh); }
+            catch (Throwable e) { synchronized (Cam.this) { if (running && th == myTh) { error = e.toString(); stop(); } } }
         });
     }
 
     @SuppressWarnings("MissingPermission")
-    private void open(int height, boolean front) throws Exception {
+    private void open(int height, boolean front, final HandlerThread myTh) throws Exception {
         CameraManager cm = (CameraManager) ctx.getSystemService(Context.CAMERA_SERVICE);
         String id = null;
         CameraCharacteristics cc = null;
@@ -61,69 +63,120 @@ final class Cam {
             if (f != null && (f == CameraCharacteristics.LENS_FACING_FRONT) == front) { id = s; cc = c; break; }
         }
         if (id == null) throw new Exception("kamera tidak ada");
-        sensor = cc.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        this.front = front;
-        orient = new android.view.OrientationEventListener(ctx) {
-            public void onOrientationChanged(int o) { if (o != ORIENTATION_UNKNOWN) devOrient = ((o + 45) / 90 * 90) % 360; }
-        };
-        if (orient.canDetectOrientation()) orient.enable();
+        int sensorOrient = cc.get(CameraCharacteristics.SENSOR_ORIENTATION);
         Size best = null;
         for (Size s : cc.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(ImageFormat.YUV_420_888)) {
             if (s.getWidth() < s.getHeight()) continue;
             if (best == null || Math.abs(s.getHeight() - height) < Math.abs(best.getHeight() - height)) best = s;
         }
         final Size size = best;
-        ws = new Ws("/cam/ws");
-        reader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.YUV_420_888, 2);
-        reader.setOnImageAvailableListener(r -> onFrame(r, size), h);
-        cm.openCamera(id, new CameraDevice.StateCallback() {
-            public void onOpened(CameraDevice d) {
-                dev = d;
-                try {
-                    CaptureRequest.Builder b = d.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-                    b.addTarget(reader.getSurface());
-                    d.createCaptureSession(Collections.singletonList(reader.getSurface()), new SessCb(b), h);
-                } catch (Exception e) { error = e.toString(); stop(); }
-            }
-            public void onDisconnected(CameraDevice d) { stop(); }
-            public void onError(CameraDevice d, int e) { error = "kamera error " + e; stop(); }
-        }, h);
+        // sambung WS di luar kunci agar stop() tidak terblokir I/O jaringan
+        Ws newWs = new Ws("/cam/ws");
+        synchronized (this) {
+            if (!running || th != myTh) { newWs.close(); return; }
+            sensor = sensorOrient;
+            this.front = front;
+            orient = new android.view.OrientationEventListener(ctx) {
+                public void onOrientationChanged(int o) { if (o != ORIENTATION_UNKNOWN) devOrient = ((o + 45) / 90 * 90) % 360; }
+            };
+            if (orient.canDetectOrientation()) orient.enable();
+            ws = newWs;
+            reader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.YUV_420_888, 2);
+            reader.setOnImageAvailableListener(r -> onFrame(r, size), h);
+            cm.openCamera(id, new CameraDevice.StateCallback() {
+                public void onOpened(CameraDevice d) {
+                    synchronized (Cam.this) {
+                        if (!running || th != myTh || reader == null) {
+                            try { d.close(); } catch (Exception ignored) { }
+                            return;
+                        }
+                        dev = d;
+                        try {
+                            CaptureRequest.Builder b = d.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                            b.addTarget(reader.getSurface());
+                            d.createCaptureSession(Collections.singletonList(reader.getSurface()), new SessCb(b, myTh), h);
+                        } catch (Exception e) { error = e.toString(); stop(); }
+                    }
+                }
+                public void onDisconnected(CameraDevice d) {
+                    synchronized (Cam.this) {
+                        if (th == myTh) {
+                            if (dev == null) try { d.close(); } catch (Exception ignored) { }
+                            stop();
+                        } else {
+                            try { d.close(); } catch (Exception ignored) { }
+                        }
+                    }
+                }
+                public void onError(CameraDevice d, int e) {
+                    synchronized (Cam.this) {
+                        if (th == myTh) {
+                            if (dev == null) try { d.close(); } catch (Exception ignored) { }
+                            error = "kamera error " + e;
+                            stop();
+                        } else {
+                            try { d.close(); } catch (Exception ignored) { }
+                        }
+                    }
+                }
+            }, h);
+        }
     }
 
     // kelas bernama (bukan anonim di dalam anonim): d8 versi build-tools lama gagal pada EnclosingMethod bersarang di bawah JDK baru
     private final class SessCb extends CameraCaptureSession.StateCallback {
         private final CaptureRequest.Builder b;
-        SessCb(CaptureRequest.Builder b) { this.b = b; }
+        private final HandlerThread myTh;
+        SessCb(CaptureRequest.Builder b, HandlerThread myTh) { this.b = b; this.myTh = myTh; }
         @Override public void onConfigured(CameraCaptureSession s) {
-            sess = s;
-            try { s.setRepeatingRequest(b.build(), null, h); } catch (Exception e) { error = e.toString(); stop(); }
+            synchronized (Cam.this) {
+                if (!running || th != myTh || dev == null) {
+                    try { s.close(); } catch (Exception ignored) { }
+                    return;
+                }
+                sess = s;
+                try { s.setRepeatingRequest(b.build(), null, h); } catch (Exception e) { error = e.toString(); stop(); }
+            }
         }
-        @Override public void onConfigureFailed(CameraCaptureSession s) { error = "konfigurasi gagal"; stop(); }
+        @Override public void onConfigureFailed(CameraCaptureSession s) {
+            synchronized (Cam.this) {
+                try { s.close(); } catch (Exception ignored) { }
+                if (running && th == myTh) { error = "konfigurasi gagal"; stop(); }
+            }
+        }
     }
 
     private void onFrame(ImageReader r, Size size) {
-        Image img = r.acquireLatestImage();
-        if (img == null) return;
+        byte[] data;
+        Ws w;
         try {
-            long now = System.currentTimeMillis();
-            if (!running || now - last < minGap || sending) return;
-            last = now;
-            int w = img.getWidth(), hh = img.getHeight();
-            byte[] nv21 = toNv21(img, w, hh);
-            int ow = w, oh = hh;
-            // putar searah jarum jam agar tegak: rumus resmi Android untuk JPEG (depan dan belakang berbeda arah)
-            int rot = front ? (sensor - devOrient + 360) % 360 : (sensor + devOrient) % 360;
-            if (rot == 90 || rot == 270) { nv21 = rotate(nv21, w, hh, rot == 90); ow = hh; oh = w; }
-            else if (rot == 180) nv21 = rotate180(nv21, w, hh);
-            jpg.reset();
-            new YuvImage(nv21, ImageFormat.NV21, ow, oh, null).compressToJpeg(new Rect(0, 0, ow, oh), 70, jpg);
-            sending = true;
-            byte[] data = jpg.toByteArray();
-            try { ws.sendBinary(data, data.length); } finally { sending = false; }
+            synchronized (this) {
+                if (!running || reader != r || ws == null || sending) return;
+                Image img = r.acquireLatestImage();
+                if (img == null) return;
+                try {
+                    long now = System.currentTimeMillis();
+                    if (now - last < minGap) return;
+                    last = now;
+                    int w0 = img.getWidth(), hh = img.getHeight();
+                    byte[] nv21 = toNv21(img, w0, hh);
+                    int ow = w0, oh = hh;
+                    // putar searah jarum jam agar tegak: rumus resmi Android untuk JPEG (depan dan belakang berbeda arah)
+                    int rot = front ? (sensor - devOrient + 360) % 360 : (sensor + devOrient) % 360;
+                    if (rot == 90 || rot == 270) { nv21 = rotate(nv21, w0, hh, rot == 90); ow = hh; oh = w0; }
+                    else if (rot == 180) nv21 = rotate180(nv21, w0, hh);
+                    jpg.reset();
+                    new YuvImage(nv21, ImageFormat.NV21, ow, oh, null).compressToJpeg(new Rect(0, 0, ow, oh), 70, jpg);
+                    data = jpg.toByteArray();
+                    w = ws;
+                    sending = true;
+                } finally { img.close(); }
+            }
+            try { w.sendBinary(data, data.length); }
+            finally { synchronized (this) { sending = false; } }
         } catch (Exception e) {
-            error = e.toString();
-            stop();
-        } finally { img.close(); }
+            synchronized (this) { if (running) { error = e.toString(); stop(); } }
+        }
     }
 
     private static byte[] toNv21(Image img, int w, int h) {
@@ -167,7 +220,7 @@ final class Cam {
         return d;
     }
 
-    void stop() {
+    synchronized void stop() {
         running = false;
         if (orient != null) { orient.disable(); orient = null; }
         try { if (sess != null) sess.close(); } catch (Exception e) { }
@@ -176,5 +229,6 @@ final class Cam {
         if (ws != null) ws.close();
         sess = null; dev = null; reader = null; ws = null;
         if (th != null) { th.quitSafely(); th = null; }
+        h = null;
     }
 }
