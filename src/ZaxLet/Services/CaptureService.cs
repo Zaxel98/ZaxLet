@@ -67,15 +67,30 @@ public static class CaptureService
 
     public static void Area() => IslandWindow.Instance.HideForCapture(() =>
     {
-        var shot = Grab(Screen);
+        var scr = Screen;
+        var shot = Grab(scr);
         var picker = new AreaPicker(shot);
         picker.ShowDialog();
         if (picker.Result is { } r)
         {
-            using var crop = shot.Clone(r, SDI.PixelFormat.Format32bppArgb);
-            Finish(new SD.Bitmap(crop));
+            var crop = shot.Clone(r, SDI.PixelFormat.Format32bppArgb);
+            shot.Dispose();
+            var win = new AnnotateWindow(crop, scr);
+            win.ShowDialog();
+            if (win.Result is { } annotated)
+            {
+                crop.Dispose();
+                Finish(annotated);
+            }
+            else
+            {
+                Finish(crop);
+            }
         }
-        shot.Dispose();
+        else
+        {
+            shot.Dispose();
+        }
     });
 
     public static void ToggleRecord()
