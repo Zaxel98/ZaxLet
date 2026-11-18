@@ -36,6 +36,7 @@ public sealed class MediaService
     GlobalSystemMediaTransportControlsSession _s;
     TimeSpan _pos;
     DateTimeOffset _posAt;
+    readonly object _posLk = new();
     string _key = "", _rawTitle = "", _rawArtist = "", _baseKey = "", _vidTitle = "", _vidArtist = "";
     int _coverTries, _propTries;
     List<YtChapters.Chapter> _chap;          // segmen video kompilasi (null = video biasa)
@@ -58,23 +59,30 @@ public sealed class MediaService
     // geseran waktu lirik per lagu (kunci "artis|judul"); lagu tanpa geseran sendiri memakai nilai bawaan di Pengaturan.
     // Referensi Title/Artist dibandingkan supaya pencarian kamus tidak jalan di tiap bingkai karaoke.
     string _offT, _offA; int _offV;
+    readonly object _offLk = new();
     string OffKey => $"{Artist}|{Title}".ToLowerInvariant();
     public int Offset
     {
         get
         {
-            if (!ReferenceEquals(_offT, Title) || !ReferenceEquals(_offA, Artist))
-            { _offT = Title; _offA = Artist; _offV = Settings.Cur.LyricOffsets.TryGetValue(OffKey, out var v) ? v : Settings.Cur.LyricOffsetMs; }
-            return _offV;
+            lock (_offLk)
+            {
+                if (!ReferenceEquals(_offT, Title) || !ReferenceEquals(_offA, Artist))
+                { _offT = Title; _offA = Artist; _offV = Settings.Cur.LyricOffsets.TryGetValue(OffKey, out var v) ? v : Settings.Cur.LyricOffsetMs; }
+                return _offV;
+            }
         }
         set
         {
             value = Math.Clamp(value, -5000, 5000);
-            var d = Settings.Cur.LyricOffsets;
-            if (value == Settings.Cur.LyricOffsetMs) d.Remove(OffKey);
-            else { if (d.Count >= 1000) d.Remove(d.Keys.First()); d[OffKey] = value; }
-            _offV = value; _offT = Title; _offA = Artist;
-            Settings.Save();
+            lock (_offLk)
+            {
+                var d = Settings.Cur.LyricOffsets;
+                if (value == Settings.Cur.LyricOffsetMs) d.Remove(OffKey);
+                else { if (d.Count >= 1000) d.Remove(d.Keys.First()); d[OffKey] = value; }
+                _offV = value; _offT = Title; _offA = Artist;
+                Settings.Save();
+            }
         }
     }
 
@@ -221,7 +229,7 @@ public sealed class MediaService
         }
         var key = $"{p.Artist}|{p.Title}";
         bool newTrack = key != _baseKey;
-        if (newTrack) { _vidTitle = p.Title ?? ""; _vidArtist = p.Artist ?? ""; _chap = null; _chapIdx = -1; _chapOpen = false; _goodTimeline = false; }
+        if (newTrack) { _vidTitle = p.Title ?? ""; _vidArtist = p.Artist ?? ""; _chap = null; _chapIdx = -1; _chapOpen = false; lock (_posLk) _goodTimeline = false; }
         if (_chapIdx < 0)   // pada video bersegmen, judul dan artis mengikuti segmen yang sedang diputar
         {
             _rawTitle = _vidTitle; _rawArtist = _vidArtist;
@@ -318,17 +326,20 @@ public sealed class MediaService
     {
         var s = _s;
         if (s == null) return;
-        if ((DateTime.Now - _uiaAt).TotalSeconds < 6) return;   // posisi dari halaman YouTube sedang segar: lebih tepercaya daripada laporan peramban
+        lock (_posLk) if ((DateTime.Now - _uiaAt).TotalSeconds < 6) return;   // posisi dari halaman YouTube sedang segar: lebih tepercaya daripada laporan peramban
         var t = s.GetTimelineProperties();
         if (t == null) return;   // sesi sedang ditutup: WinRT bisa mengembalikan null
         var len = t.EndTime - t.StartTime;
-        // peramban kadang melaporkan timeline kosong (posisi 0, durasi 0) di tengah lagu, mis. saat halaman mengosongkan state media:
-        // abaikan, lanjutkan dari perkiraan terakhir yang sah daripada melompat ke awal
-        if (len <= TimeSpan.Zero && _goodTimeline) return;
-        if (len > TimeSpan.Zero) _goodTimeline = true;
-        RawDuration = len;
-        _pos = t.Position - t.StartTime;
-        _posAt = t.LastUpdatedTime;
+        lock (_posLk)
+        {
+            // peramban kadang melaporkan timeline kosong (posisi 0, durasi 0) di tengah lagu, mis. saat halaman mengosongkan state media:
+            // abaikan, lanjutkan dari perkiraan terakhir yang sah daripada melompat ke awal
+            if (len <= TimeSpan.Zero && _goodTimeline) return;
+            if (len > TimeSpan.Zero) _goodTimeline = true;
+            RawDuration = len;
+            _pos = t.Position - t.StartTime;
+            _posAt = t.LastUpdatedTime;
+        }
     }
 
     bool _goodTimeline;
@@ -353,11 +364,17 @@ public sealed class MediaService
         if (!Settings.Cur.YtProgress || !HasSession || string.IsNullOrEmpty(_vidTitle) || Interlocked.Exchange(ref _uiaBusy, 1) == 1) return;
         try
         {
-            var r = YtProgress.Read(_vidTitle, RawDuration.TotalSeconds);
-            if (r == null || (DateTime.Now - _seekAt).TotalSeconds < 2) return;   // setelah lompatan kita, tunggu halaman menerapkannya
-            _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bilah memuat detik yang dibulatkan ke bawah
-            _posAt = DateTimeOffset.Now; _uiaAt = DateTime.Now; _goodTimeline = true;
-            if (RawDuration <= TimeSpan.Zero) RawDuration = TimeSpan.FromSeconds(r.Max);
+            double dur;
+            lock (_posLk) dur = RawDuration.TotalSeconds;
+            var r = YtProgress.Read(_vidTitle, dur);
+            if (r == null) return;
+            lock (_posLk)
+            {
+                if ((DateTime.Now - _seekAt).TotalSeconds < 2) return;   // setelah lompatan kita, tunggu halaman menerapkannya
+                _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bilah memuat detik yang dibulatkan ke bawah
+                _posAt = DateTimeOffset.Now; _uiaAt = DateTime.Now; _goodTimeline = true;
+                if (RawDuration <= TimeSpan.Zero) RawDuration = TimeSpan.FromSeconds(r.Max);
+            }
         }
         catch (Exception ex) { App.Log(ex); }
         finally { Volatile.Write(ref _uiaBusy, 0); }
@@ -365,9 +382,10 @@ public sealed class MediaService
 
     TimeSpan RawPosition()
     {
-        var p = _pos;
-        if (Playing) p += DateTimeOffset.Now - _posAt;
-        if (RawDuration > TimeSpan.Zero && p > RawDuration) p = RawDuration;
+        TimeSpan p, dur; DateTimeOffset at;
+        lock (_posLk) { p = _pos; at = _posAt; dur = RawDuration; }
+        if (Playing) p += DateTimeOffset.Now - at;
+        if (dur > TimeSpan.Zero && p > dur) p = dur;
         return p < TimeSpan.Zero ? TimeSpan.Zero : p;
     }
 
@@ -511,11 +529,12 @@ public sealed class MediaService
     /// Perkiraan lama baris: (rentang tampil, lama bersuara yang diharapkan, bersambung?). Baris yang disusul baris lain dalam 7 dtk dianggap
     /// mengisi jaraknya (lagu lambat/panjang tidak lagi terisi terlalu cepat); baris sebelum jeda panjang memakai panjang teks.
     /// </summary>
-    (double Span, double VoicedExpect, bool Contiguous) Est(int i)
+    (double Span, double VoicedExpect, bool Contiguous) Est(int i, List<LyricLine> L = null)
     {
-        var l = Lyrics[i];
-        bool hasNext = i + 1 < Lyrics.Count;
-        double gap = hasNext ? (Lyrics[i + 1].At - l.At).TotalSeconds : 5;
+        L ??= Lyrics;
+        var l = L[i];
+        bool hasNext = i + 1 < L.Count;
+        double gap = hasNext ? (L[i + 1].At - l.At).TotalSeconds : 5;
         if (hasNext && gap <= 7)
         {
             double basis = Math.Max(0.8, gap - 0.25);
@@ -538,9 +557,18 @@ public sealed class MediaService
     public int VocalLabel()
     {
         var L = Lyrics;
+        var key = _key;
         if (L.Count == 0 || !Playing) return -1;
-        if (_lblKey != _key) { _lblKey = _key; AudioFlow.I.ResetModel(); }   // lagu baru: mulai belajar dari nol
-        var t = Position() + TimeSpan.FromMilliseconds(Offset);
+        if (_lblKey != key) { _lblKey = key; AudioFlow.I.ResetModel(); }   // lagu baru: mulai belajar dari nol
+        var p = RawPosition();
+        if (_chap != null)
+        {
+            var chapAt = _chapAt;
+            // perpindahan bab harus di thread UI; kembalikan -1 dulu agar model tidak dilatih dengan lirik bab lama
+            if (_chapIdx < 0 || p < chapAt || p >= _chapEnd) { Ui(() => SyncChapter(RawPosition())); return -1; }
+            p = p > chapAt ? p - chapAt : TimeSpan.Zero;
+        }
+        var t = p + TimeSpan.FromMilliseconds(Offset);
         if (t < L[0].At - TimeSpan.FromSeconds(0.6)) return t > TimeSpan.FromSeconds(1) ? 0 : -1;
         int lo = 0, hi = L.Count - 1, i = -1;
         while (lo <= hi) { int m = (lo + hi) / 2; if (L[m].At <= t) { i = m; lo = m + 1; } else hi = m - 1; }
@@ -549,7 +577,7 @@ public sealed class MediaService
         var next = i + 1 < L.Count ? L[i + 1].At : l.At + TimeSpan.FromSeconds(6);
         double since = (t - l.At).TotalSeconds, gap = (next - l.At).TotalSeconds, left = (next - t).TotalSeconds;
         if (string.IsNullOrWhiteSpace(l.Text) || l.Text.Trim() == "♪") return since > 0.6 && left > 0.5 ? 0 : -1;
-        double est = Est(i).Span;
+        double est = Est(i, L).Span;
         if (since >= 0.5 && since <= est * 0.65) return 1;
         if (gap >= 5 && since >= est + 1.2 && left >= 0.6) return 0;
         return -1;
@@ -587,7 +615,7 @@ public sealed class MediaService
     {
         var s = _s;
         if (s == null) return;
-        _pos = to; _posAt = DateTimeOffset.Now; _seekAt = DateTime.Now;
+        lock (_posLk) { _pos = to; _posAt = DateTimeOffset.Now; _seekAt = DateTime.Now; }
         _ = s.TryChangePlaybackPositionAsync(to.Ticks);
     }
 
