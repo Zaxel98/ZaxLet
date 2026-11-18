@@ -55,26 +55,46 @@ public sealed class ClipboardView : TabView
         string q = _find.Text.Trim();
         foreach (var it in ClipboardHistory.Items.ToArray())
         {
-            if (q.Length > 0 && it.Text.IndexOf(q, StringComparison.CurrentCultureIgnoreCase) < 0) continue;
+            if (q.Length > 0)
+            {
+                string hay = it.IsImage ? L.F("Gambar {0}x{1}", it.Width, it.Height) : it.Text;
+                if (hay.IndexOf(q, StringComparison.CurrentCultureIgnoreCase) < 0) continue;
+            }
             var item = it;
             var row = UI.Cols(-1, 0, 0);
             row.Margin = new Thickness(0, 0, 0, 4);
-            var text = UI.T(ClipboardHistory.OneLine(item.Text), 12.5, UI.Fg);
-            var cell = new Border { Background = UI.Card, CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 6, 10, 6), Cursor = System.Windows.Input.Cursors.Hand, Child = text };
-            cell.ToolTip = (item.Text.Length > 400 ? item.Text[..400] + "…" : item.Text) + L.T("\nKlik: salin · seret: ke aplikasi lain");
-            cell.MouseLeftButtonUp += (_, _) => { ClipboardHistory.CopyBack(item); text.Text = L.T("Disalin ✓"); };
-            Point? down = null;   // seret ke aplikasi lain: pola yang sama dengan ShelfView
-            cell.PreviewMouseLeftButtonDown += (_, e) => down = e.GetPosition(cell);
-            cell.MouseMove += (_, e) =>
+            Border cell;
+            if (item.IsImage)
             {
-                if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || down == null) return;
-                var d = e.GetPosition(cell) - down.Value;
-                if (Math.Abs(d.X) < 6 && Math.Abs(d.Y) < 6) return;
-                down = null;
-                IslandWindow.Instance?.KeepOpen(true);
-                try { DragDrop.DoDragDrop(cell, new DataObject(DataFormats.UnicodeText, item.Text), DragDropEffects.Copy); }
-                finally { IslandWindow.Instance?.KeepOpen(false); }
-            };
+                var img = new Image { Source = item.Thumb, MaxWidth = ClipboardHistory.ThumbWidth, MaxHeight = 72, Stretch = Stretch.Uniform, SnapsToDevicePixels = true };
+                var info = UI.T($"{item.Width}×{item.Height}", 11.5, UI.Dim);
+                info.Margin = new Thickness(10, 0, 0, 0);
+                var body = UI.Cols(0, -1);
+                body.Children.Add(img);
+                body.Children.Add(info.At(0, 1));
+                cell = new Border { Background = UI.Card, CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 6, 10, 6), Cursor = System.Windows.Input.Cursors.Hand, Child = body };
+                cell.ToolTip = L.F("Gambar {0}×{1}\nKlik: salin", item.Width, item.Height);
+                cell.MouseLeftButtonUp += (_, _) => { ClipboardHistory.CopyBack(item); info.Text = L.T("Disalin ✓"); };
+            }
+            else
+            {
+                var text = UI.T(ClipboardHistory.OneLine(item.Text), 12.5, UI.Fg);
+                cell = new Border { Background = UI.Card, CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 6, 10, 6), Cursor = System.Windows.Input.Cursors.Hand, Child = text };
+                cell.ToolTip = (item.Text.Length > 400 ? item.Text[..400] + "…" : item.Text) + L.T("\nKlik: salin · seret: ke aplikasi lain");
+                cell.MouseLeftButtonUp += (_, _) => { ClipboardHistory.CopyBack(item); text.Text = L.T("Disalin ✓"); };
+                Point? down = null;   // seret ke aplikasi lain: pola yang sama dengan ShelfView
+                cell.PreviewMouseLeftButtonDown += (_, e) => down = e.GetPosition(cell);
+                cell.MouseMove += (_, e) =>
+                {
+                    if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || down == null) return;
+                    var d = e.GetPosition(cell) - down.Value;
+                    if (Math.Abs(d.X) < 6 && Math.Abs(d.Y) < 6) return;
+                    down = null;
+                    IslandWindow.Instance?.KeepOpen(true);
+                    try { DragDrop.DoDragDrop(cell, new DataObject(DataFormats.UnicodeText, item.Text), DragDropEffects.Copy); }
+                    finally { IslandWindow.Instance?.KeepOpen(false); }
+                };
+            }
             row.Children.Add(cell);
             var pin = UI.IconBtn("", () => ClipboardHistory.TogglePin(item), 11, null);
             ((TextBlock)pin.Child).Foreground = item.Pinned ? UI.Accent : UI.Faint;
