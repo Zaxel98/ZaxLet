@@ -99,6 +99,8 @@ public sealed class QuickWindow : Window
                 SysActions.SetDark(c.Kind == QuickCmd.Kind.Dark); msg = L.T(c.Kind == QuickCmd.Kind.Dark ? "Tema Windows: gelap" : "Tema Windows: terang"); break;
             case QuickCmd.Kind.Wifi: case QuickCmd.Kind.Bluetooth:
                 SysActions.Radio(c.Kind == QuickCmd.Kind.Wifi ? Windows.Devices.Radios.RadioKind.WiFi : Windows.Devices.Radios.RadioKind.Bluetooth, (int)c.Value, c.Kind == QuickCmd.Kind.Wifi ? "Wi-Fi" : "Bluetooth"); msg = ""; break;
+            case QuickCmd.Kind.Power:
+                SysActions.PowerPlan(c.Arg); msg = ""; break;
             case QuickCmd.Kind.Calc:
                 try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;
