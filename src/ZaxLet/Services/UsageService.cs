@@ -44,6 +44,8 @@ public sealed class UsageService
     const double ResetSlackMin = 2;   // toleransi geser beberapa detik pada reset_after_seconds Codex
     readonly SemaphoreSlim _gate = new(1, 1);
     readonly Dictionary<string, (int Level, DateTimeOffset? Reset)> _alerted = new();
+    readonly Dictionary<string, BurnState> _burn = new();
+    sealed class BurnState { public readonly List<BurnSample> Samples = new(); public DateTimeOffset? Reset; }
     DateTime _claudeNext = DateTime.MinValue, _codexNext = DateTime.MinValue;
     TimeSpan _claudeBackoff = TimeSpan.FromMinutes(2);
 
@@ -146,9 +148,36 @@ public sealed class UsageService
         _ => label
     };
 
+    public BurnProjection Burn(string providerName, QuotaWindow w)
+    {
+        if (w == null || string.IsNullOrEmpty(w.Label) || w.Reset is not { } reset) return default;
+        lock (_burn)
+        {
+            if (!_burn.TryGetValue(providerName + "|" + w.Label, out var st)) return default;
+            return BurnRate.Project(st.Samples, reset - DateTimeOffset.Now);
+        }
+    }
+
+    void RecordBurn(ProviderUsage p)
+    {
+        var now = DateTimeOffset.Now;
+        lock (_burn)
+        {
+            foreach (var w in p.Windows)
+            {
+                if (w == null || string.IsNullOrEmpty(w.Label) || double.IsNaN(w.Pct) || w.Pct < 0) continue;
+                if (w.Reset is { } r && r < now) continue;
+                var key = p.Name + "|" + w.Label;
+                if (!_burn.TryGetValue(key, out var st)) _burn[key] = st = new BurnState();
+                BurnRate.Record(st.Samples, now, w.Pct, w.Reset, ref st.Reset);
+            }
+        }
+    }
+
     void CheckAlerts(ProviderUsage p)
     {
         if (p.Windows.Count == 0) return;
+        RecordBurn(p);
         var s = Settings.Cur;
         var now = DateTimeOffset.Now;
         string msg = null;
