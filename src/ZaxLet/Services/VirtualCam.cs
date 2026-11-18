@@ -29,7 +29,7 @@ public static class VirtualCam
     public static bool Available => File.Exists(DllPath);
     public static string Status = "";
 
-    static IntPtr _cam;
+    static CancellationTokenSource _cts;
     static Thread _t;
     static volatile bool _run;
     static bool _phoneOn;
@@ -125,31 +125,35 @@ public static class VirtualCam
         if (_run) return;
         if (NeedsSetup) { EnsureSetup(Start); return; }
         if (!Available) { Status = "softcam.dll tidak ada"; return; }
+        if (_t?.IsAlive == true && !_t.Join(1500)) { Status = "Kamera virtual masih dalam proses berhenti"; return; }
+        IntPtr cam;
         try
         {
             _ratio = Settings.Cur.VCamRatio; (W, H) = SizeFor(_ratio);
-            _cam = scCreateCamera(W, H, Fps);
-            if (_cam == IntPtr.Zero) { Status = "Kamera virtual gagal dibuat (mungkin sudah dipakai proses lain)"; return; }
+            cam = scCreateCamera(W, H, Fps);
+            if (cam == IntPtr.Zero) { Status = "Kamera virtual gagal dibuat (mungkin sudah dipakai proses lain)"; return; }
         }
         catch (Exception ex) { App.Log(ex); Status = "softcam.dll tidak bisa dimuat: " + ex.Message; return; }
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
         _run = true;
         Status = "Aktif";
-        _t = new Thread(Loop) { IsBackground = true, Name = "vcam" };
+        _t = new Thread(() => Loop(cam, ct)) { IsBackground = true, Name = "vcam" };
         _t.Start();
     }
 
     public static void Stop()
     {
         _run = false;
-        _t?.Join(1500);
-        if (_cam != IntPtr.Zero) { scDeleteCamera(_cam); _cam = IntPtr.Zero; }
+        _cts?.Cancel();
+        _t?.Join(1500);   // kamera dihapus oleh Loop saat keluar agar tidak use-after-free bila Join habis waktu
         if (_phoneOn) { ShareServer.I.Command("cam off"); _phoneOn = false; }
         Status = "Mati";
     }
 
     // Satu thread: susun bingkai terbaru ke kanvas (ukuran mengikuti rasio) dan kirim 30 fps. scSendFrame mengatur ritme sendiri.
     // Rasio berganti (pengaturan, atau HP dimiringkan = landscape) bila bertahan >1,5 dtk: kamera dibuat ulang dengan ukuran baru.
-    static void Loop()
+    static void Loop(IntPtr cam, CancellationToken ct)
     {
         Bitmap canvas = null; Graphics g = null;
         void Make()
@@ -159,52 +163,59 @@ public static class VirtualCam
             g = Graphics.FromImage(canvas);
             g.InterpolationMode = InterpolationMode.HighQualityBilinear;
         }
-        Make();
         Image src = null;
-        int tick = 0;
-        var diffSince = DateTime.MaxValue;
-        while (_run)
+        try
         {
-            try
+            Make();
+            int tick = 0;
+            var diffSince = DateTime.MaxValue;
+            while (!ct.IsCancellationRequested)
             {
-                var s = Settings.Cur;
-                bool fresh = false;
-                if (PhoneCam.Seq != _seq && PhoneCam.Latest is { } jpg)
+                try
                 {
-                    _seq = PhoneCam.Seq;
-                    src?.Dispose();
-                    src = Image.FromStream(new MemoryStream(jpg));
-                    fresh = true;
-                }
-                else if (src == null || !PhoneCam.Active) { Placeholder(g, PhoneCam.Active ? "" : (ShareServer.I.AppCount == 0 ? "Buka aplikasi ZaxLet HP di HP" : "Menyalakan kamera HP…")); src?.Dispose(); src = null; }
-
-                var want = s.VCamAuto && src != null && src.Width > src.Height ? "16:9" : s.VCamRatio;
-                if (want != _ratio)
-                {
-                    if (diffSince == DateTime.MaxValue) diffSince = DateTime.Now;
-                    else if ((DateTime.Now - diffSince).TotalSeconds > 1.5)
+                    var s = Settings.Cur;
+                    bool fresh = false;
+                    if (PhoneCam.Seq != _seq && PhoneCam.Latest is { } jpg)
                     {
-                        var (nw, nh) = SizeFor(want);
-                        scDeleteCamera(_cam);
-                        W = nw; H = nh; _ratio = want;
-                        _cam = scCreateCamera(W, H, Fps);
-                        if (_cam == IntPtr.Zero) { Status = "Kamera virtual gagal dibuat ulang"; _run = false; break; }
-                        Make();
-                        fresh = true; diffSince = DateTime.MaxValue;
+                        _seq = PhoneCam.Seq;
+                        src?.Dispose();
+                        src = Image.FromStream(new MemoryStream(jpg));
+                        fresh = true;
                     }
+                    else if (src == null || !PhoneCam.Active) { Placeholder(g, PhoneCam.Active ? "" : (ShareServer.I.AppCount == 0 ? "Buka aplikasi ZaxLet HP di HP" : "Menyalakan kamera HP…")); src?.Dispose(); src = null; }
+
+                    var want = s.VCamAuto && src != null && src.Width > src.Height ? "16:9" : s.VCamRatio;
+                    if (want != _ratio)
+                    {
+                        if (diffSince == DateTime.MaxValue) diffSince = DateTime.Now;
+                        else if ((DateTime.Now - diffSince).TotalSeconds > 1.5)
+                        {
+                            var (nw, nh) = SizeFor(want);
+                            scDeleteCamera(cam);
+                            W = nw; H = nh; _ratio = want;
+                            cam = scCreateCamera(W, H, Fps);
+                            if (cam == IntPtr.Zero) { Status = "Kamera virtual gagal dibuat ulang"; _run = false; break; }
+                            Make();
+                            fresh = true; diffSince = DateTime.MaxValue;
+                        }
+                    }
+                    else diffSince = DateTime.MaxValue;
+                    if (fresh && src != null) Compose(g, src, s);
+
+                    var bd = canvas.LockBits(new Rectangle(0, 0, W, H), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+                    try { scSendFrame(cam, bd.Scan0); } finally { canvas.UnlockBits(bd); }
+
+                    // tiap ~0,5 dtk: cek apakah ada aplikasi yang memakai kamera virtual, nyalakan/matikan kamera HP
+                    if (++tick % (Fps / 2) == 0) Follow(scIsConnected(cam));
                 }
-                else diffSince = DateTime.MaxValue;
-                if (fresh && src != null) Compose(g, src, s);
-
-                var bd = canvas.LockBits(new Rectangle(0, 0, W, H), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
-                try { scSendFrame(_cam, bd.Scan0); } finally { canvas.UnlockBits(bd); }
-
-                // tiap ~0,5 dtk: cek apakah ada aplikasi yang memakai kamera virtual, nyalakan/matikan kamera HP
-                if (++tick % (Fps / 2) == 0) Follow(scIsConnected(_cam));
+                catch (Exception ex) { App.Log(ex); Thread.Sleep(200); }
             }
-            catch (Exception ex) { App.Log(ex); Thread.Sleep(200); }
         }
-        src?.Dispose(); g?.Dispose(); canvas?.Dispose();
+        finally
+        {
+            src?.Dispose(); g?.Dispose(); canvas?.Dispose();
+            if (cam != IntPtr.Zero) scDeleteCamera(cam);
+        }
     }
 
     static void Follow(bool consumer)
