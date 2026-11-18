@@ -27,9 +27,12 @@ public static class UpdateCheck
         return Version.TryParse(tag, out var v) ? v : null;
     }
 
-    public static bool HostAllowed(string url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps &&
-        (u.Host.EndsWith("github.com", StringComparison.OrdinalIgnoreCase) || u.Host.EndsWith("githubusercontent.com", StringComparison.OrdinalIgnoreCase));
+    public static bool HostAllowed(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps) return false;
+        static bool Match(string h, string d) => h.Equals(d, StringComparison.OrdinalIgnoreCase) || h.EndsWith("." + d, StringComparison.OrdinalIgnoreCase);
+        return Match(u.Host, "github.com") || Match(u.Host, "githubusercontent.com");
+    }
 
     /// <summary>Rilis terbaru dari JSON API GitHub; null bila tidak ada aset pembaruan. Hash kosong bila rilis tidak menyertakannya (pemanggil harus menolak).</summary>
     public static Release ParseRelease(string json)

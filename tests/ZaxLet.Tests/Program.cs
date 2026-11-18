@@ -169,7 +169,8 @@ UpdateCheck.ExtractSafe(okZip, Path.Combine(tmpU, "out-ok"));
 bool updOk = rel is { Tag: "v1.1.0", Sha256: var h1, Url: "https://github.com/a/b/u.zip" } && h1 == new string('a', 64) && UpdateCheck.IsNewer(rel.Version, new Version(1, 0, 0)) && !UpdateCheck.IsNewer(new Version(1, 0, 0), new Version(1, 0, 0))
              && rel2 is { Sha256: "", ShaUrl: "https://github.com/a/b/u.sha" } && UpdateCheck.IsNewer(rel2.Version, new Version(1, 1, 0)) && UpdateCheck.ParseRelease("{\"tag_name\":\"v2\",\"assets\":[]}") == null
              && UpdateCheck.ReadShaFile(sha + "  ZaxLet-update.zip\n") == sha && UpdateCheck.ReadShaFile("zzz") == "" && UpdateCheck.Verify(okZip, sha) && !UpdateCheck.Verify(okZip, new string('0', 64)) && !UpdateCheck.Verify(okZip, "")
-             && UpdateCheck.HostAllowed("https://github.com/x") && UpdateCheck.HostAllowed("https://objects.githubusercontent.com/x") && !UpdateCheck.HostAllowed("https://evilgithub.com.evil.io/x") && !UpdateCheck.HostAllowed("http://github.com/x")
+             && UpdateCheck.HostAllowed("https://github.com/x") && UpdateCheck.HostAllowed("https://api.github.com/x") && UpdateCheck.HostAllowed("https://objects.githubusercontent.com/x")
+             && !UpdateCheck.HostAllowed("https://evilgithub.com/x") && !UpdateCheck.HostAllowed("https://github.com.evil.io/x") && !UpdateCheck.HostAllowed("https://evil-githubusercontent.com/x") && !UpdateCheck.HostAllowed("http://github.com/x")
              && slip && File.Exists(Path.Combine(tmpU, "out-ok", "sub", "a.txt")) && !File.Exists(Path.Combine(tmpU, "evil.txt"));
 Directory.Delete(tmpU, true);
 Console.WriteLine(updOk ? "UPDATE OK" : "UPDATE GAGAL");
