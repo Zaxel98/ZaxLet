@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using Windows.Devices.Radios;
@@ -131,5 +132,164 @@ public static class SysActions
         }
         catch (Exception ex) { App.Log(ex); msg = L.T("Rencana daya ini tidak tersedia di PC ini"); }
         IslandWindow.Instance?.Alert(msg, 3, null, false);
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)] static extern uint SetThreadExecutionState(uint esFlags);
+    const uint ES_CONTINUOUS = 0x80000000;
+    const uint ES_SYSTEM_REQUIRED = 0x0001;
+    const uint ES_DISPLAY_REQUIRED = 0x0002;
+
+    static readonly object _awakeLock = new();
+    static Thread _awakeThread;
+    static AutoResetEvent _awakeWake;
+    static bool _awakeDesired;
+    static bool _awakeApplied;
+    static bool _awakeTimed;
+    static DateTime _awakeUntilUtc;
+    static long _awakeGen;
+    static Timer _awakeTimer;
+    static bool _awakeExitHooked;
+
+    static void EnsureAwakeThreadLocked()
+    {
+        if (!_awakeExitHooked && System.Windows.Application.Current != null)
+        {
+            _awakeExitHooked = true;
+            System.Windows.Application.Current.Exit += (_, _) => StopAwake(silent: true, expectedGen: -1);
+        }
+        if (_awakeThread != null) return;
+        _awakeWake = new AutoResetEvent(false);
+        _awakeThread = new Thread(() =>
+        {
+            while (true)
+            {
+                lock (_awakeLock)
+                {
+                    while (_awakeDesired != _awakeApplied)
+                    {
+                        bool want = _awakeDesired;
+                        try
+                        {
+                            uint res = SetThreadExecutionState(want ? ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED : ES_CONTINUOUS);
+                            if (res != 0) _awakeApplied = want;
+                            else
+                            {
+                                App.Log(new InvalidOperationException("SetThreadExecutionState gagal: " + Marshal.GetLastWin32Error()));
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            App.Log(ex);
+                            break;
+                        }
+                    }
+                    Monitor.PulseAll(_awakeLock);
+                }
+                _awakeWake.WaitOne();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "ZaxLet.KeepAwake"
+        };
+        _awakeThread.Start();
+    }
+
+    static string StopAwake(bool silent, long expectedGen, bool expired = false)
+    {
+        lock (_awakeLock)
+        {
+            if (expectedGen >= 0 && expectedGen != _awakeGen) return "";
+            _awakeGen++;
+            _awakeTimer?.Dispose();
+            _awakeTimer = null;
+            _awakeTimed = false;
+            _awakeUntilUtc = default;
+            _awakeDesired = false;
+            if (_awakeThread != null)
+            {
+                _awakeWake.Set();
+                var deadline = Environment.TickCount64 + 500;
+                while (_awakeApplied && Environment.TickCount64 < deadline)
+                    Monitor.Wait(_awakeLock, 100);
+            }
+        }
+        string msg = expired ? L.T("Jaga layar: mati (waktu habis)") : L.T("Jaga layar: mati");
+        if (!silent) IslandWindow.Instance?.Alert(msg, 3, null, false);
+        return msg;
+    }
+
+    static string StartAwake(int minutes)
+    {
+        try
+        {
+            lock (_awakeLock)
+            {
+                EnsureAwakeThreadLocked();
+                long gen = ++_awakeGen;
+                _awakeTimer?.Dispose();
+                if (minutes > 0)
+                {
+                    _awakeTimed = true;
+                    _awakeUntilUtc = DateTime.UtcNow.AddMinutes(minutes);
+                    _awakeTimer = new Timer(_ => StopAwake(silent: false, expectedGen: gen, expired: true), null, TimeSpan.FromMinutes(minutes), Timeout.InfiniteTimeSpan);
+                }
+                else
+                {
+                    _awakeTimed = false;
+                    _awakeUntilUtc = default;
+                    _awakeTimer = null;
+                }
+                _awakeDesired = true;
+                _awakeWake.Set();
+                var deadline = Environment.TickCount64 + 500;
+                while (!_awakeApplied && Environment.TickCount64 < deadline)
+                    Monitor.Wait(_awakeLock, 100);
+                if (!_awakeApplied)
+                {
+                    _awakeDesired = false;
+                    _awakeTimer?.Dispose();
+                    _awakeTimer = null;
+                    _awakeTimed = false;
+                    _awakeUntilUtc = default;
+                    return L.T("Jaga layar: gagal mengaktifkan");
+                }
+            }
+            return minutes > 0 ? L.F("Jaga layar: nyala ({0} menit)", minutes) : L.T("Jaga layar: nyala");
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            return L.T("Jaga layar: gagal mengaktifkan");
+        }
+    }
+
+    /// <summary>Jaga layar dan PC tetap menyala sementara lewat SetThreadExecutionState di thread latar khusus.</summary>
+    public static string Awake(string mode, int minutes = 0)
+    {
+        if (mode == "status")
+        {
+            lock (_awakeLock)
+            {
+                if (!_awakeDesired && !_awakeApplied) return L.T("Jaga layar: mati");
+                if (_awakeTimed)
+                {
+                    int rem = Math.Max(1, (int)Math.Ceiling((_awakeUntilUtc - DateTime.UtcNow).TotalMinutes));
+                    return L.F("Jaga layar: nyala ({0} menit lagi)", rem);
+                }
+                return L.T("Jaga layar: nyala");
+            }
+        }
+        if (mode == "off") return StopAwake(silent: true, expectedGen: -1);
+        if (mode == "toggle")
+        {
+            bool active;
+            lock (_awakeLock) active = _awakeDesired || _awakeApplied;
+            return active ? StopAwake(silent: true, expectedGen: -1) : StartAwake(0);
+        }
+        if (mode == "on") return StartAwake(0);
+        if (mode == "timer") return StartAwake(minutes);
+        return L.T("Jaga layar: mati");
     }
 }
