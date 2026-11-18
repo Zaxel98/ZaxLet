@@ -28,6 +28,8 @@ public static class PhoneNotifs
     public static readonly Dictionary<string, string> Apps = new();            // pkg -> nama aplikasi (untuk daftar pengaturan)
     static readonly Dictionary<string, string> Dismissed = new();                // key -> isi saat disilang; tampil lagi bila HP mengirim isi baru
     static readonly Dictionary<string, ImageSource> Icons = new();
+    static bool _inCall, _callPaused, _sawPaused;
+    static PhoneNotifs() => MediaService.I.Changed += () => Ui(OnMediaChanged);
     public static int Received;                                                 // diagnosis: jumlah pesan notifikasi dari HP
     public static string LastPkg = ""; public static DateTime LastAt;
     public static event Action<PhoneNotif> Posted;                              // perlu ditampilkan di pill (UI thread)
@@ -103,6 +105,13 @@ public static class PhoneNotifs
                 case "x":   // teks dari HP -> clipboard PC
                     PhoneText.FromPhone(Str(r, "text"), dev.Name);
                     break;
+                case "c":   // status panggilan di HP (mulai/selesai)
+                    if (r.TryGetProperty("on", out var on) && (on.ValueKind == JsonValueKind.True || on.ValueKind == JsonValueKind.False))
+                    {
+                        var active = on.GetBoolean();
+                        Ui(() => OnCall(active));
+                    }
+                    break;
                 case "r":
                     lock (Active) Active.Remove(r.GetProperty("k").GetString());
                     Notify(null, false);
@@ -114,9 +123,43 @@ public static class PhoneNotifs
 
     static string Str(JsonElement r, string k) => r.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : "";
 
+    static void Ui(Action a) => System.Windows.Application.Current?.Dispatcher.BeginInvoke(a);
+
+    static void OnCall(bool on)
+    {
+        if (on)
+        {
+            IslandWindow.Instance?.Alert(L.T("Panggilan masuk di HP"));
+            if (_inCall) return;
+            _inCall = true;
+            if (MediaService.I.HasSession && MediaService.I.Playing)
+            {
+                _callPaused = true;
+                _sawPaused = false;
+                MediaService.I.PlayPause();
+            }
+            return;
+        }
+        _inCall = false;
+        if (_callPaused)
+        {
+            _callPaused = false;
+            if (MediaService.I.HasSession && !MediaService.I.Playing)
+                MediaService.I.PlayPause();
+        }
+    }
+
+    static void OnMediaChanged()
+    {
+        if (!_callPaused) return;
+        if (!MediaService.I.HasSession) { _callPaused = false; return; }
+        if (!MediaService.I.Playing) _sawPaused = true;
+        else if (_sawPaused) _callPaused = false;   // pengguna mengubah pemutaran sendiri: jangan lanjutkan otomatis
+    }
+
     static void Notify(PhoneNotif show, bool listChanged)
     {
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        Ui(() =>
         {
             Changed?.Invoke();
             if (show != null) Posted?.Invoke(show);
