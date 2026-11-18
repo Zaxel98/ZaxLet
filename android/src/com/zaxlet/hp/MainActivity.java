@@ -260,8 +260,15 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onRequestPermissionsResult(int c, String[] p, int[] r) {
-        if (c == 7) startService();
-        else if (c == 10 && r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio();
+        if (c == 7) {
+            boolean denied = r.length == 0;
+            for (int g : r) if (g != PackageManager.PERMISSION_GRANTED) { denied = true; break; }
+            if (Net.paired()) {
+                // Start directly instead of calling startService() so denied permissions don't re-trigger requestPermissions.
+                startForegroundService(new Intent(this, ConnService.class));
+                toast(denied ? "Layanan diaktifkan (sebagian izin ditolak)" : "Layanan diaktifkan");
+            }
+        } else if (c == 10 && r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio();
     }
 
     /** Audio HP -> PC: izin rekam audio, lalu dialog rekam layar Android (wajib untuk menangkap audio aplikasi lain); hasilnya diteruskan ke AudioService. */
