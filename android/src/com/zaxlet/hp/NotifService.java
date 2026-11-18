@@ -31,6 +31,7 @@ public class NotifService extends NotificationListenerService {
     static volatile String lastErr = "";
     static final Map<String, Notification.Action> replies = new ConcurrentHashMap<>();
     static final Set<String> iconSent = ConcurrentHashMap.newKeySet();
+    static final Set<String> calls = ConcurrentHashMap.newKeySet();   // kunci notifikasi panggilan aktif agar tidak memicu berulang
     private static final ExecutorService io = Executors.newSingleThreadExecutor();   // jaringan tidak boleh di main thread
 
     @Override public void onListenerConnected() {
@@ -42,6 +43,7 @@ public class NotifService extends NotificationListenerService {
 
     @Override public void onListenerDisconnected() {
         inst = null;
+        calls.clear();
         try { requestRebind(new android.content.ComponentName(this, NotifService.class)); } catch (Exception e) { }
     }
 
@@ -59,8 +61,12 @@ public class NotifService extends NotificationListenerService {
 
     @Override public void onNotificationRemoved(final StatusBarNotification sbn) {
         io.execute(() -> {
-            replies.remove(sbn.getKey());
-            try { ConnService.send(new JSONObject().put("t", "r").put("k", sbn.getKey()).toString()); } catch (Exception e) { }
+            String k = sbn.getKey();
+            replies.remove(k);
+            if (calls.remove(k) && calls.isEmpty()) {
+                try { ConnService.send(new JSONObject().put("t", "c").put("on", false).toString()); } catch (Exception e) { }
+            }
+            try { ConnService.send(new JSONObject().put("t", "r").put("k", k).toString()); } catch (Exception e) { }
         });
     }
 
@@ -72,6 +78,15 @@ public class NotifService extends NotificationListenerService {
             if (!Net.paired() || sbn.getPackageName().equals(getPackageName())) return;
             Notification n = sbn.getNotification();
             if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
+            if (Notification.CATEGORY_CALL.equals(n.category)) {
+                String k = sbn.getKey();
+                if (!calls.contains(k)) {
+                    boolean first = calls.isEmpty();
+                    if (calls.add(k) && first) {
+                        if (!ConnService.send(new JSONObject().put("t", "c").put("on", true).toString())) calls.remove(k);
+                    }
+                }
+            }
             if (Notification.CATEGORY_TRANSPORT.equals(n.category)) return;   // pemutar musik: sudah ditangani ZaxLet lewat SMTC di PC
             Bundle e = n.extras;
             String title = str(e.getCharSequence(Notification.EXTRA_TITLE));
