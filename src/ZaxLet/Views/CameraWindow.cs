@@ -19,6 +19,7 @@ public sealed class CameraWindow : Window
     static CameraWindow _i;
     readonly Image _img = new() { Stretch = Stretch.Uniform };
     readonly TextBlock _status = UI.T("Menunggu kamera HP…", 12, UI.Dim);
+    readonly TextBlock _pauseTxt = UI.T("Jeda", 12, UI.Fg);
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(33) };
     readonly ScaleTransform _flip = new(1, 1);
     readonly RotateTransform _rot = new(0);
@@ -58,6 +59,9 @@ public sealed class CameraWindow : Window
         void Add(string text, Action a) { var b = UI.Btn(UI.T(text, 12, UI.Fg), a, UI.Card, 10, new Thickness(10, 4, 10, 4)); b.Margin = new Thickness(0, 0, 6, 0); bar.Children.Add(b); }
         Add(L.T("Nyalakan kamera HP"), CamOn);
         Add(L.T("Matikan"), () => ShareServer.I.Command("cam off"));
+        var pauseBtn = UI.Btn(_pauseTxt, TogglePause, UI.Card, 10, new Thickness(10, 4, 10, 4));
+        pauseBtn.Margin = new Thickness(0, 0, 6, 0);
+        bar.Children.Add(pauseBtn);
         Add(L.T("Cermin"), () => _flip.ScaleX = -_flip.ScaleX);
         Add(L.T("Putar 90°"), () => _rot.Angle = (_rot.Angle + 90) % 360);
         Add(L.T("Salin tautan MJPEG (OBS/VLC)"), () => Clipboard.SetText(ShareServer.I.MjpegUrl));
@@ -80,9 +84,30 @@ public sealed class CameraWindow : Window
         SourceInitialized += (_, _) => { int on = 1; DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, 20, ref on, sizeof(int)); };
     }
 
+    void TogglePause()
+    {
+        if (!VirtualCam.Running) { IslandWindow.Instance?.Alert(L.T("Kamera virtual belum aktif"), 4); return; }
+        VirtualCam.Paused = !VirtualCam.Paused;
+        UpdatePauseUi();
+    }
+
+    void UpdatePauseUi()
+    {
+        bool paused = VirtualCam.Running && VirtualCam.Paused;
+        _pauseTxt.Text = L.T(paused ? "Lanjut" : "Jeda");
+        _pauseTxt.Foreground = paused ? UI.Warn : UI.Fg;
+        if (paused) { _status.Text = "● " + L.T("Kamera dijeda"); _status.Foreground = UI.Warn; }
+        else
+        {
+            _status.Text = PhoneCam.Active ? L.F("{0} · langsung", PhoneCam.Device) : L.T("Menunggu kamera HP… buka halaman ZaxLet di HP → Pakai kamera HP");
+            _status.Foreground = UI.Dim;
+        }
+    }
+
     void Tick()
     {
-        _status.Text = PhoneCam.Active ? L.F("{0} · langsung", PhoneCam.Device) : L.T("Menunggu kamera HP… buka halaman ZaxLet di HP → Pakai kamera HP");
+        UpdatePauseUi();
+        if (VirtualCam.Running && VirtualCam.Paused) return;
         var seq = PhoneCam.Seq;
         if (seq == _seq || PhoneCam.Latest is not { } jpg) return;
         _seq = seq;
