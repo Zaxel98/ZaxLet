@@ -55,9 +55,19 @@ public static class CaptureService
         IslandWindow.Instance?.Alert(L.F("Tangkapan tersimpan · {0}", Path.GetFileName(file)), 5);
     }
 
-    public static void Full() => IslandWindow.Instance.HideForCapture(() => Finish(Grab(Screen)));
+    static void HideAndCapture(Action capture)
+    {
+        PinWindow.SetAllVisible(false);
+        IslandWindow.Instance.HideForCapture(() =>
+        {
+            try { capture(); }
+            finally { PinWindow.SetAllVisible(true); }
+        });
+    }
 
-    public static void Window() => IslandWindow.Instance.HideForCapture(() =>
+    public static void Full() => HideAndCapture(() => Finish(Grab(Screen)));
+
+    public static void Window() => HideAndCapture(() =>
     {
         var r = Native.ForegroundBounds();
         if (r == null) { Finish(Grab(Screen)); return; }
@@ -65,7 +75,7 @@ public static class CaptureService
         Finish(Grab(b.Width > 10 && b.Height > 10 ? b : Screen));
     });
 
-    public static void Area() => IslandWindow.Instance.HideForCapture(() =>
+    public static void Area() => HideAndCapture(() =>
     {
         var scr = Screen;
         var shot = Grab(scr);
@@ -93,6 +103,26 @@ public static class CaptureService
         }
     });
 
+    public static void PinArea() => HideAndCapture(() =>
+    {
+        var scr = Screen;
+        var shot = Grab(scr);
+        try
+        {
+            var picker = new AreaPicker(shot);
+            picker.ShowDialog();
+            if (picker.Result is { } r)
+            {
+                var crop = shot.Clone(r, SDI.PixelFormat.Format32bppArgb);
+                PinWindow.Show(crop, new System.Drawing.Rectangle(scr.X + r.X, scr.Y + r.Y, r.Width, r.Height));
+            }
+        }
+        finally
+        {
+            shot.Dispose();
+        }
+    });
+
     public static void ToggleRecord()
     {
         if (Recording) { StopRecord(); return; }
@@ -107,7 +137,7 @@ public static class CaptureService
             IslandWindow.Instance?.Alert(L.T("Rekam layar butuh ffmpeg (belum ditemukan)"), 8);
             return;
         }
-        IslandWindow.Instance.HideForCapture(() =>
+        HideAndCapture(() =>
         {
             var shot = Grab(Screen);
             try

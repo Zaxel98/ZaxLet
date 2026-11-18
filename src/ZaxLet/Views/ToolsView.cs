@@ -14,7 +14,7 @@ public sealed class ToolsView : TabView
     public override string Key => "tools";
     public override string Glyph => "";
     public override string Label => "Tangkap";
-    public override double H => 140;
+    public override double H => 210;
 
     readonly Action _paintMic;
 
@@ -54,10 +54,11 @@ public sealed class ToolsView : TabView
         root.Children.Add(head);
 
         var recBg = UI.B(RecBgHex);
-        var row = new UniformGrid { Rows = 1, Columns = 5 };
+        var row = new UniformGrid { Rows = 2, Columns = 3 };
         row.Children.Add(Tile("", "Layar penuh", CaptureService.Full, UI.Card));
         row.Children.Add(Tile("", "Area", CaptureService.Area, UI.Card));
         row.Children.Add(Tile("", "Jendela", CaptureService.Window, UI.Card));
+        row.Children.Add(Tile("", "Sematkan area", CaptureService.PinArea, UI.Card));
         row.Children.Add(Tile("", "Rekam layar", CaptureService.ToggleRecord, recBg));
         row.Children.Add(Tile("", "Rekam area", CaptureService.ToggleRecordArea, recBg));
         root.Children.Add(row.At(1));
@@ -75,7 +76,7 @@ public sealed class ToolsView : TabView
         t.HorizontalAlignment = HorizontalAlignment.Center;
         sp.Children.Add(t);
         var b = UI.Btn(sp, click, bg, 14, new Thickness(6, 11, 6, 11));
-        b.Margin = new Thickness(4, 0, 4, 0);
+        b.Margin = new Thickness(4);
         return b;
     }
 }
