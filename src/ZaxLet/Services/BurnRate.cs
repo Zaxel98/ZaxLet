@@ -64,7 +64,8 @@ public static class BurnRate
         if (rate <= 0 || double.IsNaN(rate) || double.IsInfinity(rate)) return default;
 
         double remPct = Math.Max(0, 100.0 - samples[^1].Pct);
-        var exhaustIn = TimeSpan.FromHours(remPct / rate);
+        // laju sangat kecil membuat jam tak terhingga: TimeSpan.FromHours meluap (OverflowException) dan merusak render tab AI; batasi ke 1 juta jam
+        var exhaustIn = TimeSpan.FromHours(Math.Min(remPct / rate, 1e6));
         return new BurnProjection(true, exhaustIn < resetIn, exhaustIn, rate);
     }
 

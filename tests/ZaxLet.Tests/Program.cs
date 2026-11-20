@@ -511,7 +511,9 @@ if (!bridgeOk) fail++;
     var pFew = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(20), 30) }, TimeSpan.FromHours(2));
     var pShort = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(4), 20), new BurnSample(t0.AddMinutes(8), 30) }, TimeSpan.FromHours(2));
     var pFlat = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 20), new BurnSample(t0.AddMinutes(20), 20) }, TimeSpan.FromHours(2));
-    bool fewOk = !pFew.HasData && !pShort.HasData && !pFlat.HasData && BurnRate.Format(pFew) == "";
+    // laju mendekati nol: dulu TimeSpan.FromHours meluap dan merusak render tab AI
+    var pTiny = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 20.0000000001), new BurnSample(t0.AddMinutes(20), 20.0000000002) }, TimeSpan.FromHours(2));
+    bool fewOk = !pFew.HasData && !pShort.HasData && !pFlat.HasData && BurnRate.Format(pFew) == "" && !pTiny.WillExhaust;
 
     var samples = new System.Collections.Generic.List<BurnSample>();
     DateTimeOffset? lastReset = null;
