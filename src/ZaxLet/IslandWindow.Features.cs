@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
@@ -216,6 +217,9 @@ public partial class IslandWindow
     float? _lastVol; bool? _lastMute, _lastMic; bool? _lastCaps; int? _lastBright;
     HashSet<string> _lastPrivacy = new();
     bool _netWarned;
+    bool? _lastNetUp;
+    DispatcherTimer _netDebounceT;
+    bool _netClosed;
 
     void InitFeatures()
     {
@@ -283,6 +287,40 @@ public partial class IslandWindow
         _slowT = new Timer(_ => SlowPoll(), null, Timeout.Infinite, Timeout.Infinite);
         ShareServer.I.RunChanged += () => Dispatcher.BeginInvoke(SyncTimers);
         SyncTimers();
+
+        _lastNetUp = SysMon.DecideNetAlert(null, SysMon.DetectConnectionType() != "none").NextState;
+        _netDebounceT = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _netDebounceT.Tick += (_, _) =>
+        {
+            _netDebounceT.Stop();
+            if (_netClosed) return;
+            var (next, alertOnline) = SysMon.DecideNetAlert(_lastNetUp, SysMon.DetectConnectionType() != "none");
+            _lastNetUp = next;
+            if (alertOnline is { } online && Settings.Cur.OsdOn)
+                Alert(L.T(online ? "Internet tersambung lagi" : "Internet terputus"), 3, null, sound: false);
+        };
+        NetworkChange.NetworkAvailabilityChanged += OnNetAvailChanged;
+        NetworkChange.NetworkAddressChanged += OnNetAddrChanged;
+        Closed += (_, _) =>
+        {
+            _netClosed = true;
+            _netDebounceT?.Stop();
+            NetworkChange.NetworkAvailabilityChanged -= OnNetAvailChanged;
+            NetworkChange.NetworkAddressChanged -= OnNetAddrChanged;
+        };
+    }
+
+    void OnNetAvailChanged(object sender, NetworkAvailabilityEventArgs e) => ScheduleNetCheck();
+    void OnNetAddrChanged(object sender, EventArgs e) => ScheduleNetCheck();
+    void ScheduleNetCheck()
+    {
+        if (_netClosed) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_netClosed || _netDebounceT == null) return;
+            _netDebounceT.Stop();
+            _netDebounceT.Start();
+        });
     }
 
     // ---------- klik pada pill ----------

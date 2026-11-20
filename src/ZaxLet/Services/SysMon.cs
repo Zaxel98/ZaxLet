@@ -29,6 +29,7 @@ public sealed class SysMon
     public readonly PerfFormat.PingRing GwPing = new(), NetPing = new();
     public bool NetUp { get; private set; }
     public bool HasGateway { get; private set; }
+    public string ConnectionType { get; private set; } = "none";
     public IReadOnlyList<DriveSpace> Drives { get; private set; } = Array.Empty<DriveSpace>();
 
     public readonly record struct DriveSpace(string Letter, double FreeGb, double TotalGb, double UsedFrac, double FreeFrac);
@@ -102,6 +103,75 @@ public sealed class SysMon
             if (dt > 0) { NetDownKb = Math.Max(0, (rx - _rx) / 1024.0 / dt); NetUpKb = Math.Max(0, (tx - _tx) / 1024.0 / dt); }
         }
         _rx = rx; _tx = tx; _netAt = now;
+        ConnectionType = DetectConnectionType();
+    }
+
+    static readonly string[] VirtualKeywords = { "Hyper-V", "vEthernet", "VMware", "WSL" };
+    static readonly string[] VpnKeywords = { "Tailscale", "WireGuard", "OpenVPN", "Wintun", "TAP-", "VPN" };
+
+    /// <summary>Keputusan peringatan internet setelah debounce: bacaan pertama tidak memicu; hanya berubah bila status benar-benar berbeda.</summary>
+    public static (bool? NextState, bool? AlertOnline) DecideNetAlert(bool? lastState, bool currentUp)
+    {
+        if (lastState == null) return (currentUp, null);
+        if (lastState.Value == currentUp) return (lastState, null);
+        return (currentUp, currentUp);
+    }
+
+    /// <summary>True bila adapter adalah loopback atau virtual (Hyper-V, VMware, WSL).</summary>
+    public static bool IsVirtualAdapter(NetworkInterfaceType type, string name, string description)
+    {
+        if (type == NetworkInterfaceType.Loopback) return true;
+        foreach (var kw in VirtualKeywords)
+            if (ContainsCi(name, kw) || ContainsCi(description, kw)) return true;
+        return false;
+    }
+
+    /// <summary>Klasifikasikan adapter aktif ke "VPN/Tailscale", "Wi-Fi", "Ethernet", atau null bila diabaikan.</summary>
+    public static string ClassifyConnection(NetworkInterfaceType type, string name, string description)
+    {
+        if (type is NetworkInterfaceType.Tunnel or NetworkInterfaceType.Ppp) return "VPN/Tailscale";
+        foreach (var kw in VpnKeywords)
+            if (ContainsCi(name, kw) || ContainsCi(description, kw)) return "VPN/Tailscale";
+        if (IsVirtualAdapter(type, name, description)) return null;
+        if (type == NetworkInterfaceType.Wireless80211) return "Wi-Fi";
+        if (type is NetworkInterfaceType.Ethernet or NetworkInterfaceType.GigabitEthernet
+            or NetworkInterfaceType.FastEthernetT or NetworkInterfaceType.FastEthernetFx
+            or NetworkInterfaceType.Ethernet3Megabit) return "Ethernet";
+        return null;
+    }
+
+    static bool ContainsCi(string s, string kw) => !string.IsNullOrEmpty(s) && s.Contains(kw, StringComparison.OrdinalIgnoreCase);
+
+    static bool HasValidGateway(NetworkInterface nic)
+    {
+        foreach (var g in nic.GetIPProperties().GatewayAddresses)
+        {
+            var a = g.Address;
+            if (a == null || IPAddress.IsLoopback(a)) continue;
+            if (a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.Any.Equals(a)) return true;
+            if (a.AddressFamily == AddressFamily.InterNetworkV6 && !IPAddress.IPv6Any.Equals(a) && !IPAddress.IPv6None.Equals(a)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Jenis koneksi aktif (VPN/Tailscale, Ethernet, Wi-Fi, atau none) dari antarmuka Up yang memiliki gateway.</summary>
+    public static string DetectConnectionType()
+    {
+        try
+        {
+            if (!NetworkInterface.GetIsNetworkAvailable()) return "none";
+            string best = null;
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                var kind = ClassifyConnection(nic.NetworkInterfaceType, nic.Name, nic.Description);
+                if (kind == null || !HasValidGateway(nic)) continue;
+                if (kind == "VPN/Tailscale") return kind;
+                if (kind == "Ethernet" || best == null) best = kind;
+            }
+            return best ?? "none";
+        }
+        catch { return "none"; }
     }
 
     void SampleBattery()
