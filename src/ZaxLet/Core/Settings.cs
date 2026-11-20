@@ -221,6 +221,8 @@ public sealed class Settings
     public string QuietTo { get; set; } = "06:00";
     public double PomoWork { get; set; } = 25;
     public double PomoBreak { get; set; } = 5;
+    public int PrompterWpm { get; set; } = 130;                // kecepatan teleprompter (kata/menit, 60-300)
+    public int PrompterFont { get; set; } = 28;                // ukuran huruf teleprompter (16-48)
 
     // minum: pengingat lembut, hanya saat jam aktif, dan (mode pintar) hanya bila asupan tertinggal dari jadwal
     public bool WaterOn { get; set; } = true;

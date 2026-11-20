@@ -570,6 +570,9 @@ public sealed class SettingsView : TabView
                 yield return ("~Pintasan Meet: mic", Txt(() => s.AppKeys.GetValueOrDefault("meet.mic", ""), v => s.AppKeys["meet.mic"] = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~Pintasan Meet: kamera", Txt(() => s.AppKeys.GetValueOrDefault("meet.cam", ""), v => s.AppKeys["meet.cam"] = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~Atur ulang sambungan Discord", Act("Atur ulang", () => { s.DiscordClientId = s.DiscordSecret = ""; s.DiscordSetupAsked = false; DiscordRpc.I.ResetToken(); Render(); }, UI.Warn));
+                yield return ("§Teleprompter", null);
+                yield return ("Kecepatan gulir (kata/menit)", Num(60, 300, 10, " kpm", () => Math.Clamp(s.PrompterWpm, 60, 300), v => s.PrompterWpm = v));
+                yield return ("Ukuran huruf", Num(16, 48, 2, " pt", () => Math.Clamp(s.PrompterFont, 16, 48), v => s.PrompterFont = v));
                 break;
 
             case "addons":

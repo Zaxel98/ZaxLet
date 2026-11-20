@@ -142,6 +142,18 @@ public sealed class QuickWindow : Window
                     msg = L.T(n > 0 ? "Dikirim ke HP" : "HP belum tersambung");
                 }
                 break;
+            case QuickCmd.Kind.Prompter:
+                if (string.Equals(c.Arg, "stop", StringComparison.OrdinalIgnoreCase) || (string.IsNullOrEmpty(c.Arg) && PrompterWindow.IsOpen))
+                {
+                    PrompterWindow.Stop(); msg = ""; break;
+                }
+                if (!TryReadPrompterScript(c.Arg, out var script, out var err))
+                {
+                    msg = err; break;
+                }
+                Close();
+                PrompterWindow.Start(script);
+                return;
             case QuickCmd.Kind.Calc:
                 try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;
@@ -154,5 +166,36 @@ public sealed class QuickWindow : Window
         }
         Close();
         if (msg.Length > 0) isl?.Alert(msg, 3, null, false);
+    }
+
+    static bool TryReadPrompterScript(string arg, out string script, out string error)
+    {
+        script = ""; error = "";
+        if (string.IsNullOrEmpty(arg))
+        {
+            try { if (Clipboard.ContainsText()) script = Clipboard.GetText(); } catch { }
+        }
+        else
+        {
+            var p = arg.Length >= 2 && arg[0] == '"' && arg[^1] == '"' ? arg[1..^1].Trim() : arg;
+            if (p.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                if (System.IO.File.Exists(p))
+                {
+                    if (new System.IO.FileInfo(p).Length > 200 * 1024) { error = L.T("Berkas terlalu besar (maks 200 KB)"); return false; }
+                    try { script = System.IO.File.ReadAllText(p, System.Text.Encoding.UTF8); }
+                    catch { error = L.T("Gagal membaca berkas"); return false; }
+                }
+                else if (System.IO.Path.IsPathRooted(p) || p.Contains('\\') || p.Contains('/'))
+                {
+                    error = L.T("Berkas tidak ditemukan"); return false;
+                }
+                else script = arg;
+            }
+            else script = arg;
+        }
+        if (string.IsNullOrWhiteSpace(script)) { error = L.T("Tidak ada naskah"); return false; }
+        if (script.Length > 20000) script = script[..20000];
+        return true;
     }
 }
