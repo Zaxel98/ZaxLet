@@ -10,6 +10,7 @@ using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ZaxLet;
@@ -313,7 +314,14 @@ public sealed class ShareServer
                 if (tls)
                 {
                     var ssl = new SslStream(ns, false);
-                    await ssl.AuthenticateAsServerAsync(_cert, false, SslProtocols.Tls12 | SslProtocols.Tls13, false);
+                    using var authCts = new CancellationTokenSource(30000);
+                    await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                    {
+                        ServerCertificate = _cert,
+                        ClientCertificateRequired = false,
+                        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                        CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+                    }, authCts.Token);
                     ns = ssl;
                 }
                 using var owned = ns;
@@ -321,9 +329,10 @@ public sealed class ShareServer
                 var head = new MemoryStream();
                 var buf = new byte[8192];
                 int end = -1;
+                using (var headCts = new CancellationTokenSource(30000))
                 while (end < 0)
                 {
-                    int n = await ns.ReadAsync(buf);
+                    int n = await ns.ReadAsync(buf, headCts.Token);
                     if (n <= 0) return;
                     head.Write(buf, 0, n);
                     end = IndexOfHeaderEnd(head.GetBuffer(), (int)head.Length);
@@ -372,7 +381,7 @@ public sealed class ShareServer
                 else if (rq[0] == "GET" && path == "/cam") await Send(ns, 200, "text/html; charset=utf-8", CamPage());
                 else if (rq[0] == "GET" && path == "/cam/ws" && hdr.TryGetValue("sec-websocket-key", out var wk)) await CamSocket(ns, wk, dev?.Name ?? "HP");
                 else if (rq[0] == "GET" && path == "/aud/ws" && hdr.TryGetValue("sec-websocket-key", out var ak)) await AudSocket(ns, ak);
-                else if (rq[0] == "GET" && path == "/cam.mjpg") await Mjpeg(ns);
+                else if (rq[0] == "GET" && path == "/cam.mjpg") await Mjpeg(ns, c);
                 else if (rq[0] == "GET" && path == "/cam.jpg" && PhoneCam.Latest is { } jpg) await Send(ns, 200, "image/jpeg", jpg);
                 else if (rq[0] == "GET" && path.StartsWith("/d/") && int.TryParse(path[3..], out var idx)) await Download(ns, idx);
                 else if (rq[0] == "POST" && path == "/u") await Upload(ns, q, hdr, all, end + 4, total);
@@ -437,14 +446,15 @@ public sealed class ShareServer
             var hdr = new byte[14];
             while (true)
             {
-                await ReadExact(ns, hdr, 2);
+                using var frameCts = new CancellationTokenSource(45000);
+                await ReadExact(ns, hdr, 2, frameCts.Token);
                 int op = hdr[0] & 0x0F; bool masked = (hdr[1] & 0x80) != 0; long len = hdr[1] & 0x7F;
-                if (len == 126) { await ReadExact(ns, hdr, 2); len = (hdr[0] << 8) | hdr[1]; }
+                if (len == 126) { await ReadExact(ns, hdr, 2, frameCts.Token); len = (hdr[0] << 8) | hdr[1]; }
                 else if (len == 127) return;
                 var mask = new byte[4];
-                if (masked) await ReadExact(ns, mask, 4);
+                if (masked) await ReadExact(ns, mask, 4, frameCts.Token);
                 var data = new byte[len];
-                await ReadExact(ns, data, (int)len);
+                await ReadExact(ns, data, (int)len, frameCts.Token);
                 if (masked) for (int i = 0; i < data.Length; i++) data[i] ^= mask[i & 3];
                 if (op == 8) return;
                 dev.LastSeen = DateTime.Now;   // setiap ping dari aplikasi = HP online
@@ -470,7 +480,7 @@ public sealed class ShareServer
         var fi = new FileInfo(path);
         await ns.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: {type}\r\nContent-Length: {fi.Length}\r\nContent-Disposition: attachment; filename=\"{fi.Name}\"\r\nConnection: close\r\n\r\n"));
         using var fs = new FileStream(fi.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        await fs.CopyToAsync(ns);
+        await CopyWithTimeout(fs, ns);
     }
 
     // ---------- kamera: WebSocket masuk (HP -> PC) dan MJPEG keluar ----------
@@ -492,15 +502,16 @@ public sealed class ShareServer
         var hdr = new byte[14];
         while (true)
         {
-            await ReadExact(ns, hdr, 2);
+            using var frameCts = new CancellationTokenSource(45000);
+            await ReadExact(ns, hdr, 2, frameCts.Token);
             int op = hdr[0] & 0x0F; bool masked = (hdr[1] & 0x80) != 0; long len = hdr[1] & 0x7F;
-            if (len == 126) { await ReadExact(ns, hdr, 2); len = (hdr[0] << 8) | hdr[1]; }
-            else if (len == 127) { var e = new byte[8]; await ReadExact(ns, e, 8); len = (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(e); }
+            if (len == 126) { await ReadExact(ns, hdr, 2, frameCts.Token); len = (hdr[0] << 8) | hdr[1]; }
+            else if (len == 127) { var e = new byte[8]; await ReadExact(ns, e, 8, frameCts.Token); len = (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(e); }
             if (len > (8 << 20)) return;   // bingkai tak wajar
             var mask = new byte[4];
-            if (masked) await ReadExact(ns, mask, 4);
+            if (masked) await ReadExact(ns, mask, 4, frameCts.Token);
             var data = new byte[len];
-            await ReadExact(ns, data, (int)len);
+            await ReadExact(ns, data, (int)len, frameCts.Token);
             if (masked) for (int i = 0; i < data.Length; i++) data[i] ^= mask[i & 3];
             if (op == 8) return;
             if (op == 9) { await ns.WriteAsync(new byte[] { 0x8A, 0 }); continue; }   // ping -> pong
@@ -508,30 +519,59 @@ public sealed class ShareServer
         }
     }
 
-    static async Task Mjpeg(Stream ns)
+    async Task Mjpeg(Stream ns, TcpClient c)
     {
         await ns.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"));
         long last = -1;
-        while (true)
+        long idleSince = Environment.TickCount64;
+        while (On)
         {
             var f = PhoneCam.Latest; var seq = PhoneCam.Seq;
             if (f != null && seq != last)
             {
                 last = seq;
-                await ns.WriteAsync(Encoding.ASCII.GetBytes($"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {f.Length}\r\n\r\n"));
-                await ns.WriteAsync(f);
-                await ns.WriteAsync(new byte[] { 13, 10 });
+                idleSince = Environment.TickCount64;
+                using var writeCts = new CancellationTokenSource(10000);
+                await ns.WriteAsync(Encoding.ASCII.GetBytes($"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {f.Length}\r\n\r\n"), writeCts.Token);
+                await ns.WriteAsync(f, writeCts.Token);
+                await ns.WriteAsync(new byte[] { 13, 10 }, writeCts.Token);
             }
-            else await Task.Delay(15);
+            else
+            {
+                if (Environment.TickCount64 - idleSince >= 2000)
+                {
+                    if (!IsConnected(c.Client)) return;
+                    idleSince = Environment.TickCount64;
+                }
+                await Task.Delay(15);
+            }
         }
     }
 
-    static async Task ReadExact(Stream s, byte[] buf, int n)
+    static bool IsConnected(Socket s)
+    {
+        try { return s.Connected && !(s.Poll(0, SelectMode.SelectRead) && s.Available == 0); }
+        catch { return false; }
+    }
+
+    static async Task CopyWithTimeout(Stream src, Stream dst)
+    {
+        var buf = new byte[81920];
+        while (true)
+        {
+            int n = await src.ReadAsync(buf);
+            if (n <= 0) break;
+            using var chunkCts = new CancellationTokenSource(30000);
+            await dst.WriteAsync(buf.AsMemory(0, n), chunkCts.Token);
+        }
+    }
+
+    static async Task ReadExact(Stream s, byte[] buf, int n, CancellationToken ct = default)
     {
         int got = 0;
         while (got < n)
         {
-            int r = await s.ReadAsync(buf.AsMemory(got, n - got));
+            int r = await s.ReadAsync(buf.AsMemory(got, n - got), ct);
             if (r <= 0) throw new IOException("terputus");
             got += r;
         }
@@ -545,7 +585,7 @@ public sealed class ShareServer
         var h = $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {fi.Length}\r\nContent-Disposition: attachment; filename*=UTF-8''{Uri.EscapeDataString(fi.Name)}\r\nConnection: close\r\n\r\n";
         await ns.WriteAsync(Encoding.ASCII.GetBytes(h));
         using var fs = new FileStream(fi.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        await fs.CopyToAsync(ns);
+        await CopyWithTimeout(fs, ns);
     }
 
     async Task Upload(Stream ns, Dictionary<string, string> q, Dictionary<string, string> hdr, byte[] all, int bodyStart, int have)
@@ -570,7 +610,8 @@ public sealed class ShareServer
                 var buf = new byte[81920];
                 while (written < len)
                 {
-                    int n = await ns.ReadAsync(buf.AsMemory(0, (int)Math.Min(buf.Length, len - written)));
+                    using var chunkCts = new CancellationTokenSource(30000);
+                    int n = await ns.ReadAsync(buf.AsMemory(0, (int)Math.Min(buf.Length, len - written)), chunkCts.Token);
                     if (n <= 0) throw new IOException("terputus");
                     await fs.WriteAsync(buf.AsMemory(0, n));
                     written += n;
