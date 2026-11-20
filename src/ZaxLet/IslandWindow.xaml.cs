@@ -587,7 +587,8 @@ public partial class IslandWindow : Window
         var want = TimeSpan.FromMilliseconds(fast ? 250 : 1000);
         if (_tick.Interval != want) _tick.Interval = want;
         if (++_batTick * _tick.Interval.TotalSeconds > 30) { _batTick = 0; UpdateBattery(); }
-        if (!_fs && s.IdleUsage && DateTime.Now >= _quotaAt)
+        // tanpa cek _fs: kuota juga dibaca saat aplikasi fullscreen aktif (cache usage dipakai Middleman worker); hanya satu GET ringan per UsageRefreshSec
+        if (s.IdleUsage && DateTime.Now >= _quotaAt)
         {
             _quotaAt = DateTime.Now.AddSeconds(Math.Max(1, s.UsageRefreshSec));
             _ = UsageService.I.RefreshQuotaAsync();

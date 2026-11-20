@@ -61,24 +61,33 @@ public sealed class UsageService
         public List<QuotaWindow> Codex { get; set; } = new();
         public string ClaudePlan { get; set; }
         public string CodexPlan { get; set; }
+        // dibaca juga oleh Middleman (skill hydrogen-worker) untuk memilih stage: waktu baca terakhir per sumber, supaya data basi terdeteksi
+        public List<QuotaWindow> Agy { get; set; } = new();
+        public string ClaudeSource { get; set; }
+        public DateTimeOffset? ClaudeAt { get; set; }
+        public DateTimeOffset? AgyAt { get; set; }
     }
+    DateTimeOffset? _claudeAt, _agyAt;
+    readonly object _cacheLock = new();
 
     UsageService()
     {
         // kuota terakhir yang berhasil dibaca: tetap tampil bila endpoint sedang membatasi (429) atau offline
         if (Store.Load<Cache>("usage-cache.json") is { } c)
         {
-            Claude.Windows = c.Claude; Claude.Plan = c.ClaudePlan;
+            Claude.Windows = c.Claude; Claude.Plan = c.ClaudePlan; _claudeAt = c.ClaudeAt;
             Codex.Windows = c.Codex; Codex.Plan = c.CodexPlan;
             if (c.Claude.Count > 0) Claude.Error = L.T("data lama");
             if (c.Codex.Count > 0) Codex.Error = L.T("data lama");
         }
     }
 
-    void SaveCache() => Store.Save("usage-cache.json", new Cache
+    // dikunci: kuota Claude, Codex dan Antigravity disimpan dari tugas paralel, sedangkan Store.Save memakai satu berkas .tmp
+    void SaveCache() { lock (_cacheLock) Store.Save("usage-cache.json", new Cache
     {
-        Claude = Claude.Windows, Codex = Codex.Windows, ClaudePlan = Claude.Plan, CodexPlan = Codex.Plan
-    });
+        Claude = Claude.Windows, Codex = Codex.Windows, ClaudePlan = Claude.Plan, CodexPlan = Codex.Plan,
+        Agy = Agy.Windows, ClaudeSource = Claude.Source, ClaudeAt = _claudeAt, AgyAt = _agyAt
+    }); }
 
     /// <summary>Hanya kuota (ringan), untuk pill idle; pemindaian log berat hanya saat tab Usage dibuka.</summary>
     public async Task RefreshQuotaAsync()
@@ -315,6 +324,7 @@ public sealed class UsageService
             Add(wins, doc.RootElement, "seven_day", "Weekly");
             Claude.Windows = wins;
             Claude.Source = "api";
+            _claudeAt = DateTimeOffset.Now;
             Claude.Error = null;
             _claudeNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
             _claudeBackoff = TimeSpan.FromMinutes(2);
@@ -397,6 +407,7 @@ public sealed class UsageService
             if (wins.Count == 0) return false;
             Claude.Windows = wins;
             Claude.Source = "desktop";
+            _claudeAt = DateTimeOffset.Now;
             Claude.Error = L.F("dari aplikasi Claude Desktop, {0} lalu", UI.Span(age));
             _claudeNext = DateTime.UtcNow.AddSeconds(30);   // berkasnya lokal dan murah: begitu Claude Desktop menulis catatan baru, langsung tampil
             SaveCache();
@@ -473,6 +484,7 @@ public sealed class UsageService
                     }
             Agy.Windows = wins;
             Agy.Error = wins.Count == 0 ? L.T("kuota tidak ditemukan di respons Antigravity") : null;
+            if (wins.Count > 0) { _agyAt = DateTimeOffset.Now; SaveCache(); }
             _agyNext = DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.Cur.UsageRefreshSec, 1, 60));   // lokal dan murah: paling lambat tiap menit, interval Claude/Codex tidak berlaku
             CheckAlerts(Agy);
         }
