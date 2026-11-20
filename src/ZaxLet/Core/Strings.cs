@@ -203,6 +203,8 @@ public static class Strings
         ["Riwayat clipboard"] = "Clipboard history", ["Hapus semua"] = "Clear all", ["Disalin ✓"] = "Copied ✓",
         ["Belum ada yang disalin. Teks yang kamu salin muncul di sini (hanya di memori)."] = "Nothing copied yet. Text you copy appears here (memory only).",
         ["Riwayat clipboard dimatikan di Pengaturan > Alat."] = "Clipboard history is turned off in Settings > Tools.",
+        ["HURUF BESAR"] = "UPPERCASE", ["huruf kecil"] = "lowercase", ["Judul Kata"] = "Title Case",
+        ["Rapikan spasi"] = "Clean spaces", ["Satu baris"] = "Single line", ["Decode URL"] = "Decode URL", ["Decode Base64"] = "Decode Base64", ["Salin sebagai teks polos"] = "Copy as plain text",
         ["Bluetooth tersambung: {0}"] = "Bluetooth connected: {0}", ["Bluetooth terputus: {0}"] = "Bluetooth disconnected: {0}",
         ["Unduhan selesai: {0} · klik untuk menampilkan"] = "Download finished: {0} · click to show", ["Volume"] = "Volume", ["bisu"] = "muted",
         ["Mikrofon dibisukan"] = "Microphone muted", ["Mikrofon aktif"] = "Microphone on", ["Kecerahan"] = "Brightness",
@@ -331,6 +333,8 @@ public static class Strings
         ["Mode Fokus"] = "Focus mode", ["Fokus"] = "Focus", ["{0} tertahan"] = "{0} held", ["Lama Mode Fokus"] = "Focus mode length", ["Notifikasi HP ditahan; kode OTP tetap lewat. Tombol ada di tab Timer"] = "Phone notifications are held; OTP codes still come through. The button is in the Timer tab",
         ["Fase kerja Pomodoro = Mode Fokus"] = "Pomodoro work phase = Focus mode", ["Mode Fokus: notifikasi HP ditahan, kode OTP tetap lewat. Lamanya diatur di Pengaturan > Pengingat"] = "Focus mode: phone notifications are held, OTP codes still come through. Set the length in Settings > Reminders",
         ["Fokus selesai"] = "Focus finished", ["Rapat selesai"] = "Meeting finished", ["Fokus selesai · {0} notifikasi tertahan"] = "Focus finished · {0} notifications held", ["Rapat selesai · {0} notifikasi tertahan"] = "Meeting finished · {0} notifications held",
+        ["Jam tenang terjadwal"] = "Scheduled quiet hours", ["Notifikasi HP ditahan selama rentang jam ini; kode OTP tetap lewat"] = "Phone notifications are held during these hours; OTP codes still come through",
+        ["Jam tenang mulai"] = "Quiet hours start", ["Jam tenang selesai"] = "Quiet hours end", ["Jam tenang selesai · {0} notifikasi tertahan"] = "Quiet hours ended · {0} notifications held",
         ["Pintasan tangkap area"] = "Area capture shortcut", ["Mis. ctrl+shift+s; kosongkan untuk mematikan"] = "E.g. ctrl+shift+s; leave empty to turn off",
         ["Mode rapat"] = "Meeting mode", ["Deteksi rapat"] = "Meeting detection", ["Zoom, Meet, Teams, Webex, Skype, Slack, dan telepon WhatsApp dikenali dari pemakaian mikrofon"] = "Zoom, Meet, Teams, Webex, Skype, Slack and WhatsApp calls are recognised from microphone use",
         ["Tombol mikrofon di pill"] = "Microphone button in the pill", ["Jeda musik selama rapat"] = "Pause music during meetings", ["Tahan notifikasi HP selama rapat"] = "Hold phone notifications during meetings",
@@ -446,6 +450,13 @@ public static class Strings
         ["Tidur · akhir"] = "Sleep · end", ["Pengatur waktu tidur: Akhir lagu (klik untuk matikan)"] = "Sleep timer: End of track (click to turn off)",
         ["Tidur · mengecil…"] = "Sleep · fading…", ["Volume sedang mengecil (klik untuk batal)"] = "Volume is fading out (click to cancel)",
         ["Pengatur waktu tidur: Mati (klik untuk atur)"] = "Sleep timer: Off (click to set)",
+
+        // utilitas baru (OCR, warna, jaringan, quick command)
+        ["t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]"] = "t 10m  ·  fokus 25  ·  catat buy milk  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  open monitor  ·  perf  ·  bt  ·  ocr  ·  color  ·  hide  ·  lock  ·  sleep  ·  sleep music 30  ·  dark  ·  light  ·  wifi off  ·  bluetooth on  ·  power saver/balanced/performance/restore  ·  awake [60/on/off]",
+        ["OCR area"] = "Area OCR", ["Pipet warna"] = "Color picker",
+        ["Bahasa OCR Windows belum terpasang"] = "Windows OCR language is not installed", ["Tidak ada teks terbaca"] = "No text recognised", ["Gagal membaca teks OCR"] = "Could not read OCR text",
+        ["OCR disalin: {0}"] = "OCR copied: {0}", ["{0} disalin"] = "{0} copied",
+        ["Internet tersambung lagi"] = "Internet reconnected", ["Internet terputus"] = "Internet disconnected", ["Tidak tersambung"] = "Not connected",
 
         // lokasi
         ["Sensor lokasi tidak tersedia, memakai IP. "] = "Location sensor unavailable, using IP. ", ["Gagal mendeteksi lokasi: "] = "Could not detect location: ", ["Kota \"{0}\" tidak ditemukan"] = "City \"{0}\" not found", ["Pencarian gagal: "] = "Search failed: ",
