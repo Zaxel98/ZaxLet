@@ -25,6 +25,7 @@ public static class ClipboardHistory
         public int Width, Height;
         public DateTime At;
         public bool Pinned;
+        public bool IsSecret;
         public bool IsImage => ImagePng != null;
     }
 
@@ -61,6 +62,11 @@ public static class ClipboardHistory
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         if (text == _own) { _own = null; return; }
+        InsertText(text);
+    }
+
+    static void InsertText(string text)
+    {
         if (text.Length > MaxChars) text = text[..MaxChars];
         var old = Items.FirstOrDefault(x => !x.IsImage && x.Text == text);
         bool pinned = old?.Pinned ?? false;
@@ -165,6 +171,24 @@ public static class ClipboardHistory
         }
         try { _own = it.Text; Clipboard.SetText(it.Text); }
         catch { _own = null; }
+    }
+
+    /// <summary>Salin teks hasil ubahan sebagai entri teratas baru tanpa menghapus item asli; abaikan item gambar atau rahasia.</summary>
+    public static bool CopyTransformed(Item source, string text)
+    {
+        if (source == null || source.IsImage || source.IsSecret || string.IsNullOrWhiteSpace(text)) return false;
+        try
+        {
+            _own = text;
+            Clipboard.SetText(text);
+            InsertText(text);
+            return true;
+        }
+        catch
+        {
+            _own = null;
+            return false;
+        }
     }
 
     /// <summary>Taruh kode di clipboard dengan penanda pengecualian: tidak masuk riwayat ZaxLet maupun riwayat clipboard Windows (Win+V) dan clipboard cloud.</summary>

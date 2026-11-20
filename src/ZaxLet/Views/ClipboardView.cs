@@ -80,6 +80,7 @@ public sealed class ClipboardView : TabView
             {
                 var text = UI.T(ClipboardHistory.OneLine(item.Text), 12.5, UI.Fg);
                 cell = new Border { Background = UI.Card, CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 6, 10, 6), Cursor = System.Windows.Input.Cursors.Hand, Child = text };
+                if (!item.IsSecret) cell.ContextMenu = BuildTextMenu(item);
                 cell.ToolTip = (item.Text.Length > 400 ? item.Text[..400] + "…" : item.Text) + L.T("\nKlik: salin · seret: ke aplikasi lain");
                 cell.MouseLeftButtonUp += (_, _) => { ClipboardHistory.CopyBack(item); text.Text = L.T("Disalin ✓"); };
                 Point? down = null;   // seret ke aplikasi lain: pola yang sama dengan ShelfView
@@ -102,5 +103,40 @@ public sealed class ClipboardView : TabView
             row.Children.Add(UI.IconBtn("", () => ClipboardHistory.Remove(item), 11).At(0, 2));
             _list.Children.Add(row);
         }
+    }
+
+    static ContextMenu BuildTextMenu(ClipboardHistory.Item item)
+    {
+        var menu = new ContextMenu();
+        menu.Opened += (_, _) => IslandWindow.Instance?.KeepOpen(true);
+        menu.Closed += (_, _) => IslandWindow.Instance?.KeepOpen(false);
+
+        void AddAction(string header, Func<string> transform)
+        {
+            var mi = new MenuItem { Header = header };
+            mi.Click += (_, _) =>
+            {
+                var result = transform();
+                if (ClipboardHistory.CopyTransformed(item, result))
+                    IslandWindow.Instance?.Alert(L.T("Disalin ✓"), 2);
+                else
+                    IslandWindow.Instance?.Alert(L.T("Gagal menyalin, coba lagi"), 3);
+            };
+            menu.Items.Add(mi);
+        }
+
+        AddAction("HURUF BESAR", () => TextTransforms.ToUpper(item.Text));
+        AddAction("huruf kecil", () => TextTransforms.ToLower(item.Text));
+        AddAction("Judul Kata", () => TextTransforms.ToTitleCase(item.Text));
+        menu.Items.Add(new Separator());
+        AddAction("Rapikan spasi", () => TextTransforms.CleanSpaces(item.Text));
+        AddAction("Satu baris", () => TextTransforms.SingleLine(item.Text));
+        menu.Items.Add(new Separator());
+        AddAction("Decode URL", () => TextTransforms.DecodeUrl(item.Text));
+        if (TextTransforms.TryDecodeBase64(item.Text, out var b64))
+            AddAction("Decode Base64", () => b64);
+        menu.Items.Add(new Separator());
+        AddAction("Salin sebagai teks polos", () => item.Text);
+        return menu;
     }
 }
