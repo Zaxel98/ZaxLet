@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text;
 using System.Windows;
 
@@ -8,6 +9,23 @@ namespace ZaxLet;
 public static class PhoneText
 {
     public const int MaxBytes = 40000;   // bingkai kontrol dibatasi 64 KB; base64 menambah sepertiga
+    public const int MaxUrlLength = 2000;
+
+    /// <summary>Mengembalikan Uri absolut http/https jika teks adalah tepat satu URL valid tanpa spasi di dalam, atau null.</summary>
+    public static Uri TryParseSingleHttpUrl(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var s = text.Trim();
+        if (s.Length == 0 || s.Length > MaxUrlLength) return null;
+        foreach (var c in s)
+        {
+            if (char.IsWhiteSpace(c)) return null;
+        }
+        if (!Uri.TryCreate(s, UriKind.Absolute, out var uri)) return null;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return null;
+        if (string.IsNullOrEmpty(uri.Host)) return null;
+        return uri;
+    }
 
     /// <summary>Teks dari HP. Masuk clipboard PC; pill memberi tahu.</summary>
     public static void FromPhone(string text, string device)
@@ -18,6 +36,13 @@ public static class PhoneText
         {
             try { Clipboard.SetText(text); }
             catch { IslandWindow.Instance?.Alert(L.T("Teks dari HP diterima, tapi clipboard sedang dipakai aplikasi lain"), 5); return; }
+            var url = TryParseSingleHttpUrl(text);
+            if (url != null)
+            {
+                IslandWindow.Instance?.Alert(L.T("Tautan dari HP · klik untuk buka"), 5,
+                    () => { try { Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true }); } catch { } });
+                return;
+            }
             var head = text.Length > 60 ? text[..60] + "…" : text;
             IslandWindow.Instance?.Alert(L.F("Teks dari {0} masuk clipboard: {1}", string.IsNullOrWhiteSpace(device) ? L.T("HP") : device, head.Replace('\n', ' ')), 5);
         });
