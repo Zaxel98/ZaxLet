@@ -92,7 +92,7 @@ public sealed class PrayerView : TabView
             var b = (Border)_tiles.Children[i];
             bool on = i == idx && at.Date == DateTime.Today;
             b.Background = on ? UI.AccentBg : UI.Card;
-            var time = (TextBlock)((StackPanel)b.Child).Children[1];
+            var time = (TextBlock)((StackPanel)b.Child).Children[2];
             time.Foreground = on ? UI.Accent : UI.Fg;
         }
         DrawSky();

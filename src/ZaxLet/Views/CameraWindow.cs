@@ -57,14 +57,14 @@ public sealed class CameraWindow : Window
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 8, 10, 8) };
         void Add(string text, Action a) { var b = UI.Btn(UI.T(text, 12, UI.Fg), a, UI.Card, 10, new Thickness(10, 4, 10, 4)); b.Margin = new Thickness(0, 0, 6, 0); bar.Children.Add(b); }
-        Add(L.T("Nyalakan kamera HP"), CamOn);
-        Add(L.T("Matikan"), () => ShareServer.I.Command("cam off"));
+        Add("Nyalakan kamera HP", CamOn);
+        Add("Matikan", () => ShareServer.I.Command("cam off"));
         var pauseBtn = UI.Btn(_pauseTxt, TogglePause, UI.Card, 10, new Thickness(10, 4, 10, 4));
         pauseBtn.Margin = new Thickness(0, 0, 6, 0);
         bar.Children.Add(pauseBtn);
-        Add(L.T("Cermin"), () => _flip.ScaleX = -_flip.ScaleX);
-        Add(L.T("Putar 90°"), () => _rot.Angle = (_rot.Angle + 90) % 360);
-        Add(L.T("Salin tautan MJPEG (OBS/VLC)"), () => Clipboard.SetText(ShareServer.I.MjpegUrl));
+        Add("Cermin", () => _flip.ScaleX = -_flip.ScaleX);
+        Add("Putar 90°", () => _rot.Angle = (_rot.Angle + 90) % 360);
+        Add("Salin tautan MJPEG (OBS/VLC)", () => { try { Clipboard.SetText(ShareServer.I.MjpegUrl); } catch { } });
         _status.VerticalAlignment = VerticalAlignment.Center;
         _status.Margin = new Thickness(6, 0, 0, 0);
         bar.Children.Add(_status);

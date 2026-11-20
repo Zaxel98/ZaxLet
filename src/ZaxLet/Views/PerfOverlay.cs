@@ -81,9 +81,12 @@ public sealed class PerfOverlay : Window
     void Place(double width, double height)
     {
         var c = Settings.Cur.PerfCorner;
-        var scr = System.Windows.Forms.Screen.PrimaryScreen;
-        double f = SystemParameters.PrimaryScreenWidth / scr.Bounds.Width, m = 12;
-        var wa = new Rect(scr.WorkingArea.Left * f, scr.WorkingArea.Top * f, scr.WorkingArea.Width * f, scr.WorkingArea.Height * f);
+        var a = System.Windows.Forms.Screen.AllScreens;
+        var i = Settings.Cur.MonitorIdx;
+        var scr = i > 0 && i < a.Length ? a[i] : System.Windows.Forms.Screen.PrimaryScreen;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        double fx = 1.0 / dpi.DpiScaleX, fy = 1.0 / dpi.DpiScaleY, m = 12;
+        var wa = new Rect(scr.WorkingArea.Left * fx, scr.WorkingArea.Top * fy, scr.WorkingArea.Width * fx, scr.WorkingArea.Height * fy);
         Left = c.EndsWith('r') ? wa.Right - width - m : wa.Left + m;
         Top = c.StartsWith('b') ? wa.Bottom - height - m : wa.Top + m;
     }
