@@ -344,6 +344,7 @@ public static class Strings
         ["Teks ke HP"] = "Text to phone", ["Kirim teks yang ada di clipboard PC ke clipboard HP"] = "Send the text on the PC clipboard to the phone clipboard",
         ["Teks dari {0} masuk clipboard: {1}"] = "Text from {0} is on the clipboard: {1}", ["HP"] = "Phone", ["Teks dari HP diterima, tapi clipboard sedang dipakai aplikasi lain"] = "Text from the phone arrived, but the clipboard is in use by another app",
         ["Clipboard tidak berisi teks (atau terlalu besar)"] = "The clipboard has no text (or it is too large)", ["Teks terkirim ke HP"] = "Text sent to the phone",
+        ["Tautan dari HP · klik untuk buka"] = "Link from phone · click to open",
         ["Hitungan hari ini kembali ke 0"] = "Today's count back to 0", ["Reset"] = "Reset",
 
         ["Wishlist otomatis (ekstensi browser)"] = "Automatic Wishlist (browser extension)", ["Panduan pemasangan"] = "Setup guide", ["Ekstensi tersambung"] = "Extension connected", ["Belum tersambung: Wishlist tetap bisa diisi manual"] = "Not connected: the Wishlist can still be filled in by hand",
@@ -391,6 +392,8 @@ public static class Strings
         ["Clock memori GPU"] = "GPU memory clock", ["Suhu GPU"] = "GPU temperature", ["Daya GPU"] = "GPU power", ["VRAM terpakai"] = "VRAM in use", ["Belum ada metrik dipilih"] = "No metrics selected",
         ["Bluetooth"] = "Bluetooth", ["Baterai perangkat Bluetooth"] = "Bluetooth device battery", ["Peringatkan di bawah"] = "Warn below",
         ["Tampil saat tersambung dan peringatan saat rendah, untuk perangkat yang melaporkan baterai ke Windows (headset Hands-Free). Ketik \"bt\" di Aksi cepat untuk melihat sekarang"] = "Shown on connect and warned when low, for devices that report battery to Windows (Hands-Free headsets). Type \"bt\" in Quick action to see it now",
+        ["Jeda musik saat headset terputus"] = "Pause music when headset disconnects", ["Menjeda pemutar saat perangkat Bluetooth terputus, dengan tombol klik untuk lanjut"] = "Pauses playback when a Bluetooth device disconnects, with a click-to-resume button",
+        ["Dijeda: headset terputus · klik untuk lanjut"] = "Paused: headset disconnected · click to resume",
         ["Jeda notifikasi 1 jam"] = "Pause notifications for 1 hour", ["Periksa pembaruan"] = "Check for updates",
         ["Baterai HP {0} tinggal {1}%"] = "Phone {0} battery is down to {1}%",
         ["Terakhir diputar: {0}"] = "Last played: {0}", ["Buka pemutar"] = "Open player",
@@ -457,6 +460,21 @@ public static class Strings
         ["Bahasa OCR Windows belum terpasang"] = "Windows OCR language is not installed", ["Tidak ada teks terbaca"] = "No text recognised", ["Gagal membaca teks OCR"] = "Could not read OCR text",
         ["OCR disalin: {0}"] = "OCR copied: {0}", ["{0} disalin"] = "{0} copied",
         ["Internet tersambung lagi"] = "Internet reconnected", ["Internet terputus"] = "Internet disconnected", ["Tidak tersambung"] = "Not connected",
+
+        // fitur pilihan baru (pengingat, jendela di atas, flashdisk, waktu layar, quick command)
+        ["t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]"] = "t 10m  ·  ingat (remind) 15:30 meeting  ·  fokus 25  ·  catat buy milk  ·  atas (top)  ·  lepas (eject) [e]  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  open monitor  ·  perf  ·  bt  ·  ocr  ·  color  ·  hide  ·  lock  ·  sleep  ·  sleep music 30  ·  dark  ·  light  ·  wifi off  ·  bluetooth on  ·  power saver/balanced/performance/restore  ·  awake [60/on/off]",
+        ["Kosong · ingat 15:30 rapat"] = "Empty · ingat (remind) 15:30 meeting", ["Hapus pengingat"] = "Delete reminder", ["+{0} lagi"] = "+{0} more",
+        ["Diingatkan {0}: {1}"] = "Reminder set for {0}: {1}", ["Format pengingat tidak valid"] = "Invalid reminder format",
+        ["Pengingat: {0}"] = "Reminder: {0}", ["Pengingat (terlambat): {0}"] = "Reminder (late): {0}",
+        ["ingat 15:30 <pesan>  ·  ingat 20m <pesan>"] = "ingat 15:30 <message>  ·  ingat 20m <message> (or remind)",
+        ["Jendela disematkan di atas"] = "Window pinned on top", ["Sematan dilepas"] = "Window unpinned",
+        ["Tidak bisa: jendela itu berjalan sebagai admin"] = "Cannot pin: that window is running as admin", ["Tidak ada jendela target"] = "No target window",
+        ["Flashdisk {0}:"] = "USB drive {0}:", ["Tidak ada flashdisk terpasang"] = "No USB drive connected", ["Drive {0}: bukan flashdisk"] = "Drive {0}: is not a USB drive",
+        ["Gagal membaca perangkat {0}:"] = "Could not read device {0}:", ["Perangkat {0}: tidak ditemukan"] = "Device {0}: not found",
+        ["Gagal melepas {0}:"] = "Could not eject {0}:", ["Aman dicabut ({0}:)"] = "Safe to remove ({0}:)",
+        ["Masih dipakai: tutup berkas dulu"] = "Still in use: close open files first", ["lepas [huruf drive, mis. e]"] = "lepas [drive letter, e.g. e] (or eject)",
+        ["Waktu layar per aplikasi"] = "Screen time per app", ["Mencatat nama aplikasi dan durasi pemakaian per hari secara lokal (appusage.json), tanpa judul jendela"] = "Logs app names and daily usage locally (appusage.json), without window titles",
+        ["Hari ini (8 teratas):"] = "Today (top 8):", ["Total 7 hari: {0}"] = "7-day total: {0}",
 
         // lokasi
         ["Sensor lokasi tidak tersedia, memakai IP. "] = "Location sensor unavailable, using IP. ", ["Gagal mendeteksi lokasi: "] = "Could not detect location: ", ["Kota \"{0}\" tidak ditemukan"] = "City \"{0}\" not found", ["Pencarian gagal: "] = "Search failed: ",
