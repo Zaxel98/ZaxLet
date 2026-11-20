@@ -437,7 +437,7 @@ public static class Strings
         ["Ruang drive {0} hampir penuh (sisa {1:0.#} GB)"] = "Drive {0} is almost full ({1:0.#} GB free)",
         ["Gambar {0}x{1}"] = "Image {0}x{1}", ["Gambar {0}×{1}\nKlik: salin"] = "Image {0}×{1}\nClick: copy",
         ["Perangkat keluaran"] = "Output device", ["Mengikuti perangkat keluaran utama"] = "Following the default output device",
-        ["Tidak ada perangkat keluaran aktif."] = "No active output devices.", ["{0} (utama)"] = "{0} (default)", ["Tidak bisa mengganti perangkat"] = "Could not switch device",
+        ["Tidak ada perangkat keluaran aktif."] = "No active output devices.", ["{0} (utama)"] = "{0} (default)", ["Tidak bisa mengganti perangkat"] = "Could not switch device", ["Gagal membaca perangkat"] = "Could not read devices",
         ["Gateway"] = "Gateway", ["Internet"] = "Internet",
         ["sisa {0:0.#} GB dari {1:0.#} GB"] = "{0:0.#} GB free of {1:0.#} GB",
         ["rata {0} · ±{1} · {2}%"] = "avg {0} · ±{1} · {2}%", ["hilang {0}%"] = "loss {0}%",
