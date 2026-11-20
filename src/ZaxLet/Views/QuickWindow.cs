@@ -14,20 +14,23 @@ namespace ZaxLet;
 public sealed class QuickWindow : Window
 {
     static QuickWindow _cur;
+    readonly IntPtr _prevFg;
     readonly TextBox _box;
     readonly TextBlock _hint;
 
     public static void Toggle()
     {
         if (_cur != null) { _cur.Close(); return; }
-        _cur = new QuickWindow();
+        var prevFg = Native.GetForegroundWindow();
+        _cur = new QuickWindow(prevFg);
         _cur.Show();
         _cur.Activate();
         _cur._box.Focus();
     }
 
-    QuickWindow()
+    QuickWindow(IntPtr prevFg)
     {
+        _prevFg = prevFg;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; Topmost = true; ResizeMode = ResizeMode.NoResize; SizeToContent = SizeToContent.Height; Width = 480;
         Left = (SystemParameters.PrimaryScreenWidth - Width) / 2; Top = 64;
@@ -107,6 +110,22 @@ public sealed class QuickWindow : Window
                 Close(); ScreenOcr.PickAndCopy(); return;
             case QuickCmd.Kind.Color:
                 Close(); ColorPick.Pick(); return;
+            case QuickCmd.Kind.Remind:
+                var rem = ReminderService.I.Add(c.Arg);
+                msg = rem != null ? L.F("Diingatkan {0}: {1}", rem.DueAt.ToString("HH.mm"), rem.Label) : L.T("Format pengingat tidak valid");
+                break;
+            case QuickCmd.Kind.Topmost:
+                msg = L.T(Native.ToggleTopmost(_prevFg).Message);
+                break;
+            case QuickCmd.Kind.Eject:
+                char? drv = c.Arg.Length > 0 ? c.Arg[0] : null;
+                Close();
+                _ = System.Threading.Tasks.Task.Run(() =>
+                {
+                    var (_, res) = UsbDrives.Eject(drv);
+                    isl?.Alert(res, 5, null, false);
+                });
+                return;
             case QuickCmd.Kind.Calc:
                 try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;

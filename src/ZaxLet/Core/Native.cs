@@ -25,9 +25,12 @@ static class Native
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int i, int v);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out Rect r, int size);
 
-    public const int GWL_EXSTYLE = -20, WS_EX_TOOLWINDOW = 0x80;
+    public const int GWL_EXSTYLE = -20, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x00000008;
+    public static readonly IntPtr HWND_TOPMOST = new(-1), HWND_NOTOPMOST = new(-2);
+    public const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010;
 
     [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
@@ -76,5 +79,22 @@ static class Native
         var h = GetForegroundWindow();
         if (h == IntPtr.Zero) return null;
         return DwmGetWindowAttribute(h, 9, out var r, Marshal.SizeOf<Rect>()) == 0 ? r : null;
+    }
+
+    public static (bool Ok, string Message) ToggleTopmost(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return (false, "Tidak ada jendela target");
+        GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == 0 || pid == Environment.ProcessId) return (false, "Tidak ada jendela target");
+        var sb = new System.Text.StringBuilder(64);
+        GetClassName(hwnd, sb, 64);
+        if (sb.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "XamlExplorerHostIslandWindow")
+            return (false, "Tidak ada jendela target");
+
+        bool wasTop = (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+        if (!SetWindowPos(hwnd, wasTop ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+            return (false, "Tidak bisa: jendela itu berjalan sebagai admin");
+
+        return (true, wasTop ? "Sematan dilepas" : "Jendela disematkan di atas");
     }
 }

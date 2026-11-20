@@ -251,6 +251,28 @@ public partial class IslandWindow
     void HookFeatures(int msg, IntPtr wp, IntPtr lp, ref bool handled)
     {
         if (msg == 0x031D) { ClipboardHistory.Capture(); WishBridge.OnClipboard(); handled = true; }   // WM_CLIPBOARDUPDATE
+        else if (msg == 0x0219 && wp.ToInt64() == 0x8000 && lp != IntPtr.Zero)   // WM_DEVICECHANGE + DBT_DEVICEARRIVAL
+        {
+            if (Marshal.ReadInt32(lp, 4) == 2 && (Marshal.ReadInt16(lp, 16) & 3) == 0)   // DBT_DEVTYP_VOLUME, bukan media optik/jaringan
+            {
+                uint mask = (uint)Marshal.ReadInt32(lp, 12);
+                foreach (var letter in UsbDrives.LettersFromMask(mask))
+                {
+                    if (!UsbDrives.IsRemovable(letter)) continue;
+                    UsbDrives.NoteArrival(letter);
+                    if (!Settings.Cur.OsdOn) continue;
+                    string size = "";
+                    try
+                    {
+                        var di = new System.IO.DriveInfo(letter + ":\\");
+                        if (di.IsReady) size = " · " + UsbDrives.FormatSize(di.TotalSize);
+                    }
+                    catch { }
+                    var drv = letter;
+                    Alert(L.F("Flashdisk {0}:", drv) + size, 8, () => UsbDrives.OpenExplorer(drv));
+                }
+            }
+        }
         else if (msg == 0x020E && Settings.Cur.Gestures && _open && Pill.IsMouseOver)   // WM_MOUSEHWHEEL: sapuan dua jari ke samping
         {
             int delta = (short)((wp.ToInt64() >> 16) & 0xFFFF);
@@ -261,6 +283,7 @@ public partial class IslandWindow
     void StartFeatureListeners(IntPtr hwnd)
     {
         try { AddClipboardFormatListener(hwnd); } catch (Exception ex) { App.Log(ex); }
+        ReminderService.I.Start();
         _bt.Changed += (name, on) =>
         {
             if (!Settings.Cur.OsdOn) return;

@@ -17,6 +17,7 @@ public sealed class TimerView : TabView
     readonly TimerService _t = TimerService.I;
     readonly TextBlock _time = UI.T("25:00", 34, null, true), _sub = UI.T("", 12, UI.Dim);
     readonly StackPanel _modes = new() { Orientation = Orientation.Horizontal }, _presets = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+    readonly StackPanel _remList = new();
     readonly TextBlock _go = UI.Icon("", 20);
 
     readonly TextBlock _focusT = UI.T("", 12.5);
@@ -24,6 +25,7 @@ public sealed class TimerView : TabView
 
     public TimerView()
     {
+        var cols = UI.Cols(-1, 200);
         var root = UI.Rows(0, -1, 0);
         foreach (var (m, name) in new[] { (TMode.Timer, "Timer"), (TMode.Pomodoro, "Pomodoro"), (TMode.Stopwatch, "Stopwatch") })
         {
@@ -55,7 +57,15 @@ public sealed class TimerView : TabView
         bottom.Children.Add(_presets);
         bottom.Children.Add(ctl);
         root.Children.Add(bottom.At(2));
-        Children.Add(root);
+
+        var remPanel = new StackPanel { Margin = new Thickness(12, 2, 0, 0) };
+        remPanel.Children.Add(UI.T("Pengingat", 11.5, UI.Dim, true));
+        _remList.Margin = new Thickness(0, 6, 0, 0);
+        remPanel.Children.Add(_remList);
+
+        cols.Children.Add(root.At(0, 0));
+        cols.Children.Add(remPanel.At(0, 1));
+        Children.Add(cols);
 
         foreach (var min in new[] { 5, 10, 15, 25, 45, 60 })
         {
@@ -66,8 +76,8 @@ public sealed class TimerView : TabView
         }
     }
 
-    public override void OnShow() { _t.Tick += OnTick; FocusService.I.Changed += OnTick; Render(); }
-    public override void OnHide() { _t.Tick -= OnTick; FocusService.I.Changed -= OnTick; }
+    public override void OnShow() { _t.Tick += OnTick; FocusService.I.Changed += OnTick; ReminderService.I.Changed += OnTick; Render(); }
+    public override void OnHide() { _t.Tick -= OnTick; FocusService.I.Changed -= OnTick; ReminderService.I.Changed -= OnTick; }
     void OnTick() => Render();
 
     void Render()
@@ -87,5 +97,35 @@ public sealed class TimerView : TabView
             ? L.T("Fokus") + " " + UI.Clock(f.Left) + (f.HeldCount > 0 ? " · " + L.F("{0} tertahan", f.HeldCount) : "")
             : L.T("Mode Fokus");
         _focus.Background = f.Active ? UI.AccentBg : UI.Card;
+        RenderReminders();
+    }
+
+    void RenderReminders()
+    {
+        _remList.Children.Clear();
+        var items = ReminderService.I.Pending;
+        if (items.Count == 0)
+        {
+            _remList.Children.Add(UI.T("Kosong · ingat 15:30 rapat", 11, UI.Faint));
+            return;
+        }
+        const int cap = 3;
+        for (int i = 0; i < Math.Min(items.Count, cap); i++)
+        {
+            var r = items[i];
+            var row = UI.Cols(0, -1, 0);
+            row.Margin = new Thickness(0, 0, 0, 4);
+            var at = UI.T(r.DueAt.ToString("HH.mm") + " ", 11.5, UI.Accent, true);
+            var lbl = UI.T(r.Label, 11.5);
+            lbl.Margin = new Thickness(0, 0, 4, 0);
+            var del = UI.Btn(UI.T("×", 11.5, UI.Dim), () => ReminderService.I.Remove(r.Id), UI.Card, 6, new Thickness(5, 1, 5, 1));
+            del.ToolTip = L.T("Hapus pengingat");
+            row.Children.Add(at.At(0, 0));
+            row.Children.Add(lbl.At(0, 1));
+            row.Children.Add(del.At(0, 2));
+            _remList.Children.Add(row);
+        }
+        if (items.Count > cap)
+            _remList.Children.Add(UI.T(L.F("+{0} lagi", items.Count - cap), 11, UI.Faint));
     }
 }
