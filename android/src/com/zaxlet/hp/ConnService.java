@@ -155,10 +155,11 @@ public class ConnService extends Service {
         int backoff = 1000;
         while (!stopping) {
             boolean got = false;
+            Ws w = null;
             try {
                 if (!Net.paired()) { setStatus("Belum dipasangkan", 1); pause(3000); continue; }
                 setStatus("Menyambung ke PC…", 1);
-                Ws w = new Ws("/ctl");
+                w = new Ws("/ctl");
                 ctl = w; ctlWs = w; got = true; backoff = 1000;
                 lastRx = System.currentTimeMillis(); sawPong = false;
                 NotifService.resync();   // kirim ulang notifikasi aktif ke PC
@@ -184,12 +185,13 @@ public class ConnService extends Service {
                     if (m.equals("pong")) sawPong = true;
                     else if (!m.isEmpty()) handle(m);
                 }
-                w.close(); ctlWs = null;
                 if (!stopping) setStatus("Terputus, menyambung ulang…", 1);
             } catch (Exception e) {
-                ctlWs = null;
                 if (!stopping) setStatus("Menunggu PC… (" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()) + ")", 1);
             } finally {
+                if (w != null) w.close();
+                if (ctl == w) ctl = null;
+                if (ctlWs == w) ctlWs = null;
                 if (cam != null && cam.running()) cam.stop();   // putus dari PC = kamera ikut mati
             }
             if (stopping) break;
@@ -200,9 +202,16 @@ public class ConnService extends Service {
 
     /** Teks dari PC: masuk clipboard HP dan tampil di notifikasi (cadangan bila Android menolak penulisan dari latar). */
     private void fromPc(String b64) {
+        final String t;
         try {
-            String t = new String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), "UTF-8");
-            ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText("ZaxLet", t));
+            t = new String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), "UTF-8");
+        } catch (Exception e) { return; }
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+                ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText("ZaxLet", t));
+            } catch (Exception e) { }
+        });
+        try {
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             nm.createNotificationChannel(new NotificationChannel("zaxlet-text", "Teks dari PC", NotificationManager.IMPORTANCE_DEFAULT));
             String head = t.length() > 80 ? t.substring(0, 80) + "..." : t;

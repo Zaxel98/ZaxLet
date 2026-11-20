@@ -59,11 +59,23 @@ final class Ws {
         int b0 = in.read();
         if (b0 < 0) return null;
         int op = b0 & 15;
-        int l = in.read() & 0x7F;
+        int b1 = in.read();
+        if (b1 < 0) return null;
+        int l = b1 & 0x7F;
         long len = l;
-        if (l == 126) len = (in.read() << 8) | in.read();
-        else if (l == 127) { len = 0; for (int i = 0; i < 8; i++) len = (len << 8) | in.read(); }
-        if (len > 65536) return null;
+        if (l == 126) {
+            int hi = in.read(), lo = in.read();
+            if (hi < 0 || lo < 0) return null;
+            len = (hi << 8) | lo;
+        } else if (l == 127) {
+            len = 0;
+            for (int i = 0; i < 8; i++) {
+                int b = in.read();
+                if (b < 0) return null;
+                len = (len << 8) | b;
+            }
+        }
+        if (len < 0 || len > 65536) return null;
         byte[] d = new byte[(int) len];
         int got = 0;
         while (got < len) { int r = in.read(d, got, (int) len - got); if (r < 0) return null; got += r; }
