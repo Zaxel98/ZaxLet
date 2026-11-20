@@ -396,6 +396,7 @@ public sealed class SettingsView : TabView
                 yield return ("Panduan sambung HP\n" + L.T("Memasang aplikasi, memasangkan, sampai notifikasi masuk") + ": " + st.Text, Act("Buka panduan", () => PhoneGuide.Show(true), UI.Fg));
                 yield return ("Server sambungan HP\nHarus menyala agar HP bisa tersambung", Toggle(() => ShareServer.I.On, v => { if (v) VirtualCam.EnsureFirewall(() => { ShareServer.I.Start(); Render(); }); else ShareServer.I.Stop(); }, false, Render));
                 yield return ("Aktif otomatis saat ZaxLet mulai", Toggle(() => s.ShareAuto, v => s.ShareAuto = v));
+                yield return ("Kirim ke HP dari klik kanan (SendTo)", Toggle(() => s.SendToOn, v => { s.SendToOn = v; SendTo.Sync(v); }));
                 if (ShareServer.I.On) yield return ("Perangkat", PhoneDevices());
                 yield return ("§Notifikasi dari HP", null);
                 yield return ("Tampilkan notifikasi HP di pill", Toggle(() => s.NotifOn, v => s.NotifOn = v));

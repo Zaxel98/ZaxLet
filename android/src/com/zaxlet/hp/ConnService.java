@@ -200,6 +200,8 @@ public class ConnService extends Service {
         }
     }
 
+    private static final java.util.concurrent.atomic.AtomicInteger fileNotifId = new java.util.concurrent.atomic.AtomicInteger(100);
+
     private static android.net.Uri parseSingleHttpUrl(String text) {
         if (text == null) return null;
         String s = text.trim();
@@ -218,6 +220,28 @@ public class ConnService extends Service {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static android.net.Uri parsePhoneNumber(String text) {
+        if (text == null) return null;
+        String s = text.trim();
+        if (s.isEmpty() || s.length() > 32) return null;
+        StringBuilder norm = new StringBuilder(s.length());
+        int digits = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '+') {
+                if (i != 0) return null;
+                norm.append(ch);
+            } else if (ch >= '0' && ch <= '9') {
+                digits++;
+                norm.append(ch);
+            } else if (ch != ' ' && ch != '-') {
+                return null;
+            }
+        }
+        if (digits < 6 || digits > 16) return null;
+        return android.net.Uri.parse("tel:" + norm.toString());
     }
 
     /** Teks dari PC: masuk clipboard HP dan tampil di notifikasi (cadangan bila Android menolak penulisan dari latar). */
@@ -242,13 +266,60 @@ public class ConnService extends Service {
                 Intent view = new Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 PendingIntent open = PendingIntent.getActivity(this, 2, view, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
                 nb.setContentIntent(open).addAction(new Notification.Action.Builder(null, "Buka", open).build());
+            } else {
+                android.net.Uri tel = parsePhoneNumber(t);
+                if (tel != null) {
+                    Intent dial = new Intent(Intent.ACTION_DIAL, tel).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    PendingIntent call = PendingIntent.getActivity(this, 2, dial, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                    nb.setContentIntent(call).addAction(new Notification.Action.Builder(null, "Telepon", call).build());
+                }
             }
             nm.notify(2, nb.build());
         } catch (Exception e) { }
     }
 
+    private void receiveFile(int idx, String rawName) {
+        new Thread(() -> {
+            try {
+                Dl.Result r = Dl.download(this, idx, rawName);
+                NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                nm.createNotificationChannel(new NotificationChannel("zaxlet-file", "Berkas dari PC", NotificationManager.IMPORTANCE_DEFAULT));
+                Intent view = new Intent(Intent.ACTION_VIEW);
+                int dot = r.name.lastIndexOf('.');
+                String ext = dot >= 0 && dot < r.name.length() - 1 ? r.name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT) : "";
+                String mime = ext.isEmpty() ? null : android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+                if (mime != null && !mime.isEmpty()) view.setDataAndType(r.uri, mime);
+                else view.setData(r.uri);
+                view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                int id = fileNotifId.incrementAndGet();
+                PendingIntent open = PendingIntent.getActivity(this, id, view, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                Notification n = new Notification.Builder(this, "zaxlet-file")
+                        .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                        .setContentTitle("Diterima dari PC: " + r.name)
+                        .setContentText(r.where)
+                        .setContentIntent(open)
+                        .setAutoCancel(true)
+                        .build();
+                nm.notify(id, n);
+            } catch (Exception e) {
+                Net.active = null;
+            }
+        }, "zaxlet-dl").start();
+    }
+
     private void handle(String m) {
         if (m.startsWith("text ")) { fromPc(m.substring(5)); return; }
+        if (m.startsWith("file ")) {
+            String[] q = m.split(" ", 3);
+            if (q.length == 3) {
+                try {
+                    int idx = Integer.parseInt(q[1]);
+                    String name = new String(android.util.Base64.decode(q[2], android.util.Base64.DEFAULT), "UTF-8");
+                    receiveFile(idx, name);
+                } catch (Exception e) { }
+            }
+            return;
+        }
         if (m.startsWith("reply ")) {   // reply <base64 key> <base64 teks>; key notifikasi Android memuat "|" jadi dikodekan
             String[] q = m.split(" ", 3);
             if (q.length == 3) {

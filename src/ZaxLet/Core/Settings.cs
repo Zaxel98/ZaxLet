@@ -189,6 +189,7 @@ public sealed class Settings
     [JsonConverter(typeof(SecretConverter))] public string ShareToken { get; set; } = "";
     public int SharePort { get; set; } = 47890;
     public bool ShareAuto { get; set; }
+    public bool SendToOn { get; set; } = true;                 // pintasan "ZaxLet HP" di menu SendTo Explorer
     public string ShareQr { get; set; } = "lan";               // lan | tailscale
     public int CamRes { get; set; } = 720;                      // tinggi bingkai kamera HP
     public int CamFps { get; set; } = 15;

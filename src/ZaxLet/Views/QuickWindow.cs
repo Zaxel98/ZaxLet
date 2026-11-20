@@ -126,6 +126,22 @@ public sealed class QuickWindow : Window
                     isl?.Alert(res, 5, null, false);
                 });
                 return;
+            case QuickCmd.Kind.Hp:
+                if (string.IsNullOrEmpty(c.Arg))
+                {
+                    int n = PhoneText.SendClipboard();
+                    msg = L.T(n < 0 ? "Clipboard tidak berisi teks (atau terlalu besar)" : n == 0 ? "HP belum tersambung" : "Dikirim ke HP");
+                }
+                else if (System.Text.Encoding.UTF8.GetByteCount(c.Arg) > PhoneText.MaxBytes)
+                {
+                    msg = L.T("Teks terlalu panjang");
+                }
+                else
+                {
+                    int n = ShareServer.I.Command("text " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(c.Arg)));
+                    msg = L.T(n > 0 ? "Dikirim ke HP" : "HP belum tersambung");
+                }
+                break;
             case QuickCmd.Kind.Calc:
                 try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;

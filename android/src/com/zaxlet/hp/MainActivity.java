@@ -356,26 +356,8 @@ public class MainActivity extends Activity {
         toast("Mengunduh " + name + "…");
         new Thread(() -> {
             try {
-                HttpsURLConnection c = Net.http("/d/" + i, "GET");
-                OutputStream out; String where;
-                if (Build.VERSION.SDK_INT >= 29) {
-                    ContentValues v = new ContentValues();
-                    v.put(MediaStore.Downloads.DISPLAY_NAME, name);
-                    v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ZaxLet");
-                    Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
-                    out = getContentResolver().openOutputStream(u);
-                    where = "Download/ZaxLet";
-                } else {
-                    File f = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), name);
-                    out = new FileOutputStream(f);
-                    where = f.getParent();
-                }
-                try (InputStream in = c.getInputStream(); OutputStream o = out) {
-                    byte[] buf = new byte[65536]; int n;
-                    while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
-                }
-                final String w = where;
-                ui.post(() -> toast("Tersimpan di " + w));
+                Dl.Result r = Dl.download(this, i, name);
+                ui.post(() -> toast("Tersimpan di " + r.where));
             } catch (Exception e) { Net.active = null; ui.post(() -> toast("Gagal mengunduh: " + e.getMessage())); }
         }).start();
     }

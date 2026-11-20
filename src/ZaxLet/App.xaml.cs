@@ -23,10 +23,16 @@ public partial class App : Application
         if (e.Args.Length == 2 && e.Args[0] == "--fps-helper") { FpsHelper.Run(e.Args[1]); Environment.Exit(0); return; }
         if (e.Args.Length == 3 && e.Args[0] == "--ram-helper") { MemTrim.Helper(e.Args[1], e.Args[2]); Environment.Exit(0); return; }
         // ZAXLET_NO_SINGLE=1: izinkan instans kedua (uji di PC yang sudah menjalankan ZaxLet; dipakai bersama ZAXLET_DATA_DIR)
+        bool isSendPhone = e.Args.Contains("--send-phone");
         if (Environment.GetEnvironmentVariable("ZAXLET_NO_SINGLE") != "1")
         {
             _mutex = new Mutex(true, "ZaxLet.Single.Instance", out bool first);
-            if (!first) { Shutdown(); return; }
+            if (!first)
+            {
+                if (isSendPhone) SendTo.ForwardToRunning(e.Args.Where(a => a != "--send-phone" && !a.StartsWith("--")));
+                Shutdown();
+                return;
+            }
         }
         base.OnStartup(e);
         // UI sederhana: render software menghindari driver grafis (puluhan MB RAM) dan GPU tetap bebas
@@ -242,6 +248,13 @@ public partial class App : Application
         Safe(() => UsageService.I.StartAgyLoop());
         Safe(() => { if (Settings.Cur.ShareAuto || Settings.Cur.VCamOn) ShareServer.I.Start(); });
         Safe(() => { if (Settings.Cur.VCamOn) VirtualCam.Start(); });
+        Safe(() => { if (Settings.Cur.SendToOn) SendTo.Sync(true); });
+        Safe(() => SendTo.StartPipeServer());
+        if (isSendPhone)
+        {
+            var files = e.Args.Where(a => a != "--send-phone" && !a.StartsWith("--")).ToArray();
+            if (files.Length > 0) _ = System.Threading.Tasks.Task.Run(() => SendTo.HandleFiles(files));
+        }
     }
 
     /// <summary>Versi lama bernama "Island": pindahkan folder data dan nilai autostartnya sekali supaya pengaturan tidak hilang.</summary>
