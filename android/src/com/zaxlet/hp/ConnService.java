@@ -200,6 +200,26 @@ public class ConnService extends Service {
         }
     }
 
+    private static android.net.Uri parseSingleHttpUrl(String text) {
+        if (text == null) return null;
+        String s = text.trim();
+        if (s.isEmpty() || s.length() > 2000) return null;
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.isWhitespace(s.charAt(i))) return null;
+        }
+        try {
+            new java.net.URI(s);
+            android.net.Uri uri = android.net.Uri.parse(s);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) return null;
+            if (host == null || host.isEmpty()) return null;
+            return uri;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Teks dari PC: masuk clipboard HP dan tampil di notifikasi (cadangan bila Android menolak penulisan dari latar). */
     private void fromPc(String b64) {
         final String t;
@@ -215,8 +235,15 @@ public class ConnService extends Service {
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             nm.createNotificationChannel(new NotificationChannel("zaxlet-text", "Teks dari PC", NotificationManager.IMPORTANCE_DEFAULT));
             String head = t.length() > 80 ? t.substring(0, 80) + "..." : t;
-            nm.notify(2, new Notification.Builder(this, "zaxlet-text").setSmallIcon(android.R.drawable.ic_menu_edit).setContentTitle("Teks dari PC disalin")
-                    .setContentText(head).setStyle(new Notification.BigTextStyle().bigText(t.length() > 1000 ? t.substring(0, 1000) + "..." : t)).setAutoCancel(true).build());
+            Notification.Builder nb = new Notification.Builder(this, "zaxlet-text").setSmallIcon(android.R.drawable.ic_menu_edit).setContentTitle("Teks dari PC disalin")
+                    .setContentText(head).setStyle(new Notification.BigTextStyle().bigText(t.length() > 1000 ? t.substring(0, 1000) + "..." : t)).setAutoCancel(true);
+            android.net.Uri url = parseSingleHttpUrl(t);
+            if (url != null) {
+                Intent view = new Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                PendingIntent open = PendingIntent.getActivity(this, 2, view, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                nb.setContentIntent(open).addAction(new Notification.Action.Builder(null, "Buka", open).build());
+            }
+            nm.notify(2, nb.build());
         } catch (Exception e) { }
     }
 
