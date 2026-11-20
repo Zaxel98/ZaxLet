@@ -442,6 +442,7 @@ public sealed class SettingsView : TabView
                 yield return ("Tampilkan GPU", Toggle(() => s.MonGpu, v => s.MonGpu = v));
                 yield return ("Bar per core CPU", Toggle(() => s.MonCores, v => s.MonCores = v));
                 yield return ("Daftar proses teratas", Toggle(() => s.MonTop, v => s.MonTop = v));
+                yield return ("Waktu layar per aplikasi\nMencatat nama aplikasi dan durasi pemakaian per hari secara lokal (appusage.json), tanpa judul jendela", Toggle(() => s.AppUsageOn, v => s.AppUsageOn = v));
                 yield return ("§Overlay performa saat main", null);
                 yield return ("Kapan tampil\nGame: otomatis saat aplikasi layar penuh atau borderless di depan. Selalu: terus tampil. Ketik \"perf\" di Aksi cepat untuk menyalakan atau mematikan sesaat. Mati = tidak membaca sensor sama sekali", Choice(new[] { ("off", "Mati"), ("game", "Game"), ("on", "Selalu") }, () => s.PerfShow, v => s.PerfShow = v));
                 yield return ("Tampilkan juga di tab Monitor island\nMenggantikan daftar proses teratas dengan metrik yang dipilih di bawah, satu baris per metrik. Ukuran island tidak berubah", Toggle(() => s.PerfInIsland, v => s.PerfInIsland = v));
@@ -464,6 +465,7 @@ public sealed class SettingsView : TabView
                 yield return ("§Bluetooth", null);
                 yield return ("Baterai perangkat Bluetooth\nTampil saat tersambung dan peringatan saat rendah, untuk perangkat yang melaporkan baterai ke Windows (headset Hands-Free). Ketik \"bt\" di Aksi cepat untuk melihat sekarang", Toggle(() => s.BtBattery, v => s.BtBattery = v));
                 yield return ("~Peringatkan di bawah", Num(5, 50, 5, "%", () => s.BtLowPct, v => s.BtLowPct = v));
+                yield return ("Jeda musik saat headset terputus\nMenjeda pemutar saat perangkat Bluetooth terputus, dengan tombol klik untuk lanjut", Toggle(() => s.BtPauseOnLost, v => s.BtPauseOnLost = v));
                 break;
 
             case "calendar":

@@ -624,6 +624,20 @@ public sealed class MediaService
 
     // ---------- kontrol ----------
     public void PlayPause() => _ = _s?.TryTogglePlayPauseAsync();
+
+    /// <summary>Jeda pemutaran jika sedang memutar; mengembalikan true bila perintah jeda berhasil dikirim.</summary>
+    public async Task<bool> PauseIfPlayingAsync()
+    {
+        try { return Playing && _s != null && await _s.TryPauseAsync(); }
+        catch (Exception ex) { App.Log(ex); return false; }
+    }
+
+    /// <summary>Lanjutkan pemutaran jika sedang terjeda.</summary>
+    public async Task<bool> ResumeAsync()
+    {
+        try { return !Playing && _s != null && await _s.TryPlayAsync(); }
+        catch (Exception ex) { App.Log(ex); return false; }
+    }
     // pada video bersegmen, berikutnya/sebelumnya melompat antar segmen (lagu), bukan antar video
     public void Next()
     {
@@ -1278,7 +1292,7 @@ public sealed class MediaService
     {
         try
         {
-            if (Playing && _s != null) await _s.TryPauseAsync();
+            await PauseIfPlayingAsync();
             await Task.Delay(250);
         }
         catch (Exception ex) { App.Log(ex); }
@@ -1311,7 +1325,7 @@ public sealed class MediaService
 
     async Task PauseAfterTrackChangeAsync()
     {
-        try { if (Playing && _s != null) await _s.TryPauseAsync(); }
+        try { await PauseIfPlayingAsync(); }
         catch (Exception ex) { App.Log(ex); }
         finally { lock (_sleepLk) _pausingForSleep = false; Ui(() => Changed?.Invoke()); }
     }
