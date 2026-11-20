@@ -58,11 +58,21 @@ public sealed class FpsEtw : IDisposable
 
             _cb = OnRecord;
             var lf = Marshal.AllocHGlobal(448);   // EVENT_TRACE_LOGFILEW (x64)
-            for (int i = 0; i < 448; i += 8) Marshal.WriteInt64(lf, i, 0);
-            Marshal.WriteIntPtr(lf, 8, Marshal.StringToHGlobalUni(Session));      // LoggerName
-            Marshal.WriteInt32(lf, 28, 0x10000100);                               // PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
-            Marshal.WriteIntPtr(lf, 424, Marshal.GetFunctionPointerForDelegate(_cb));   // EventRecordCallback
-            _open = OpenTraceW(lf);
+            var lfName = IntPtr.Zero;
+            try
+            {
+                for (int i = 0; i < 448; i += 8) Marshal.WriteInt64(lf, i, 0);
+                lfName = Marshal.StringToHGlobalUni(Session);
+                Marshal.WriteIntPtr(lf, 8, lfName);                                   // LoggerName
+                Marshal.WriteInt32(lf, 28, 0x10000100);                               // PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
+                Marshal.WriteIntPtr(lf, 424, Marshal.GetFunctionPointerForDelegate(_cb));   // EventRecordCallback
+                _open = OpenTraceW(lf);
+            }
+            finally
+            {
+                if (lfName != IntPtr.Zero) Marshal.FreeHGlobal(lfName);
+                Marshal.FreeHGlobal(lf);
+            }
             if (_open == ulong.MaxValue) { Dispose(); return (uint)Marshal.GetLastWin32Error(); }
 
             _thread = new Thread(() => ProcessTrace(new[] { _open }, 1, IntPtr.Zero, IntPtr.Zero)) { IsBackground = true, Name = "fps-etw" };
@@ -174,7 +184,7 @@ public static class FpsSource
             var name = "zaxlet-fps-" + Guid.NewGuid().ToString("N");
             _pipe = new NamedPipeServerStream(name, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             var psi = new ProcessStartInfo(Environment.ProcessPath, $"--fps-helper {name}") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
-            Process.Start(psi);
+            Process.Start(psi)?.Dispose();
             var pipe = _pipe;
             new Thread(() => ReadLoop(pipe)) { IsBackground = true, Name = "fps-pipe" }.Start();
             return true;
@@ -191,7 +201,8 @@ public static class FpsSource
     {
         try
         {
-            pipe.WaitForConnection();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            pipe.WaitForConnectionAsync(cts.Token).GetAwaiter().GetResult();
             using var r = new StreamReader(pipe);
             string line;
             while ((line = r.ReadLine()) != null)
@@ -206,7 +217,11 @@ public static class FpsSource
             }
         }
         catch { }
-        finally { if (_pipe == pipe) _pipe = null; }
+        finally
+        {
+            if (_pipe == pipe) _pipe = null;
+            pipe.Dispose();
+        }
     }
 
     /// <summary>FPS proses yang sedang di depan; bila tidak ada, proses lain yang paling lancar (≥ 10 fps), selain ZaxLet sendiri. Null bila tidak ada frame.</summary>
