@@ -54,11 +54,13 @@ public sealed class ToolsView : TabView
         root.Children.Add(head);
 
         var recBg = UI.B(RecBgHex);
-        var row = new UniformGrid { Rows = 2, Columns = 3 };
+        var row = new UniformGrid { Rows = 2, Columns = 4 };
         row.Children.Add(Tile("", "Layar penuh", CaptureService.Full, UI.Card));
         row.Children.Add(Tile("", "Area", CaptureService.Area, UI.Card));
         row.Children.Add(Tile("", "Jendela", CaptureService.Window, UI.Card));
         row.Children.Add(Tile("", "Sematkan area", CaptureService.PinArea, UI.Card));
+        row.Children.Add(Tile("", "OCR area", ScreenOcr.PickAndCopy, UI.Card));
+        row.Children.Add(Tile("", "Pipet warna", ColorPick.Pick, UI.Card));
         row.Children.Add(Tile("", "Rekam layar", CaptureService.ToggleRecord, recBg));
         row.Children.Add(Tile("", "Rekam area", CaptureService.ToggleRecordArea, recBg));
         root.Children.Add(row.At(1));

@@ -8,11 +8,11 @@ namespace ZaxLet;
 /// </summary>
 public static class QuickCmd
 {
-    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Unknown }
+    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Unknown }
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
+    public const string Help = "t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
@@ -73,6 +73,10 @@ public static class QuickCmd
                 return ParseAwake(arg);
             case "bt": case "baterai": case "battery":
                 return new Cmd(Kind.Bt);
+            case "ocr":
+                return new Cmd(Kind.Ocr);
+            case "warna": case "color": case "pipet":
+                return new Cmd(Kind.Color);
             case "buka": case "open": case "ke":
                 return arg.Length > 0 ? new Cmd(Kind.Open, arg.ToLowerInvariant()) : new Cmd(Kind.Unknown, "buka <nama tab>");
             default:

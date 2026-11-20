@@ -55,7 +55,7 @@ public static class CaptureService
         IslandWindow.Instance?.Alert(L.F("Tangkapan tersimpan · {0}", Path.GetFileName(file)), 5);
     }
 
-    static void HideAndCapture(Action capture)
+    internal static void HideAndCapture(Action capture)
     {
         PinWindow.SetAllVisible(false);
         IslandWindow.Instance.HideForCapture(() =>
@@ -64,6 +64,22 @@ public static class CaptureService
             finally { PinWindow.SetAllVisible(true); }
         });
     }
+
+    public static void PickArea(Action<SD.Bitmap> onPicked) => HideAndCapture(() =>
+    {
+        var shot = Grab(Screen);
+        try
+        {
+            var picker = new AreaPicker(shot);
+            picker.ShowDialog();
+            if (picker.Result is { } r)
+            {
+                using var crop = shot.Clone(r, SDI.PixelFormat.Format32bppArgb);
+                onPicked(crop);
+            }
+        }
+        finally { shot.Dispose(); }
+    });
 
     public static void Full() => HideAndCapture(() => Finish(Grab(Screen)));
 
