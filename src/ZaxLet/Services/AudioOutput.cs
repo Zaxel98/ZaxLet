@@ -31,9 +31,6 @@ public static class AudioOutput
     [DllImport("ole32.dll")]
     static extern int PropVariantClear(ref PropVariant pvar);
 
-    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-    class MMDeviceEnumeratorCom { }
-
     [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface IMMDeviceEnumerator
     {
@@ -116,21 +113,25 @@ public static class AudioOutput
     }
 
     /// <summary>Daftar perangkat keluaran suara aktif beserta penanda perangkat bawaan saat ini.</summary>
-    public static List<Device> List()
+    public static List<Device> List() => TryList(out var devices) ? devices : new List<Device>();
+
+    /// <summary>Baca daftar perangkat keluaran suara aktif; kembalikan false bila enumerasi gagal.</summary>
+    public static bool TryList(out List<Device> devices)
     {
-        var result = new List<Device>();
+        devices = new List<Device>();
         IMMDeviceEnumerator en = null;
         IMMDeviceCollection col = null;
         IMMDevice defDev = null;
         try
         {
-            en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            // Pakai tipe RCW tunggal AudioEndpoint.MMDeviceEnumeratorCom agar tidak bentrok dengan cache RCW COM singleton.
+            en = (IMMDeviceEnumerator)new AudioEndpoint.MMDeviceEnumeratorCom();
             string defaultId = null;
             if (en.GetDefaultAudioEndpoint(FlowRender, RoleConsole, out defDev) == 0 && defDev != null)
                 defDev.GetId(out defaultId);
 
-            if (en.EnumAudioEndpoints(FlowRender, StateActive, out col) != 0 || col == null) return result;
-            if (col.GetCount(out uint count) != 0) return result;
+            if (en.EnumAudioEndpoints(FlowRender, StateActive, out col) != 0 || col == null) return false;
+            if (col.GetCount(out uint count) != 0) return false;
 
             for (uint i = 0; i < count; i++)
             {
@@ -141,20 +142,24 @@ public static class AudioOutput
                     if (dev.GetId(out var id) != 0 || string.IsNullOrEmpty(id)) continue;
                     var name = ReadFriendlyName(dev);
                     if (string.IsNullOrWhiteSpace(name)) name = id;
-                    result.Add(new Device(id, name, string.Equals(id, defaultId, StringComparison.OrdinalIgnoreCase)));
+                    devices.Add(new Device(id, name, string.Equals(id, defaultId, StringComparison.OrdinalIgnoreCase)));
                 }
                 catch (Exception ex) { App.Log(ex); }
                 finally { Release(dev); }
             }
+            return true;
         }
-        catch (Exception ex) { App.Log(ex); }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            return false;
+        }
         finally
         {
             Release(defDev);
             Release(col);
             Release(en);
         }
-        return result;
     }
 
     /// <summary>Jadikan perangkat dengan id tertentu sebagai keluaran suara utama (Console, Multimedia, Communications).</summary>
