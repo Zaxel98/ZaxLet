@@ -48,7 +48,7 @@ public static class CaptureService
 
     static void Finish(SD.Bitmap bmp)
     {
-        var file = Path.Combine(Dir("p", "ZaxLet"), $"ZaxLet_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+        var file = Path.Combine(Dir("p", "ZaxLet"), $"ZaxLet_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
         bmp.Save(file, SDI.ImageFormat.Png);
         if (Settings.Cur.CapClipboard) try { WF.Clipboard.SetImage(bmp); } catch { }
         bmp.Dispose();
@@ -166,8 +166,22 @@ public static class CaptureService
 
     static void StopRecord()
     {
-        try { _rec.StandardInput.Write("q"); _rec.StandardInput.Flush(); _rec.WaitForExit(FfmpegStopTimeoutMs); }
+        try
+        {
+            if (_rec != null)
+            {
+                _rec.StandardInput.Write("q");
+                _rec.StandardInput.Flush();
+                if (!_rec.WaitForExit(FfmpegStopTimeoutMs))
+                    _rec.Kill(true);
+            }
+        }
         catch (Exception ex) { App.Log(ex); }
+        finally
+        {
+            _rec?.Dispose();
+            _rec = null;
+        }
         IslandWindow.Instance?.Alert(L.T("Rekaman tersimpan di Videos\\ZaxLet"), 6);
     }
 
@@ -179,7 +193,7 @@ public static class CaptureService
             IslandWindow.Instance?.Alert(L.T("Rekam layar butuh ffmpeg (belum ditemukan)"), 8);
             return;
         }
-        var file = Path.Combine(Dir("v", "ZaxLet"), $"ZaxLet_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
+        var file = Path.Combine(Dir("v", "ZaxLet"), $"ZaxLet_{DateTime.Now:yyyyMMdd_HHmmss_fff}.mp4");
         int fps = Math.Clamp(Settings.Cur.RecFps, 5, 60);
         string region = area is { } a ? $"-offset_x {a.X} -offset_y {a.Y} -video_size {a.Width}x{a.Height} " : "";
 
@@ -218,6 +232,8 @@ public static class CaptureService
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardInput = true, RedirectStandardError = true
             };
+            _rec?.Dispose();
+            _rec = null;
             _rec = Process.Start(psi);
             if (_rec == null) return false;
             _rec.ErrorDataReceived += (_, _) => { };

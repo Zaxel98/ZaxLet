@@ -63,7 +63,7 @@ public sealed class TimerService
 
     TimeSpan Duration() => Mode switch
     {
-        TMode.Pomodoro => TimeSpan.FromMinutes(PomoBreak ? Settings.Cur.PomoBreak : Settings.Cur.PomoWork),
+        TMode.Pomodoro => TimeSpan.FromMinutes(Math.Max(0.1, PomoBreak ? Settings.Cur.PomoBreak : Settings.Cur.PomoWork)),
         _ => Total
     };
 
