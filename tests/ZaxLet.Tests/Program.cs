@@ -534,4 +534,21 @@ if (!bridgeOk) fail++;
     if (!burnOk) fail++;
 }
 
+// ---- pengingat berlabel ----
+{
+    var now = new DateTime(2026, 11, 21, 14, 0, 0);
+    bool a = ReminderLogic.TryParse("15:30 rapat tim", now, out var d1, out var l1) && d1 == new DateTime(2026, 11, 21, 15, 30, 0) && l1 == "rapat tim";
+    bool b = ReminderLogic.TryParse("13.05 makan", now, out var d2, out _) && d2 == new DateTime(2026, 11, 22, 13, 5, 0);   // sudah lewat = besok
+    bool c = ReminderLogic.TryParse("20m jemuran", now, out var d3, out var l3) && d3 == now.AddMinutes(20) && l3 == "jemuran";
+    bool bad = !ReminderLogic.TryParse("25:00 x", now, out _, out _) && !ReminderLogic.TryParse("15:30", now, out _, out _) && !ReminderLogic.TryParse("abc x", now, out _, out _);
+    var items = new System.Collections.Generic.List<ReminderItem> {
+        new() { Label = "depan", DueAt = now.AddMinutes(5) }, new() { Label = "baru lewat", DueAt = now.AddSeconds(-30) },
+        new() { Label = "terlambat", DueAt = now.AddHours(-3) }, new() { Label = "basi", DueAt = now.AddHours(-20) } };
+    var (rem, dueList) = ReminderLogic.EvaluateDue(items, now, TimeSpan.FromHours(12), TimeSpan.FromMinutes(2));
+    bool ev = rem.Count == 1 && dueList.Count == 2 && !dueList[0].IsLate && dueList[1].IsLate;   // "basi" dibuang tanpa bunyi
+    bool ok = a && b && c && bad && ev;
+    Console.WriteLine(ok ? "REMIND OK" : $"REMIND GAGAL a={a} b={b} c={c} bad={bad} ev={ev}");
+    if (!ok) fail++;
+}
+
 return fail;

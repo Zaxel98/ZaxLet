@@ -45,6 +45,7 @@
     <Compile Include="..\..\src\ZaxLet\Services\AiTaskParse.cs" Link="AiTaskParse.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\AiTaskScan.cs" Link="AiTaskScan.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\BurnRate.cs" Link="BurnRate.cs" />
+    <Compile Include="..\..\src\ZaxLet\Services\ReminderLogic.cs" Link="ReminderLogic.cs" />
   </ItemGroup>
 
 </Project>

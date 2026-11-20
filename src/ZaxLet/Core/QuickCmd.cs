@@ -85,7 +85,7 @@ public static class QuickCmd
                 return new Cmd(Kind.Topmost);
             case "lepas": case "eject":
                 if (arg.Length == 0) return new Cmd(Kind.Eject, "");
-                return UsbDrives.TryParseDriveLetter(arg, out var drv)
+                return TryDriveLetter(arg, out var drv)
                     ? new Cmd(Kind.Eject, drv.ToString())
                     : new Cmd(Kind.Unknown, "lepas [huruf drive, mis. e]");
             case "buka": case "open": case "ke":
@@ -93,6 +93,16 @@ public static class QuickCmd
             default:
                 return new Cmd(Kind.Unknown, Help);
         }
+    }
+
+    /// <summary>"e", "E:" atau "e:\" -> 'E'. Murni, supaya proyek tes tidak butuh UsbDrives.</summary>
+    static bool TryDriveLetter(string arg, out char letter)
+    {
+        letter = '\0';
+        var s = (arg ?? "").Trim().TrimEnd('\\', '/').TrimEnd(':');
+        if (s.Length != 1 || !char.IsAsciiLetter(s[0])) return false;
+        letter = char.ToUpperInvariant(s[0]);
+        return true;
     }
 
     static Cmd ParseMusicSleep(string arg)
