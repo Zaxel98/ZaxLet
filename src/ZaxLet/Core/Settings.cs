@@ -133,6 +133,7 @@ public sealed class Settings
     public int PerfBgAlpha { get; set; } = 88;                 // persen kepekatan latar overlay performa (teks tetap jelas); 0 = latar hilang
     public bool BtBattery { get; set; } = true;                // baterai headset/perangkat Bluetooth: tampil saat tersambung dan peringatan saat rendah
     public int BtLowPct { get; set; } = 20;
+    public bool BtPauseOnLost { get; set; } = true;            // jeda musik otomatis saat perangkat Bluetooth terputus
     public string QuickKey { get; set; } = "";                // pintasan global kotak Aksi cepat (timer, fokus, catat, ...); kosong = mati
     public string OpenKey { get; set; } = "";                   // pintasan global untuk membuka/menutup island dari keyboard; kosong = mati
     public string CapKey { get; set; } = "";                    // pintasan global untuk tangkap area; kosong = mati (Ctrl+Shift+S bentrok dengan Simpan Sebagai di banyak aplikasi)
@@ -165,6 +166,7 @@ public sealed class Settings
     public bool MonGpu { get; set; } = true;
     public bool MonTop { get; set; } = true;
     public bool MonCores { get; set; } = true;
+    public bool AppUsageOn { get; set; }                       // catat waktu layar per aplikasi secara lokal (opt-in)
 
     // kalender
     public bool WeekMonday { get; set; } = true;

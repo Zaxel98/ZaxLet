@@ -36,6 +36,7 @@ public sealed class MonitorView : TabView
     Border _ovBtn, _acBtn;
     readonly TextBlock _ovTxt = UI.T("Overlay", 11, UI.Dim, true), _acTxt = UI.T("Auto-clear", 10.5, UI.Dim, true);
     readonly TextBlock _rightTitle = UI.T("Memori terbanyak", 11.5, UI.Dim);
+    readonly TextBlock _usageTxt = UI.T("", 10.5, UI.Dim);
     readonly StackPanel _perfBox = new() { ClipToBounds = true, Height = 168 };   // tinggi tetap: ganti daftar proses tanpa mengubah ukuran island
     PerfProbe _probe;   // hidup hanya selama tab terbuka dan "tampilkan di island" menyala
 
@@ -135,6 +136,10 @@ public sealed class MonitorView : TabView
         right.Children.Add(head);
         _top.Margin = new Thickness(0, 6, 0, 0);
         right.Children.Add(_top);
+        _usageTxt.TextTrimming = TextTrimming.CharacterEllipsis;
+        _usageTxt.Margin = new Thickness(0, 4, 0, 0);
+        _usageTxt.Visibility = Visibility.Collapsed;
+        right.Children.Add(_usageTxt);
         _perfBox.Margin = new Thickness(0, 4, 0, 0); _perfBox.Visibility = Visibility.Collapsed;
         right.Children.Add(_perfBox);
         g.Children.Add(right.At(0, 2));
@@ -332,6 +337,20 @@ public sealed class MonitorView : TabView
             row.Children.Add(UI.T(bytes >= 1L << 30 ? $"{bytes / 1073741824.0:0.0}G" : $"{bytes >> 20}M", 12.5, UI.Dim).At(0, 2));
             _top.Children.Add(row);
         }
+        RenderUsage(st);
+    }
+
+    void RenderUsage(Settings st)
+    {
+        var top3 = st.AppUsageOn ? AppUsage.I.TodayTop(3) : null;
+        if (top3 == null || top3.Count == 0) { _usageTxt.Visibility = Visibility.Collapsed; return; }
+        _usageTxt.Text = L.T("Hari ini") + ": " + string.Join(" · ", top3.Select(x => $"{AppUsage.DisplayName(x.Name)} {AppUsage.FormatDuration(x.Sec)}"));
+        var top8 = AppUsage.I.TodayTop(8);
+        int total7 = AppUsage.I.TotalLastDays(7);
+        _usageTxt.ToolTip = L.T("Hari ini (8 teratas):") + "\n"
+            + string.Join("\n", top8.Select(x => $"{AppUsage.DisplayName(x.Name)} · {AppUsage.FormatDuration(x.Sec)}"))
+            + "\n" + L.F("Total 7 hari: {0}", AppUsage.FormatDuration(total7));
+        _usageTxt.Visibility = Visibility.Visible;
     }
 
     static Brush PingBrush(int tier) => tier switch { 0 => UI.Fg, 1 => UI.Warn, 2 => UI.Bad, _ => UI.Dim };
