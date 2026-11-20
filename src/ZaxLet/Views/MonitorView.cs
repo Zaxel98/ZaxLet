@@ -22,7 +22,7 @@ public sealed class MonitorView : TabView
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly RingBadge _rC = new("C", 26), _rM = new("M", 22), _rG = new("G", 22);
     readonly TextBlock _cpu = UI.T("", 14, null, true), _gpu = UI.T("", 14, null, true), _temp = UI.T("", 14, null, true), _mem = UI.T("", 12.5), _bat = UI.T("", 12.5);
-    readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5);
+    readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5), _netType = UI.T("none", 10.5, UI.Dim);
     readonly TextBlock _gwPing = UI.T("—", 11.5, UI.Dim, true), _gwMeta = UI.T("", 10.5, UI.Dim);
     readonly TextBlock _netPing = UI.T("—", 11.5, UI.Dim, true), _netMeta = UI.T("", 10.5, UI.Dim);
     readonly Spark _cpuSpark = new(90, 22, Blue, 40, 1.0), _downSpark = new(46, 16, Blue), _upSpark = new(46, 16, Teal);
@@ -89,6 +89,9 @@ public sealed class MonitorView : TabView
         _up.Margin = new Thickness(5, 0, 6, 0); _up.MinWidth = 58;
         n.Children.Add(_up);
         n.Children.Add(_upSpark);
+        _netType.Margin = new Thickness(10, 0, 0, 0);
+        _netType.VerticalAlignment = VerticalAlignment.Center;
+        n.Children.Add(_netType);
         left.Children.Add(n);
 
         // ping: latensi gateway (LAN) & internet (1.1.1.1), diukur hanya saat tab terlihat
@@ -288,6 +291,7 @@ public sealed class MonitorView : TabView
 
         _down.Text = Rate(_s.NetDownKb); _downSpark.Push(_s.NetDownKb);
         _up.Text = Rate(_s.NetUpKb); _upSpark.Push(_s.NetUpKb);
+        _netType.Text = _s.ConnectionType;
         RenderPing();
 
         if (_s.BatPct < 0) { _batHost.Child = null; _bat.Text = ""; }
