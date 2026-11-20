@@ -50,19 +50,26 @@ public sealed class DownloadWatch
     {
         if (IsTemp(path) || Directory.Exists(path)) return;
         lock (_seen) { if (!_seen.Add(path)) return; if (_seen.Count > 200) _seen.Clear(); }
-        long last = -1;
-        for (int i = 0; i < 60; i++)
+        try
         {
-            await Task.Delay(700);
-            try
+            long last = -1;
+            int stall = 0;
+            var deadline = Environment.TickCount64 + 30 * 60_000L;
+            while (stall < 60 && Environment.TickCount64 < deadline)
             {
-                var len = new FileInfo(path).Length;
-                if (len > 0 && len == last) { Finished?.Invoke(path); return; }
-                last = len;
+                await Task.Delay(700);
+                try
+                {
+                    var len = new FileInfo(path).Length;
+                    if (len > 0 && len == last) { Finished?.Invoke(path); return; }
+                    if (len != last) { last = len; stall = 0; }
+                    else stall++;
+                }
+                catch (IOException) { last = -1; stall++; }   // masih dikunci penulisnya
+                catch { return; }
             }
-            catch (IOException) { last = -1; }   // masih dikunci penulisnya
-            catch { return; }
         }
+        finally { lock (_seen) _seen.Remove(path); }
     }
 }
 
