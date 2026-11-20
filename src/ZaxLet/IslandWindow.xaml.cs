@@ -409,7 +409,11 @@ public partial class IslandWindow : Window
         OpenLayer.Visibility = Visibility.Visible;
         Fade(IdleLayer, 0, 90, () => { if (_open) IdleLayer.Visibility = Visibility.Collapsed; });
         Fade(OpenLayer, 1, 200, null, 70);
-        Select(Settings.Cur.OpenTab != "last" && TabMeta.ContainsKey(Settings.Cur.OpenTab) ? Settings.Cur.OpenTab : Settings.Cur.LastTab == "settings" ? "music" : Settings.Cur.LastTab);
+        var key = Settings.Cur.OpenTab != "last" && Settings.Cur.OpenTab != "settings" && TabMeta.ContainsKey(Settings.Cur.OpenTab)
+            ? Settings.Cur.OpenTab
+            : Settings.Cur.LastTab == "settings" ? "music" : Settings.Cur.LastTab;
+        try { Select(key); }
+        catch (Exception ex) { App.Log(ex); Close_(); }
     }
 
     void Close_()
@@ -465,7 +469,8 @@ public partial class IslandWindow : Window
         slide.BeginAnimation(TranslateTransform.YProperty, Fast(new DoubleAnimation(dir == 0 ? 8 : 0, 0, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease }));
         v.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));
         Highlight();
-        v.OnShow();
+        try { v.OnShow(); }
+        catch (Exception ex) { App.Log(ex); }
         SetSize(OpenW, TabH + TabBarH);
         ApplyTint();
         _trimOpenT.Stop();
@@ -591,7 +596,7 @@ public partial class IslandWindow : Window
         if (s.IdleUsage && DateTime.Now >= _quotaAt)
         {
             _quotaAt = DateTime.Now.AddSeconds(Math.Max(1, s.UsageRefreshSec));
-            _ = UsageService.I.RefreshQuotaAsync();
+            _ = System.Threading.Tasks.Task.Run(() => UsageService.I.RefreshQuotaAsync());
         }
         RefreshIdle();
     }

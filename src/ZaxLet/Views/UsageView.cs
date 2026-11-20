@@ -40,18 +40,19 @@ public sealed class UsageView : TabView
         _page2.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(_main);
         Children.Add(_page2);
-        _t.Tick += async (_, _) => await UsageService.I.RefreshAsync();
+        _t.Tick += (_, _) => _ = Task.Run(() => UsageService.I.RefreshAsync());
         _redraw.Tick += (_, _) => Render();
         _workerT.Tick += (_, _) => _ = RefreshWorkersAsync();
     }
 
     public override void OnShow()
     {
+        UsageService.I.Changed -= OnChanged;
         UsageService.I.Changed += OnChanged;
         _more = false;
         _t.Start(); _redraw.Start(); _workerT.Start();
         Render();
-        _ = UsageService.I.RefreshAsync();
+        _ = Task.Run(() => UsageService.I.RefreshAsync());
         _ = RefreshWorkersAsync();
     }
 
@@ -143,7 +144,7 @@ public sealed class UsageView : TabView
 
     static bool FiveHour(Grid host, ProviderUsage u, int col)
     {
-        var w = u.Windows.FirstOrDefault(x => (x.Label == "5-hour" || x.Label.EndsWith("5h")) && !(u.Error != null && x.Reset != null && x.Reset < DateTimeOffset.Now));
+        var w = u.Windows?.FirstOrDefault(x => x != null && !string.IsNullOrEmpty(x.Label) && (x.Label == "5-hour" || x.Label.EndsWith("5h")) && !(u.Error != null && x.Reset != null && x.Reset < DateTimeOffset.Now));
         if (w == null) return false;
         var cell = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var t = new TextBlock { Foreground = UI.Fg, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -175,13 +176,14 @@ public sealed class UsageView : TabView
             });
         host.Children.Add(head);
 
-        if (u.Windows.Count == 0)
+        var wins = u.Windows ?? new List<QuotaWindow>();
+        if (wins.Count == 0)
             host.Children.Add(new TextBlock { Text = u.Error ?? L.T("memuat…"), Foreground = UI.Dim, FontSize = 12, Margin = new Thickness(0, 12, 0, 8), TextWrapping = TextWrapping.Wrap });
-        bool tight = u.Windows.Count > 3;   // 5 bar (Antigravity) harus muat di tinggi tab
+        bool tight = wins.Count > 3;   // 5 bar (Antigravity) harus muat di tinggi tab
         if (u.Name == "Antigravity") PairBars(host, u);
-        else foreach (var w in u.Windows)
+        else foreach (var w in wins)
         {
-            if (u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now) continue; // jendela lama sudah lewat
+            if (w == null || (u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now)) continue; // jendela lama sudah lewat
             var row = UI.Cols(-1, 0);
             row.Margin = new Thickness(0, tight ? 1 : 5, 0, 0);
             var pct = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Foreground = UI.Fg };
@@ -206,7 +208,7 @@ public sealed class UsageView : TabView
             host.Children.Add(bar);
             bar.Set(w.Pct / 100, w.Pct >= Settings.Cur.CritAt ? UI.Bad : w.Pct >= Settings.Cur.WarnAt ? UI.Warn : UI.Fg);
         }
-        if (u.Windows.Count > 0 && u.Error != null)
+        if (wins.Count > 0 && u.Error != null)
             host.Children.Add(UI.T(u.Error, 10.5, UI.Warn));
 
         // Claude tanpa sumber real-time: satu tombol membuka login (browser terbuka otomatis, tinggal masuk)
@@ -224,7 +226,8 @@ public sealed class UsageView : TabView
         if (u.Name == "Antigravity") return;   // tokennya tampil sebagai kolom Agy di tabel Claude
         // tabel pemakaian: Total (semua catatan sesi) dan Code (sesi yang dicatat Ponytail)
         var code = u.Name == "Claude" && Settings.Cur.ShowPonytail && PonytailService.Available;
-        var (pt, pw) = code ? PonytailService.Read() : (null, null);
+        PonytailStats pt = null, pw = null;
+        if (code) try { (pt, pw) = PonytailService.Read(); } catch (Exception ex) { App.Log(ex); }
         var s = Settings.Cur;
         var agy = u.Name == "Claude" && s.CodexOn && s.Slot2 == "antigravity" ? UsageService.I.Agy : null;
         host.Children.Add(Head(code, agy != null));
@@ -237,7 +240,7 @@ public sealed class UsageView : TabView
     /// <summary>Antigravity: satu baris per grup model, weekly dan 5h bersebelahan.</summary>
     static void PairBars(StackPanel host, ProviderUsage u)
     {
-        var live = u.Windows.Where(w => !(u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now));
+        var live = (u.Windows ?? new List<QuotaWindow>()).Where(w => w != null && !string.IsNullOrEmpty(w.Label) && !(u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now));
         foreach (var grp in live.GroupBy(w => w.Label.Split(" · ")[0]))
         {
             var name = UI.T(grp.Key, 11, UI.Dim);

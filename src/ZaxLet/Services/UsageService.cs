@@ -75,10 +75,10 @@ public sealed class UsageService
         // kuota terakhir yang berhasil dibaca: tetap tampil bila endpoint sedang membatasi (429) atau offline
         if (Store.Load<Cache>("usage-cache.json") is { } c)
         {
-            Claude.Windows = c.Claude; Claude.Plan = c.ClaudePlan; _claudeAt = c.ClaudeAt;
-            Codex.Windows = c.Codex; Codex.Plan = c.CodexPlan;
-            if (c.Claude.Count > 0) Claude.Error = L.T("data lama");
-            if (c.Codex.Count > 0) Codex.Error = L.T("data lama");
+            Claude.Windows = c.Claude ?? new(); Claude.Plan = c.ClaudePlan; _claudeAt = c.ClaudeAt;
+            Codex.Windows = c.Codex ?? new(); Codex.Plan = c.CodexPlan;
+            if (Claude.Windows.Count > 0) Claude.Error = L.T("data lama");
+            if (Codex.Windows.Count > 0) Codex.Error = L.T("data lama");
         }
     }
 
@@ -324,7 +324,7 @@ public sealed class UsageService
             Add(wins, doc.RootElement, "seven_day", "Weekly");
             Claude.Windows = wins;
             Claude.Source = "api";
-            _claudeAt = DateTimeOffset.Now;
+            lock (_cacheLock) _claudeAt = DateTimeOffset.Now;
             Claude.Error = null;
             _claudeNext = DateTime.UtcNow.AddSeconds(Math.Max(1, Settings.Cur.UsageRefreshSec));
             _claudeBackoff = TimeSpan.FromMinutes(2);
@@ -407,7 +407,7 @@ public sealed class UsageService
             if (wins.Count == 0) return false;
             Claude.Windows = wins;
             Claude.Source = "desktop";
-            _claudeAt = DateTimeOffset.Now;
+            lock (_cacheLock) _claudeAt = DateTimeOffset.Now;
             Claude.Error = L.F("dari aplikasi Claude Desktop, {0} lalu", UI.Span(age));
             _claudeNext = DateTime.UtcNow.AddSeconds(30);   // berkasnya lokal dan murah: begitu Claude Desktop menulis catatan baru, langsung tampil
             SaveCache();
@@ -484,7 +484,7 @@ public sealed class UsageService
                     }
             Agy.Windows = wins;
             Agy.Error = wins.Count == 0 ? L.T("kuota tidak ditemukan di respons Antigravity") : null;
-            if (wins.Count > 0) { _agyAt = DateTimeOffset.Now; SaveCache(); }
+            if (wins.Count > 0) { lock (_cacheLock) _agyAt = DateTimeOffset.Now; SaveCache(); }
             _agyNext = DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.Cur.UsageRefreshSec, 1, 60));   // lokal dan murah: paling lambat tiap menit, interval Claude/Codex tidak berlaku
             CheckAlerts(Agy);
         }
