@@ -24,6 +24,7 @@ public static class MemTrim
     [DllImport("advapi32.dll", SetLastError = true)] static extern bool OpenProcessToken(IntPtr p, uint access, out IntPtr tok);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern bool LookupPrivilegeValue(string sys, string name, out long luid);
     [DllImport("advapi32.dll", SetLastError = true)] static extern bool AdjustTokenPrivileges(IntPtr tok, bool disableAll, ref TokenPriv n, int len, IntPtr prev, IntPtr ret);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr h);
     [StructLayout(LayoutKind.Sequential, Pack = 1)] struct TokenPriv { public int Count; public long Luid; public int Attr; }
 
     static bool IsAdmin() => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
@@ -74,7 +75,11 @@ public static class MemTrim
     static bool EnablePrivilege()
     {
         if (!OpenProcessToken(Process.GetCurrentProcess().Handle, 0x20 | 0x08, out var tok)) return false;   // ADJUST_PRIVILEGES | QUERY
-        var tp = new TokenPriv { Count = 1, Attr = 2 };
-        return LookupPrivilegeValue(null, "SeProfileSingleProcessPrivilege", out tp.Luid) && AdjustTokenPrivileges(tok, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero) && Marshal.GetLastWin32Error() == 0;
+        try
+        {
+            var tp = new TokenPriv { Count = 1, Attr = 2 };
+            return LookupPrivilegeValue(null, "SeProfileSingleProcessPrivilege", out tp.Luid) && AdjustTokenPrivileges(tok, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero) && Marshal.GetLastWin32Error() == 0;
+        }
+        finally { CloseHandle(tok); }
     }
 }

@@ -90,8 +90,13 @@ public static class UpdateService
             var dst = AppContext.BaseDirectory.TrimEnd('\\');
             var exe = Path.Combine(dst, "ZaxLet.exe");
             var script = Path.Combine(work, "apply.cmd");
-            // tunggu ZaxLet keluar, salin (robocopy mencoba ulang selagi berkas masih terkunci), lalu buka lagi
-            File.WriteAllText(script, "@echo off\r\ntimeout /t 2 /nobreak >nul\r\n" +
+            // tunggu ZaxLet keluar (maks ~20 dtk), salin (robocopy mencoba ulang selagi berkas masih terkunci), lalu buka lagi
+            File.WriteAllText(script, "@echo off\r\n" +
+                "for /l %%i in (1,1,20) do (\r\n" +
+                "  tasklist /FI \"IMAGENAME eq ZaxLet.exe\" /NH | find /I \"ZaxLet.exe\" >nul || goto :go\r\n" +
+                "  timeout /t 1 /nobreak >nul\r\n" +
+                ")\r\n" +
+                ":go\r\n" +
                 $"robocopy \"{src}\" \"{dst}\" /E /R:10 /W:1 /NFL /NDL /NJH /NJS /NP >nul\r\n" +
                 $"start \"\" \"{exe}\" --updated\r\n");
             bool writable;   // folder pemasangan di Program Files dsb. butuh admin untuk menyalin: minta UAC, jangan gagal diam-diam setelah ZaxLet keluar

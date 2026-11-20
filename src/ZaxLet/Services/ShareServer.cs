@@ -26,7 +26,7 @@ public static class Shelf
 
     public static void Add(string path)
     {
-        if (!File.Exists(path) && !Directory.Exists(path)) return;
+        if (!File.Exists(path)) return;
         lock (_lock)
         {
             if (Items.Contains(path, StringComparer.OrdinalIgnoreCase)) return;
@@ -391,6 +391,7 @@ public sealed class ShareServer
         (Stream S, System.Threading.SemaphoreSlim Lock)[] all;
         lock (_ctl) all = _ctl.Values.ToArray();
         var b = Encoding.UTF8.GetBytes(text);
+        if (b.Length > 65535) return 0;
         foreach (var (s, l) in all)
             _ = Task.Run(async () =>
             {
