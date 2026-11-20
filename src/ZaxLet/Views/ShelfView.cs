@@ -145,7 +145,6 @@ public sealed class ShelfView : TabView
         name.TextTrimming = TextTrimming.None;
         sp.Children.Add(name.At(0, 1));
         var b = UI.Btn(sp, () => Open(path), UI.Card, 10, new Thickness(8, 5, 8, 5));
-        b.Margin = new Thickness(0, 0, 0, 5);
         b.HorizontalAlignment = HorizontalAlignment.Stretch;
         b.ToolTip = path + L.T("\nKlik: buka · seret: keluarkan · klik kanan: hapus");
         b.MouseRightButtonUp += (_, e) => { e.Handled = true; Shelf.Remove(path); };
@@ -161,7 +160,20 @@ public sealed class ShelfView : TabView
             try { DragDrop.DoDragDrop(b, new DataObject(DataFormats.FileDrop, new[] { path }), DragDropEffects.Copy); }
             finally { IslandWindow.Instance?.KeepOpen(false); }
         };
-        return b;
+        if (!FileCompress.IsSupported(path))
+        {
+            b.Margin = new Thickness(0, 0, 0, 5);
+            return b;
+        }
+        var row = UI.Cols(-1, 0);
+        row.Margin = new Thickness(0, 0, 0, 5);
+        row.Children.Add(b);
+        var cmp = UI.Btn(UI.T("Kompres...", 11, UI.Dim), () => CompressPopup.Show(path), UI.CardOn, 8, new Thickness(8, 5, 8, 5));
+        cmp.Margin = new Thickness(5, 0, 0, 0);
+        cmp.VerticalAlignment = VerticalAlignment.Stretch;
+        cmp.ToolTip = L.T("Kompres gambar atau PDF ke ukuran target");
+        row.Children.Add(cmp.At(0, 1));
+        return row;
     }
 
     static void Open(string path)
