@@ -21,8 +21,7 @@ public sealed class MonitorView : TabView
     readonly SysMon _s = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly RingBadge _rC = new("C", 26), _rM = new("M", 22), _rG = new("G", 22);
-    readonly TextBlock _cpu = new() { Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-    readonly TextBlock _gpu = UI.T("", 14, null, true), _temp = UI.T("", 12, UI.Dim), _mem = UI.T("", 12.5), _bat = UI.T("", 12.5);
+    readonly TextBlock _cpu = UI.T("", 14, null, true), _gpu = UI.T("", 14, null, true), _temp = UI.T("", 14, null, true), _mem = UI.T("", 12.5), _bat = UI.T("", 12.5);
     readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5);
     readonly TextBlock _gwPing = UI.T("—", 11.5, UI.Dim, true), _gwMeta = UI.T("", 10.5, UI.Dim);
     readonly TextBlock _netPing = UI.T("—", 11.5, UI.Dim, true), _netMeta = UI.T("", 10.5, UI.Dim);
@@ -47,12 +46,12 @@ public sealed class MonitorView : TabView
         // CPU: cincin C + persen + suhu + grafik riwayat, GPU di kanan
         var a = UI.Cols(0, 0, 0, -1, 0);
         a.Children.Add(_rC);
+        _cpu.Margin = new Thickness(7, 0, 0, 0);
         a.Children.Add(_cpu.At(0, 1));
-        _temp.Margin = new Thickness(8, 0, 0, 0);
-        _temp.VerticalAlignment = VerticalAlignment.Center;
         _temp.Visibility = Visibility.Collapsed;
         a.Children.Add(_temp.At(0, 2));
-        _cpuSpark.Margin = new Thickness(10, 0, 10, 0);
+        _cpuSpark.HorizontalAlignment = HorizontalAlignment.Left;
+        _cpuSpark.Margin = new Thickness(8, 0, 8, 0);
         _cpuSpark.VerticalAlignment = VerticalAlignment.Center;
         a.Children.Add(_cpuSpark.At(0, 3));
         _gpuBox.Children.Add(_rG);
@@ -200,13 +199,12 @@ public sealed class MonitorView : TabView
         _diskBox.Children.Clear();
         foreach (var d in _s.Drives)
         {
-            var row = UI.Cols(24, -1, 0);
+            var row = UI.Cols(24, -1);
             row.Margin = new Thickness(0, 2, 0, 0);
             row.Children.Add(UI.T(d.Letter, 11.5, UI.Fg, true).At(0, 0));
-            var bar = new Bar(5) { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 8, 0) };
+            var bar = new Bar(5) { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
             bar.Set(d.UsedFrac, DiskBrush(d));
             row.Children.Add(bar.At(0, 1));
-            row.Children.Add(UI.T(L.F("sisa {0:0.#} GB dari {1:0.#} GB", d.FreeGb, d.TotalGb), 11, UI.Dim).At(0, 2));
             _diskBox.Children.Add(row);
         }
     }
@@ -261,11 +259,9 @@ public sealed class MonitorView : TabView
         RenderPerf(st);
 
         _rC.Set(_s.Cpu, Level(_s.Cpu));
-        _cpu.Inlines.Clear();
-        _cpu.Inlines.Add(new System.Windows.Documents.Run(Math.Round(_s.Cpu * 100).ToString()) { FontSize = 22, FontWeight = FontWeights.SemiBold });
-        _cpu.Inlines.Add(new System.Windows.Documents.Run(" %") { FontSize = 12, Foreground = UI.Dim });
+        _cpu.Text = $"{Math.Round(_s.Cpu * 100)}%";
         _cpuSpark.Push(_s.Cpu);
-        if (_s.CpuTemp is { } c) { _temp.Text = $"{Math.Round(c)}°C"; _temp.Visibility = Visibility.Visible; }
+        if (_s.CpuTemp is { } c) { _temp.Text = $"  {Math.Round(c)}°C"; _temp.Visibility = Visibility.Visible; }
         else { _temp.Text = ""; _temp.Visibility = Visibility.Collapsed; }
 
         double gu = _s.GpuUtil ?? 0;
