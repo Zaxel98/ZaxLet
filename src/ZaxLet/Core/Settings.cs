@@ -213,6 +213,9 @@ public sealed class Settings
     public bool MeetHold { get; set; } = true;                 // notifikasi HP ditahan selama rapat
     public int FocusMin { get; set; } = 25;                    // lama Mode Fokus manual
     public bool FocusPomo { get; set; }                        // fase kerja Pomodoro otomatis jadi Mode Fokus
+    public bool QuietOn { get; set; }                          // jam tenang terjadwal: tahan notifikasi HP di rentang jam ini
+    public string QuietFrom { get; set; } = "22:00";
+    public string QuietTo { get; set; } = "06:00";
     public double PomoWork { get; set; } = 25;
     public double PomoBreak { get; set; } = 5;
 

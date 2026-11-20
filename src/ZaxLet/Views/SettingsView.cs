@@ -527,6 +527,9 @@ public sealed class SettingsView : TabView
                 yield return ("§Mode Fokus", null);
                 yield return ("Lama Mode Fokus\nNotifikasi HP ditahan; kode OTP tetap lewat. Tombol ada di tab Timer", Num(5, 240, 5, " mnt", () => s.FocusMin, v => s.FocusMin = v));
                 yield return ("Fase kerja Pomodoro = Mode Fokus", Toggle(() => s.FocusPomo, v => s.FocusPomo = v));
+                yield return ("Jam tenang terjadwal\nNotifikasi HP ditahan selama rentang jam ini; kode OTP tetap lewat", Toggle(() => s.QuietOn, v => s.QuietOn = v));
+                yield return ("Jam tenang mulai", Txt(() => s.QuietFrom, v => { if (QuietHours.TryParseHm(v, out var t)) s.QuietFrom = t.ToString(@"hh\:mm"); }, 100));
+                yield return ("Jam tenang selesai", Txt(() => s.QuietTo, v => { if (QuietHours.TryParseHm(v, out var t)) s.QuietTo = t.ToString(@"hh\:mm"); }, 100));
                 break;
 
             case "tools":
