@@ -291,7 +291,7 @@ public sealed class MonitorView : TabView
 
         _down.Text = Rate(_s.NetDownKb); _downSpark.Push(_s.NetDownKb);
         _up.Text = Rate(_s.NetUpKb); _upSpark.Push(_s.NetUpKb);
-        _netType.Text = _s.ConnectionType;
+        _netType.Text = _s.ConnectionType == "none" ? L.T("Tidak tersambung") : _s.ConnectionType;
         RenderPing();
 
         if (_s.BatPct < 0) { _batHost.Child = null; _bat.Text = ""; }
