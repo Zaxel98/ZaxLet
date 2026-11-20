@@ -767,7 +767,7 @@ public partial class IslandWindow : Window
         _phoneDot.Fill = on ? c : Brushes.Transparent;
         _phoneDot.Stroke = on ? c : UI.B("#99FFFFFF");
         _phoneDot.StrokeThickness = 1.4;
-        var bat = on ? ShareServer.I.Devices.FirstOrDefault(x => x.BatPct >= 0 && ShareServer.I.HasApp(x.Id)) : null;
+        var bat = on ? ShareServer.I.DevicesSnapshot().FirstOrDefault(x => x.BatPct >= 0 && ShareServer.I.HasApp(x.Id)) : null;
         var tip = L.T(on ? "HP tersambung" : "HP tidak tersambung") + (bat == null ? "" : $" · {bat.BatPct}%" + (bat.BatCharging ? " ⚡" : ""));
         if ((string)_phoneDot.ToolTip != tip) _phoneDot.ToolTip = tip;
         _phoneDot.Visibility = Visibility.Visible;

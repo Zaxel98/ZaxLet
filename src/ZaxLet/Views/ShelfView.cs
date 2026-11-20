@@ -93,7 +93,8 @@ public sealed class ShelfView : TabView
 
     void Render()
     {
-        _title.Text = L.F("Shelf · {0} file", Shelf.Items.Count);
+        var items = Shelf.Snapshot();
+        _title.Text = L.F("Shelf · {0} file", items.Count);
         _chipText.Text = L.T(_phone ? "Putuskan HP" : "Sambung HP");
         _chip.Background = _phone ? UI.AccentBg : UI.CardOn;
         RefreshCam();
@@ -102,7 +103,7 @@ public sealed class ShelfView : TabView
         _body.Children.Add(new Rectangle { Stroke = UI.Faint, StrokeThickness = 1.2, StrokeDashArray = new DoubleCollection { 4, 3 }, RadiusX = 12, RadiusY = 12 });
 
         var files = new StackPanel { Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Top };   // satu file per baris selebar slot: nama terbaca utuh, gulir bila banyak
-        if (Shelf.Items.Count == 0 && !_phone)
+        if (items.Count == 0 && !_phone)
         {
             var hint = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             hint.Children.Add(UI.Icon("", 20, UI.Dim));
@@ -112,7 +113,7 @@ public sealed class ShelfView : TabView
             _body.Children.Add(hint);
             return;
         }
-        foreach (var p in Shelf.Items.ToArray()) files.Children.Add(Chip(p));
+        foreach (var p in items) files.Children.Add(Chip(p));
 
         if (!_phone)
         {
