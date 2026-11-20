@@ -147,7 +147,25 @@ public sealed class ShareServer
         catch (SocketException) { var l = new TcpListener(IPAddress.Any, 0); l.Start(); return l; }
     }
 
-    public void Stop() { _l?.Stop(); _l = null; _tls?.Stop(); _tls = null; RunChanged?.Invoke(); }
+    public void Stop()
+    {
+        _l?.Stop(); _l = null; _tls?.Stop(); _tls = null;
+        (Stream S, System.Threading.SemaphoreSlim Lock)[] ctl;
+        lock (_ctl) { ctl = _ctl.Values.ToArray(); _ctl.Clear(); }
+        foreach (var (s, _) in ctl) { try { s.Dispose(); } catch { } }
+        RunChanged?.Invoke();
+    }
+
+    public List<PhoneDevice> DevicesSnapshot() { lock (Devices) return Devices.ToList(); }
+
+    public void Unblock(PhoneDevice d)
+    {
+        lock (Devices)
+        {
+            d.Blocked = false;
+            Store.Save("devices.json", Devices);
+        }
+    }
 
     public void ResetToken() { Settings.Cur.ShareToken = NewToken(); Settings.Save(); }
 

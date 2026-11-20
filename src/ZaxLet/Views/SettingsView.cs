@@ -612,7 +612,7 @@ public sealed class SettingsView : TabView
     UIElement PhoneDevices()
     {
         var list = new StackPanel { MinWidth = 280, Tag = "wide" };
-        var devs = ShareServer.I.Devices.OrderByDescending(d => d.LastSeen).ToList();
+        var devs = ShareServer.I.DevicesSnapshot().OrderByDescending(d => d.LastSeen).ToList();
         if (devs.Count == 0) list.Children.Add(UI.T("Belum ada HP yang tersambung", 11.5, UI.Faint));
         foreach (var d in devs)
         {
@@ -623,7 +623,7 @@ public sealed class SettingsView : TabView
             name.TextTrimming = TextTrimming.CharacterEllipsis; name.MaxWidth = 190; name.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(name.At(0, 1));
             var dd = d;
-            var b1 = UI.Btn(UI.T(d.Blocked ? "Buka blokir" : "Blokir", 11, UI.Dim), () => { if (dd.Blocked) { dd.Blocked = false; Store.Save("devices.json", ShareServer.I.Devices); } else ShareServer.I.Forget(dd, true); Render(); }, UI.Card, 8, new Thickness(7, 2, 7, 2));
+            var b1 = UI.Btn(UI.T(d.Blocked ? "Buka blokir" : "Blokir", 11, UI.Dim), () => { if (dd.Blocked) ShareServer.I.Unblock(dd); else ShareServer.I.Forget(dd, true); Render(); }, UI.Card, 8, new Thickness(7, 2, 7, 2));
             var b2 = UI.Btn(UI.T("Lupakan", 11, UI.Dim), () => { ShareServer.I.Forget(dd, false); Render(); }, UI.Card, 8, new Thickness(7, 2, 7, 2));
             b1.Margin = new Thickness(6, 0, 0, 0); b2.Margin = new Thickness(4, 0, 0, 0);
             row.Children.Add(b1.At(0, 2)); row.Children.Add(b2.At(0, 3));

@@ -189,7 +189,7 @@ public partial class IslandWindow
     {
         var s = Settings.Cur;
         if (!s.BtBattery) return;
-        foreach (var d in ShareServer.I.Devices.Where(x => x.BatPct >= 0 && ShareServer.I.HasApp(x.Id)).ToList())
+        foreach (var d in ShareServer.I.DevicesSnapshot().Where(x => x.BatPct >= 0 && ShareServer.I.HasApp(x.Id)))
         {
             var key = "hp:" + d.Id;
             if (d.BatCharging || d.BatPct > s.BtLowPct + 10) _btWarned.Remove(key);
