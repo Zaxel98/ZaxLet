@@ -490,8 +490,11 @@ public sealed class ShareServer
     // audio HP -> PC: PCM dari aplikasi HP, diputar PhoneAudio sebagai aliran tambahan (tidak mem-pause pemutar lain)
     static async Task AudSocket(Stream ns, string key)
     {
+        var t0 = DateTime.Now;
+        PhoneAudio.Diag("HP tersambung (audio)");
         try { await WsIn(ns, key, PhoneAudio.Push); }
-        finally { PhoneAudio.Stop(); }
+        catch (Exception ex) { PhoneAudio.Diag("aliran berhenti karena galat: " + ex.GetType().Name + " " + ex.Message); }
+        finally { PhoneAudio.Stop(); PhoneAudio.Diag($"HP terputus setelah {(DateTime.Now - t0).TotalSeconds:0} dtk"); }
     }
 
     /// <summary>WebSocket masuk: jabat tangan, lalu setiap bingkai teks/biner diteruskan ke onData sampai soket ditutup.</summary>

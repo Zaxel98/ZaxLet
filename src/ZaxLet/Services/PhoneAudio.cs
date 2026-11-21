@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace ZaxLet;
@@ -14,7 +15,7 @@ public static class PhoneAudio
 {
     const int Rate = 48000, BytesPerMs = Rate * 4 / 1000, Slots = 96, SlotBytes = 8192, Done = 1;
     const int MinPrebufferMs = 120, MaxPrebufferMs = 400, PrebufferStepUpMs = 40, PrebufferStepDownMs = 20;
-    const int HighWatermarkGapMs = 200, CatchupTargetGapMs = 80, StablePeriodMs = 60_000, LogIntervalMs = 5000;
+    const int HighWatermarkGapMs = 250, SoftGapMs = 100, StablePeriodMs = 60_000, LogIntervalMs = 5000;
     const int PendCap = 131072; // 128 KB (> 680 ms, kelipatan 4) untuk menampung prebuffer sebelum waveOutRestart
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)] struct Fmt { public short Tag, Ch; public int Rate, Avg; public short Align, Bits, Cb; }
@@ -41,10 +42,11 @@ public static class PhoneAudio
 
     static IntPtr _h;
     static int _next, _queuedBytes, _pendHead, _pendTail, _pendCount;
-    static int _prebufferMs = MinPrebufferMs, _skipSeq, _underruns;
+    static int _prebufferMs = MinPrebufferMs, _underruns, _resyncs;
     static long _writtenTotal, _playedTotal, _droppedBytes, _lastPushTick, _lastLogTick, _stableSinceTick, _maxGapMs;
     static uint _lastPos;
-    static bool _playing, _catchingUp;
+    static long _overSince, _lastTrim;
+    static bool _playing;
 
     public static DateTime At;
     public static bool Active => (DateTime.Now - At).TotalSeconds < 2;
@@ -121,6 +123,30 @@ public static class PhoneAudio
         }
     }
 
+    /// <summary>Catatan diagnostik audio HP di samping ZaxLet.exe (audio-diag.log, dipangkas di 300 KB); tanpa izin tulis diam saja.</summary>
+    public static void Diag(string s)
+    {
+        try
+        {
+            var p = Path.Combine(AppContext.BaseDirectory, "audio-diag.log");
+            if (File.Exists(p) && new FileInfo(p).Length > 300_000) File.Delete(p);
+            File.AppendAllText(p, $"{DateTime.Now:HH:mm:ss.fff} {s}\n");
+        }
+        catch { }
+    }
+
+    static void ResyncOnStale(int queuedBytes)
+    {
+        waveOutReset(_h);   // semua potongan ditandai selesai
+        waveOutPause(_h);
+        ReclaimDone();
+        _droppedBytes += queuedBytes + _pendCount;
+        _resyncs++;
+        _queuedBytes = 0; _writtenTotal = 0; _playedTotal = 0; _lastPos = 0;
+        _pendHead = 0; _pendTail = 0; _pendCount = 0;
+        _playing = false; _overSince = 0;
+    }
+
     public static void Push(byte[] pcm)
     {
         if (pcm == null || pcm.Length == 0 || pcm.Length > SlotBytes || (pcm.Length & 3) != 0) return;
@@ -137,7 +163,7 @@ public static class PhoneAudio
             }
             _lastPushTick = now;
 
-            if (_h == IntPtr.Zero && !Open(now)) return;
+            if (_h == IntPtr.Zero && !Open(now)) { if (now - _lastLogTick >= LogIntervalMs) { _lastLogTick = now; logLine = "PhoneAudio: waveOutOpen gagal, audio HP tidak diputar"; } goto done; }
 
             ReclaimDone();
             int queued = EffectiveQueuedBytes();
@@ -146,7 +172,6 @@ public static class PhoneAudio
             {
                 waveOutPause(_h);
                 _playing = false;
-                _catchingUp = false;
                 _underruns++;
                 _prebufferMs = Math.Min(MaxPrebufferMs, _prebufferMs + PrebufferStepUpMs);
                 _stableSinceTick = now;
@@ -167,35 +192,32 @@ public static class PhoneAudio
                     _playing = true;
                 }
             }
+            else if (queued > (_prebufferMs + HighWatermarkGapMs) * BytesPerMs)
+            {
+                // Tumpukan basi (jaringan tersendat lalu dilepas sekaligus): buang semuanya dan lanjut dari audio terbaru. Memutar tumpukan lebih cepat atau
+                // melewati potongan selang-seling terdengar seperti speed-up, lebih buruk daripada celah senyap sesaat.
+                ResyncOnStale(queued);
+                AppendPending(pcm);
+            }
             else
             {
-                int highWatermark = (_prebufferMs + HighWatermarkGapMs) * BytesPerMs;
-                int catchupTarget = (_prebufferMs + CatchupTargetGapMs) * BytesPerMs;
-                if (queued > highWatermark) _catchingUp = true;
-                else if (queued <= catchupTarget) _catchingUp = false;
-
-                if (_catchingUp)
-                {
-                    int stride = queued > highWatermark + 100 * BytesPerMs ? 2 : 4;
-                    if (_skipSeq++ % stride == 0) _droppedBytes += pcm.Length;
-                    else WriteSlot(pcm, 0, pcm.Length);
-                }
-                else
-                {
-                    WriteSlot(pcm, 0, pcm.Length);
-                }
+                // tundaan berlebih yang menetap (sisa burst): buang satu potongan per detik sampai normal, tidak terdengar sebagai speed-up
+                if (queued > (_prebufferMs + SoftGapMs) * BytesPerMs) { if (_overSince == 0) _overSince = now; } else _overSince = 0;
+                if (_overSince != 0 && now - _overSince >= 3000 && now - _lastTrim >= 1000) { _lastTrim = now; _droppedBytes += pcm.Length; }
+                else WriteSlot(pcm, 0, pcm.Length);
             }
 
             if (now - _lastLogTick >= LogIntervalMs)
             {
                 _lastLogTick = now;
                 int qMs = (EffectiveQueuedBytes() + _pendCount) / BytesPerMs;
-                logLine = $"PhoneAudio: queue={qMs}ms prebuf={_prebufferMs}ms underruns={_underruns} dropped={_droppedBytes}B maxGap={_maxGapMs}ms";
+                logLine = $"PhoneAudio: queue={qMs}ms prebuf={_prebufferMs}ms underruns={_underruns} resyncs={_resyncs} dropped={_droppedBytes}B maxGap={_maxGapMs}ms";
                 _maxGapMs = 0;
             }
         }
 
-        if (logLine != null) App.Log(new Exception(logLine));
+    done:
+        if (logLine != null) Diag(logLine);
     }
 
     static bool Open(long now)
@@ -233,10 +255,10 @@ public static class PhoneAudio
                 SlotLen[i] = 0;
             }
             waveOutClose(_h);
-            _h = IntPtr.Zero; _next = 0; _playing = false; _catchingUp = false;
+            _h = IntPtr.Zero; _next = 0; _playing = false; _overSince = 0; _lastTrim = 0;
             _queuedBytes = 0; _writtenTotal = 0; _playedTotal = 0; _lastPos = 0;
             _pendHead = 0; _pendTail = 0; _pendCount = 0;
-            _prebufferMs = MinPrebufferMs; _skipSeq = 0;
+            _prebufferMs = MinPrebufferMs; _resyncs = 0;
             _underruns = 0; _droppedBytes = 0; _lastPushTick = 0; _lastLogTick = 0; _stableSinceTick = 0; _maxGapMs = 0;
         }
     }
