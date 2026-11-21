@@ -622,21 +622,23 @@ public sealed class UsageService
         try
         {
             // pembaca streaming: isi pesan yang besar dilewati tanpa dialokasikan (JsonDocument membuat puluhan MB)
-            if (!TryClaude(sp, out var tsText, out var id, out var model, out var inp, out var outp, out var cw, out var cr)) return;
+            if (!TryClaude(sp, out var tsText, out var id, out var model, out var inp, out var outp, out var cw, out var cr, out var cw1, out var fast)) return;
             if (model.StartsWith("<")) return;
             if (id.Length > 0 && !_seen.Add(Fnv(id))) return;
             if (!DateTimeOffset.TryParse(tsText, out var when)) return;
-            var (pi, po, pr, pw) = ClaudePrice(model);
-            double cost = (inp * pi + outp * po + cw * pw + cr * pr) / 1e6;
+            var (pi, po, pr, pw5, pw1) = ClaudePrice(model, inp + cw + cr);
+            cw1 = Math.Clamp(cw1, 0, cw);
+            double cost = (inp * pi + outp * po + cr * pr + (cw - cw1) * pw5 + cw1 * pw1) / 1e6;
+            if (fast) cost *= 2;   // fast mode: tepat 2x harga standar (Fable 5.2, Opus 5.5, Opus 5/4.8)
             Bump(_cDay, DateOnly.FromDateTime(when.LocalDateTime), inp + outp + cw + cr, cost);
         }
         catch { /* baris rusak: lewati */ }
     }
 
     static bool TryClaude(ReadOnlySpan<byte> json, out string ts, out string key, out string model,
-                          out long inp, out long outp, out long cw, out long cr)
+                          out long inp, out long outp, out long cw, out long cr, out long cw1, out bool fast)
     {
-        ts = null; key = ""; model = ""; inp = outp = cw = cr = 0;
+        ts = null; key = ""; model = ""; inp = outp = cw = cr = cw1 = 0; fast = false;
         string rid = null, mid = null;
         bool usage = false;
         var rd = new Utf8JsonReader(json);
@@ -664,6 +666,17 @@ public sealed class UsageService
                             else if (rd.ValueTextEquals("output_tokens"u8)) { rd.Read(); outp = Num(ref rd); }
                             else if (rd.ValueTextEquals("cache_creation_input_tokens"u8)) { rd.Read(); cw = Num(ref rd); }
                             else if (rd.ValueTextEquals("cache_read_input_tokens"u8)) { rd.Read(); cr = Num(ref rd); }
+                            else if (rd.ValueTextEquals("speed"u8)) { rd.Read(); fast = Str(ref rd) == "fast"; }
+                            else if (rd.ValueTextEquals("cache_creation"u8))   // rincian tulis cache: bagian 1 jam dihargai 2x (5 menit 1,25x)
+                            {
+                                rd.Read();
+                                if (rd.TokenType != JsonTokenType.StartObject) { rd.Skip(); continue; }
+                                while (rd.Read() && rd.TokenType == JsonTokenType.PropertyName)
+                                {
+                                    if (rd.ValueTextEquals("ephemeral_1h_input_tokens"u8)) { rd.Read(); cw1 = Num(ref rd); }
+                                    else { rd.Read(); rd.Skip(); }
+                                }
+                            }
                             else { rd.Read(); rd.Skip(); }
                         }
                     }
@@ -707,19 +720,24 @@ public sealed class UsageService
 
     static long Lng(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
 
-    // harga USD per juta token (masuk, keluar, baca cache, tulis cache) dari daftar harga LiteLLM; model baru perlu ditambah di sini.
-    static (double In, double Out, double CacheRead, double CacheWrite) ClaudePrice(string model)
+    // Harga resmi API Anthropic (platform.claude.com/docs/en/about-claude/pricing, dicek 2026-11-21), USD per juta token:
+    // masuk, keluar, baca cache, tulis cache 5 menit, tulis cache 1 jam. Model baru perlu ditambah di sini.
+    // Belum dihitung: pengali 1,1x untuk inference_geo "us", diskon Batch API, dan biaya pencarian web.
+    static (double In, double Out, double CacheRead, double Write5m, double Write1h) ClaudePrice(string model, long promptTokens)
     {
         model = model.ToLowerInvariant();
-        if (model.Contains("fable")) return (10, 50, 0.25, 12.5);
-        if (model.Contains("opus-5-5")) return (4, 20, 0.2, 5);
-        if (model.Contains("opus-5") || model.Contains("opus-4-5")) return (5, 25, 0.5, 6.25);
-        if (model.Contains("opus")) return (15, 75, 1.5, 18.75);
-        if (model.Contains("haiku-5")) return (0.1, 0.5, 0.01, 0.125);
-        if (model.Contains("haiku-4-5")) return (1, 5, 0.1, 1.25);
-        if (model.Contains("haiku")) return (0.8, 4, 0.08, 1);
-        if (model.Contains("sonnet-5")) return (2, 10, 0.1, 2.5);
-        return (3, 15, 0.3, 3.75);
+        if (model.Contains("fable-5-2") || model.Contains("mythos-5-2")) return (8, 40, 0.2, 10, 16);
+        if (model.Contains("fable-5-1") || model.Contains("mythos-5-1")) return (10, 50, 0.25, 12.5, 20);
+        if (model.Contains("fable") || model.Contains("mythos")) return (10, 50, 1, 12.5, 20);
+        if (model.Contains("opus-5-5")) return (4, 20, 0.2, 5, 8);
+        if (model.Contains("opus-4-1") || model.Contains("opus-4-2") || model.Contains("3-opus") || model.EndsWith("opus-4")) return (15, 75, 1.5, 18.75, 30);   // Opus 4.1, 4, 3
+        if (model.Contains("opus")) return (5, 25, 0.5, 6.25, 10);   // Opus 5, 4.8, 4.7, 4.6, 4.5
+        if (model.Contains("haiku-5")) return promptTokens > 100_000 ? (0.5, 2.5, 0.05, 0.625, 1) : (0.1, 0.5, 0.01, 0.125, 0.2);   // harga lebih tinggi bila prompt > 100 rb token
+        if (model.Contains("haiku-4-5")) return (1, 5, 0.1, 1.25, 2);
+        if (model.Contains("haiku")) return (0.8, 4, 0.08, 1, 1.6);
+        if (model.Contains("sonnet-5-5")) return (2, 10, 0.1, 2.5, 4);
+        if (model.Contains("sonnet-5")) return (2, 10, 0.2, 2.5, 4);
+        return (3, 15, 0.3, 3.75, 6);   // Sonnet 4.x dan model lain
     }
 
     static ulong Fnv(string s)
