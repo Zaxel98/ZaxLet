@@ -71,7 +71,7 @@ public sealed class AppsView : TabView
             var glyph = kind == "gamepad" ? "" : kind == "headset" ? "" : "";
             var ring = new RingBadge("", 32);
             var cell = new Grid { Width = 32, Height = 32 };
-            if (pct is { } p) ring.Set(p / 100.0, p <= Math.Max(10, Settings.Cur.BtLowPct) ? UI.Bad : p <= 40 ? UI.Warn : UI.B("#FF22D35A"));
+            if (pct is { } p) ring.Set(p / 100.0, p <= Math.Max(10, Settings.Cur.BtLowPct) ? UI.Bad : p <= 40 ? UI.Warn : UI.Good);
             else ring.Set(0.999, UI.Faint);   // perangkat tanpa laporan baterai: cincin penuh redup
             cell.Children.Add(ring);
             var ic = UI.Icon(glyph, 14);
@@ -225,12 +225,12 @@ public sealed class AppsView : TabView
             var rpc = DiscordRpc.I;
             // status voice channel + tombol bergantung keadaan (RPC lokal Discord)
             var st = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
-            st.Children.Add(new System.Windows.Shapes.Ellipse { Width = 9, Height = 9, Fill = rpc.InVoice ? UI.B("#FF22D35A") : UI.Faint, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+            st.Children.Add(new System.Windows.Shapes.Ellipse { Width = 9, Height = 9, Fill = rpc.InVoice ? UI.Good : UI.Faint, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
             st.Children.Add(UI.T(!rpc.Connected ? rpc.Status : rpc.InVoice ? "Voice: " + rpc.Channel + (rpc.Speaking.Length > 0 ? "  ·  " + rpc.Speaking : "") : "Tidak sedang di voice channel", 12.5, rpc.InVoice ? UI.Fg : UI.Dim, rpc.InVoice));
             sp.Children.Add(st);
             RBtn(rpc.Muted ? "Mic mati" : "Mic", "", rpc.Muted, () => _ = rpc.SetMute(!rpc.Muted));
             RBtn(rpc.Deaf ? "Deafen aktif" : "Deafen", "", rpc.Deaf, () => _ = rpc.SetDeaf(!rpc.Deaf));
-            if (rpc.InVoice) RBtn("Keluar VC", "", false, () => _ = rpc.Leave(), UI.B("#CC9B1C24"));
+            if (rpc.InVoice) RBtn("Keluar VC", "", false, () => _ = rpc.Leave(), UI.BadBg);
         }
         else if (app == "discord")
         {
@@ -243,7 +243,7 @@ public sealed class AppsView : TabView
             }
             Btn("Mic", "", "discord.mic", D);
             Btn("Deafen", "", "discord.deaf", D);
-            RBtn("Keluar VC", "", false, StartWizard, UI.B("#CC9B1C24"));   // butuh RPC: langsung ke panduan
+            RBtn("Keluar VC", "", false, StartWizard, UI.BadBg);   // butuh RPC: langsung ke panduan
         }
         else
         {
@@ -309,8 +309,8 @@ public sealed class AppsView : TabView
         sp.Children.Add(row);
 
         var status = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        status.Children.Add(UI.T((haveId ? "✓ Client ID  " : "○ Client ID  "), 12, haveId ? UI.B("#FF22D35A") : UI.Faint));
-        status.Children.Add(UI.T((haveSecret ? "✓ Secret  " : "○ Secret  "), 12, haveSecret ? UI.B("#FF22D35A") : UI.Faint));
+        status.Children.Add(UI.T((haveId ? "✓ Client ID  " : "○ Client ID  "), 12, haveId ? UI.Good : UI.Faint));
+        status.Children.Add(UI.T((haveSecret ? "✓ Secret  " : "○ Secret  "), 12, haveSecret ? UI.Good : UI.Faint));
         if (haveId && haveSecret) status.Children.Add(UI.T(DiscordRpc.I.Connected ? "· Tersambung" : "· " + DiscordRpc.I.Status, 12, UI.Dim));
         sp.Children.Add(status);
         return sp;

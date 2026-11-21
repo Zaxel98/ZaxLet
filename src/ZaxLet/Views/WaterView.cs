@@ -73,7 +73,7 @@ public sealed class WaterView : TabView
         var w = HydrationService.I;
         var s = Settings.Cur;
         double f = (double)w.Today / w.Goal;
-        _ring.Set(f, f >= 1 ? UI.B("#FF22D35A") : UI.B("#FF38BDF8"));
+        _ring.Set(f, f >= 1 ? UI.Good : UI.Info);
         _amount.Inlines.Clear();
         _amount.Inlines.Add(new System.Windows.Documents.Run(w.Today.ToString()) { FontSize = 24, FontWeight = FontWeights.SemiBold });
         _amount.Inlines.Add(new System.Windows.Documents.Run($" / {w.Goal} ml") { FontSize = 12, Foreground = UI.Dim });
@@ -98,7 +98,7 @@ public sealed class WaterView : TabView
         {
             double h = Math.Clamp((double)ml / w.Goal, 0.04, 1) * 52;
             var col = new StackPanel { Width = 15, Margin = new Thickness(0, 0, 3, 0), VerticalAlignment = VerticalAlignment.Bottom };
-            col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(3), Background = ml >= w.Goal ? UI.B("#FF22D35A") : day == DateTime.Today ? UI.B("#FF38BDF8") : UI.CardOn });
+            col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(3), Background = ml >= w.Goal ? UI.Good : day == DateTime.Today ? UI.Info : UI.CardOn });
             var d = UI.T(day.ToString("ddd")[..1].ToUpper(), 9.5, UI.Faint);
             d.HorizontalAlignment = HorizontalAlignment.Center;
             col.Children.Add(d);

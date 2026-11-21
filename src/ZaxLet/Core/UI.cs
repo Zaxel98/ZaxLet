@@ -22,7 +22,7 @@ public static class UI
 
     // Palet gelap bergaya Raycast: teks putih-keabuan bertingkat, permukaan transparan di atas hitam, garis tepi 1px, status berwarna jenuh.
     public static readonly Brush Fg = B("#FFF4F4F6"), Dim = B("#A6FFFFFF"), Faint = B("#8CFFFFFF"),   // putih 55%: kontras ≥ 5:1 di atas hitam dan ≥ 5:1 di atas CardOn
-        Card = B("#14FFFFFF"), CardOn = B("#29FFFFFF"), Hairline = B("#1FFFFFFF"),
+        Card = B("#1FFFFFFF"), CardOn = B("#33FFFFFF"), Hairline = B("#2EFFFFFF"), BadBg = B("#CC9B1C24"),   // Card 12% (chip terbaca di atas hitam), Hairline 18%
         Bad = B("#FFFF6161"), Warn = B("#FFFFC533"), Good = B("#FF59D499"), Info = B("#FF57C1FF"), Track = B("#26FFFFFF");
 
     // warna aksen bisa diganti dari Pengaturan; dibaca saat tampilan digambar ulang
@@ -123,7 +123,7 @@ public static class UI
         var b = new BtnBorder
         {
             Child = content, Background = rest, CornerRadius = new CornerRadius(radius),
-            BorderBrush = ReferenceEquals(rest, Card) ? Hairline : Brushes.Transparent, BorderThickness = new Thickness(1),
+            BorderBrush = ReferenceEquals(rest, Card) || ReferenceEquals(rest, CardOn) ? Hairline : Brushes.Transparent, BorderThickness = new Thickness(1),
             Padding = pad ?? new Thickness(10, 6, 10, 6), Cursor = Cursors.Hand,
             Focusable = true, FocusVisualStyle = FocusRing, Click = click
         };
@@ -305,7 +305,7 @@ public sealed class Spark : Canvas
 /// <summary>Ikon bergambar: baterai berpetir, logo penyedia AI.</summary>
 public static class Icons
 {
-    public static readonly Brush BatGood = UI.B("#FF22D35A"), BatCharge = UI.B("#FF3B82F6");
+    public static readonly Brush BatGood = UI.Good, BatCharge = UI.B("#FF3B82F6");
 
     public static Canvas Battery(double p, bool charging)
     {

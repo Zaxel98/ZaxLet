@@ -21,7 +21,7 @@ public sealed class CalendarView : TabView
     static readonly string[] Months = L.English ? new[] { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" }
         : new[] { "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember" };
 
-    static readonly Brush TaskRed = UI.B("#CCE5484D"), DoneRed = UI.B("#55E5484D");   // tugas belum selesai = merah pekat, semua selesai = merah redup
+    static readonly Brush TaskRed = UI.B("#CCFF6161"), DoneRed = UI.B("#55FF6161");   // tugas belum selesai = merah pekat, semua selesai = merah redup
     readonly CalendarService _c = CalendarService.I;
     readonly TextBlock _head = UI.T("", 13, null, true), _city = UI.T("", 11.5, UI.Dim), _month = UI.T("", 13, null, true);
     readonly Grid _grid = new();

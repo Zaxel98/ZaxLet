@@ -73,7 +73,7 @@ public sealed class PrayerView : TabView
         {
             var sp = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             bool night = name is "Maghrib" or "Isya";
-            sp.Children.Add(UI.Icon(night ? "" : "", 13, name == "Subuh" ? UI.Faint : night ? UI.B("#FF93A4F5") : UI.B("#FFFFB454")));
+            sp.Children.Add(UI.Icon(night ? "" : "", 13, name == "Subuh" ? UI.Faint : night ? UI.B("#FF93A4F5") : UI.Warn));
             sp.Children.Add(new TextBlock { Text = L.T(name), FontSize = 11.5, Foreground = UI.Dim, HorizontalAlignment = HorizontalAlignment.Center, Name = null });
             sp.Children.Add(new TextBlock { Text = at.ToString("HH.mm"), FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = UI.Fg, HorizontalAlignment = HorizontalAlignment.Center });
             _tiles.Children.Add(new Border { Margin = new Thickness(3, 0, 3, 0), Padding = new Thickness(0, 5, 0, 5), CornerRadius = new CornerRadius(12), Background = UI.Card, Child = sp, Tag = name });

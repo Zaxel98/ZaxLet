@@ -690,7 +690,7 @@ public sealed class SettingsView : TabView
         {
             var row = UI.Cols(14, -1, 0, 0);
             row.Margin = new Thickness(0, 2, 0, 2);
-            row.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = d.Blocked ? UI.Bad : d.Online ? UI.B("#FF22D35A") : Dim, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = d.Blocked ? UI.Bad : d.Online ? UI.Good : Dim, VerticalAlignment = VerticalAlignment.Center });
             var name = UI.T($"{d.Name}  ·  {d.Ip}" + (ShareServer.I.HasApp(d.Id) ? "  · app" : "") + (d.Blocked ? "  " + L.T("(diblokir)") : d.Online ? "" : "  · " + d.LastSeen.ToString("dd/MM HH.mm")), 12.5, d.Online ? Fg : Dim);
             name.TextTrimming = TextTrimming.CharacterEllipsis; name.MaxWidth = 175; name.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(name.At(0, 1));
