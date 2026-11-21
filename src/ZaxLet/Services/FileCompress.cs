@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -81,49 +82,93 @@ public static class FileCompress
 
         if (keepResolution)
         {
-            // Tangga filter: tanpa filter -> 1x halus -> 2x halus -> 2x halus + reduksi chroma 2x2 YCbCr
-            byte[] buf1 = null, buf2 = null;
-            int w = 0, h = 0, stride = 0;
+            var sw = Stopwatch.StartNew();
+            byte[] origRaw = CopyToBgr32(baseBmp, out int origW, out int origH, out int origStride);
+            byte[] origSmall = DownscaleBoxBgr32(origRaw, origW, origH, origStride, SsimMaxLongSide, out int smallW, out int smallH, out int smallStride);
 
-            for (int level = 0; level < 4; level++)
+            double bestScore = double.NegativeInfinity;
+            double bestSsim = 0.0;
+            int bestQuality = 0;
+            int bestBlur = 0;
+            bool bestChroma = false;
+
+            void RunPass(int minQ, int maxQ, bool allowSkipBlur3)
             {
-                ct.ThrowIfCancellationRequested();
-                BitmapSource candidate;
-                if (level == 0)
-                {
-                    candidate = baseBmp;
-                }
-                else if (level == 1)
-                {
-                    var raw = CopyToBgr32(baseBmp, out w, out h, out stride);
-                    buf1 = Blur3x3Weighted(raw, w, h, stride);
-                    candidate = CreateBgr32(buf1, w, h, stride);
-                }
-                else if (level == 2)
-                {
-                    buf2 = Blur3x3Weighted(buf1, w, h, stride);
-                    candidate = CreateBgr32(buf2, w, h, stride);
-                }
-                else
-                {
-                    var chroma = ReduceChroma2x2YCbCr(buf2, w, h, stride);
-                    candidate = CreateBgr32(chroma, w, h, stride);
-                }
+                byte[] srcBuf = origRaw ?? CopyToBgr32(baseBmp, out _, out _, out _);
+                byte[] curBuf = null;
 
-                var (hit, q, minBytes) = SearchJpegQuality(candidate, searchTarget, ct);
-                if (minBytes < smallest) smallest = minBytes;
-                if (hit != null)
+                for (int blur = 0; blur <= 3; blur++)
                 {
-                    bestBytes = hit;
-                    methodNote = level switch
+                    ct.ThrowIfCancellationRequested();
+                    if (blur == 3 && allowSkipBlur3 && bestBytes != null && sw.ElapsedMilliseconds > 5500)
+                        break;
+
+                    byte[] levelBuf;
+                    if (blur == 0)
                     {
-                        0 => $"kualitas {q}",
-                        1 => $"kualitas {q}, haluskan 1x",
-                        2 => $"kualitas {q}, haluskan 2x",
-                        _ => $"kualitas {q}, haluskan 2x + chroma"
-                    };
-                    break;
+                        levelBuf = srcBuf;
+                    }
+                    else
+                    {
+                        byte[] prev = blur == 1 ? srcBuf : curBuf;
+                        curBuf = Blur3x3Weighted(prev, origW, origH, origStride);
+                        if (blur == 1 && !ReferenceEquals(srcBuf, origSmall))
+                            origRaw = null;
+                        levelBuf = curBuf;
+                    }
+
+                    for (int c = 0; c < 2; c++)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        bool useChroma = c == 1;
+                        BitmapSource candidate;
+                        if (useChroma)
+                        {
+                            var chromaBuf = ReduceChroma2x2YCbCr(levelBuf, origW, origH, origStride);
+                            candidate = CreateBgr32(chromaBuf, origW, origH, origStride);
+                        }
+                        else
+                        {
+                            candidate = blur == 0 ? baseBmp : CreateBgr32(levelBuf, origW, origH, origStride);
+                        }
+
+                        var (hit, q, minBytes) = SearchJpegQuality(candidate, searchTarget, ct, minQ, maxQ);
+                        if (minBytes < smallest) smallest = minBytes;
+                        if (hit != null)
+                        {
+                            var (score, ssim) = EvaluateJpegCandidate(hit, origSmall, smallW, smallH, smallStride);
+                            if (bestBytes == null || score > bestScore || (score == bestScore && q > bestQuality))
+                            {
+                                bestBytes = hit;
+                                bestScore = score;
+                                bestSsim = ssim;
+                                bestQuality = q;
+                                bestBlur = blur;
+                                bestChroma = useChroma;
+                            }
+                        }
+                    }
                 }
+            }
+
+            RunPass(30, 95, allowSkipBlur3: true);
+            if (bestBytes == null)
+                RunPass(18, 29, allowSkipBlur3: false);
+
+            if (bestBytes != null)
+            {
+                string blurPart = bestBlur switch
+                {
+                    0 => "",
+                    1 => ", haluskan 1x",
+                    2 => ", haluskan 2x",
+                    _ => ", haluskan 3x"
+                };
+                string chromaPart = bestChroma ? " + chroma" : "";
+                int simPct = Math.Clamp((int)Math.Round(100.0 * bestSsim), 0, 100);
+                methodNote = $"kualitas {bestQuality}{blurPart}{chromaPart} · {L.F("kemiripan {0}%", simPct)}";
+                if (bestSsim < 0.80)
+                    methodNote += "\n" + L.T("Hasil cukup buram; pertimbangkan menaikkan target atau mengizinkan resolusi turun");
             }
         }
         else
@@ -874,17 +919,212 @@ public static class FileCompress
         return dst;
     }
 
-    static (byte[] Hit, int Quality, long MinBytes) SearchJpegQuality(BitmapSource bmp, long targetBytes, CancellationToken ct)
+    // Konstanta SSIM standar (Wang et al., 2004) untuk piksel 8-bit [0..255]:
+    // C1 = (0.01 * 255)^2 = 6.5025, C2 = (0.03 * 255)^2 = 58.5225.
+    const double SsimC1 = (0.01 * 255.0) * (0.01 * 255.0);
+    const double SsimC2 = (0.03 * 255.0) * (0.03 * 255.0);
+    // Penalti kesalahan chroma (rata-rata |dCb|+|dCr| pada skala 0..255) terhadap SSIM luma [0..1].
+    const double ChromaErrorWeight = 0.002;
+    const int SsimMaxLongSide = 1600;
+
+    static (double Score, double SsimLuma) EvaluateJpegCandidate(
+        byte[] jpegBytes, byte[] origSmall, int smallW, int smallH, int smallStride)
     {
-        var b92 = EncodeJpeg(bmp, 92);
-        if (b92.Length <= targetBytes) return (b92, 92, b92.Length);
+        BitmapSource decoded;
+        using (var ms = new MemoryStream(jpegBytes, writable: false))
+        {
+            var dec = new JpegBitmapDecoder(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            decoded = dec.Frames[0];
+        }
+        var candRaw = CopyToBgr32(decoded, out int cw, out int ch, out int cStride);
+        byte[] candSmall = (cw == smallW && ch == smallH && cStride == smallStride)
+            ? candRaw
+            : DownscaleBoxBgr32(candRaw, cw, ch, cStride, SsimMaxLongSide, out _, out _, out _);
+        double ssim = ComputeSsimLuma(origSmall, candSmall, smallW, smallH, smallStride);
+        double chromaMae = ComputeMeanAbsChromaError(origSmall, candSmall, smallW, smallH, smallStride);
+        return (ComputeSimilarityScore(ssim, chromaMae), ssim);
+    }
 
-        var b12 = EncodeJpeg(bmp, 12);
-        if (b12.Length > targetBytes) return (null, 12, b12.Length);
+    public static byte[] DownscaleBoxBgr32(
+        byte[] src, int width, int height, int stride, int maxLongSide,
+        out int outWidth, out int outHeight, out int outStride)
+    {
+        if (src == null || width <= 0 || height <= 0)
+        {
+            outWidth = width;
+            outHeight = height;
+            outStride = stride;
+            return Array.Empty<byte>();
+        }
 
-        byte[] best = b12;
-        int bestQ = 12;
-        int lo = 13, hi = 91;
+        int curLong = Math.Max(width, height);
+        if (curLong <= maxLongSide)
+        {
+            outWidth = width;
+            outHeight = height;
+            if (stride == width * 4)
+            {
+                outStride = stride;
+                return src;
+            }
+            outStride = width * 4;
+            var copy = new byte[outStride * height];
+            for (int y = 0; y < height; y++)
+                System.Buffer.BlockCopy(src, y * stride, copy, y * outStride, outStride);
+            return copy;
+        }
+
+        double scale = (double)maxLongSide / curLong;
+        outWidth = Math.Max(1, (int)Math.Round(width * scale));
+        outHeight = Math.Max(1, (int)Math.Round(height * scale));
+        if (width >= height) outWidth = maxLongSide;
+        else outHeight = maxLongSide;
+
+        outStride = outWidth * 4;
+        var dst = new byte[outStride * outHeight];
+
+        var x0Arr = new int[outWidth];
+        var x1Arr = new int[outWidth];
+        for (int ox = 0; ox < outWidth; ox++)
+        {
+            int x0 = (int)((long)ox * width / outWidth);
+            int x1 = Math.Max(x0 + 1, (int)((long)(ox + 1) * width / outWidth));
+            if (x1 > width) x1 = width;
+            x0Arr[ox] = x0;
+            x1Arr[ox] = x1;
+        }
+
+        for (int oy = 0; oy < outHeight; oy++)
+        {
+            int y0 = (int)((long)oy * height / outHeight);
+            int y1 = Math.Max(y0 + 1, (int)((long)(oy + 1) * height / outHeight));
+            if (y1 > height) y1 = height;
+            int dyCount = y1 - y0;
+            int dstRow = oy * outStride;
+
+            for (int ox = 0; ox < outWidth; ox++)
+            {
+                int x0 = x0Arr[ox], x1 = x1Arr[ox];
+                int count = dyCount * (x1 - x0);
+                int sumB = 0, sumG = 0, sumR = 0;
+
+                for (int py = y0; py < y1; py++)
+                {
+                    int srcRow = py * stride;
+                    for (int px = x0; px < x1; px++)
+                    {
+                        int idx = srcRow + px * 4;
+                        sumB += src[idx];
+                        sumG += src[idx + 1];
+                        sumR += src[idx + 2];
+                    }
+                }
+
+                int dIdx = dstRow + ox * 4;
+                int half = count >> 1;
+                dst[dIdx] = (byte)((sumB + half) / count);
+                dst[dIdx + 1] = (byte)((sumG + half) / count);
+                dst[dIdx + 2] = (byte)((sumR + half) / count);
+                dst[dIdx + 3] = 255;
+            }
+        }
+        return dst;
+    }
+
+    public static double ComputeSsimLuma(byte[] origBgr32, byte[] candBgr32, int width, int height, int stride)
+    {
+        if (origBgr32 == null || candBgr32 == null || width <= 0 || height <= 0)
+            return 0.0;
+
+        int stepX = width >= 8 ? 8 : width;
+        int stepY = height >= 8 ? 8 : height;
+        int limitX = width >= 8 ? width - 7 : 1;
+        int limitY = height >= 8 ? height - 7 : 1;
+
+        double ssimSum = 0.0;
+        int windowCount = 0;
+
+        for (int by = 0; by < limitY; by += stepY)
+        {
+            int winH = Math.Min(stepY, height - by);
+            for (int bx = 0; bx < limitX; bx += stepX)
+            {
+                int winW = Math.Min(stepX, width - bx);
+                double sumX = 0, sumY = 0, sumXX = 0, sumYY = 0, sumXY = 0;
+
+                for (int dy = 0; dy < winH; dy++)
+                {
+                    int row = (by + dy) * stride + bx * 4;
+                    for (int dx = 0; dx < winW; dx++)
+                    {
+                        int idx = row + dx * 4;
+                        double x = 0.299 * origBgr32[idx + 2] + 0.587 * origBgr32[idx + 1] + 0.114 * origBgr32[idx];
+                        double y = 0.299 * candBgr32[idx + 2] + 0.587 * candBgr32[idx + 1] + 0.114 * candBgr32[idx];
+                        sumX += x;
+                        sumY += y;
+                        sumXX += x * x;
+                        sumYY += y * y;
+                        sumXY += x * y;
+                    }
+                }
+
+                double n = winW * winH;
+                double muX = sumX / n;
+                double muY = sumY / n;
+                double varX = Math.Max(0.0, sumXX / n - muX * muX);
+                double varY = Math.Max(0.0, sumYY / n - muY * muY);
+                double covXY = sumXY / n - muX * muY;
+                double num = (2.0 * muX * muY + SsimC1) * (2.0 * covXY + SsimC2);
+                double den = (muX * muX + muY * muY + SsimC1) * (varX + varY + SsimC2);
+                ssimSum += den > 0.0 ? num / den : 1.0;
+                windowCount++;
+            }
+        }
+
+        return windowCount > 0 ? ssimSum / windowCount : 0.0;
+    }
+
+    public static double ComputeMeanAbsChromaError(byte[] origBgr32, byte[] candBgr32, int width, int height, int stride)
+    {
+        if (origBgr32 == null || candBgr32 == null || width <= 0 || height <= 0)
+            return 0.0;
+
+        double sumErr = 0.0;
+        for (int y = 0; y < height; y++)
+        {
+            int row = y * stride;
+            for (int x = 0; x < width; x++)
+            {
+                int idx = row + x * 4;
+                byte b1 = origBgr32[idx], g1 = origBgr32[idx + 1], r1 = origBgr32[idx + 2];
+                byte b2 = candBgr32[idx], g2 = candBgr32[idx + 1], r2 = candBgr32[idx + 2];
+
+                double cb1 = -0.168736 * r1 - 0.331264 * g1 + 0.5 * b1 + 128.0;
+                double cr1 = 0.5 * r1 - 0.418688 * g1 - 0.081312 * b1 + 128.0;
+                double cb2 = -0.168736 * r2 - 0.331264 * g2 + 0.5 * b2 + 128.0;
+                double cr2 = 0.5 * r2 - 0.418688 * g2 - 0.081312 * b2 + 128.0;
+
+                sumErr += Math.Abs(cb1 - cb2) + Math.Abs(cr1 - cr2);
+            }
+        }
+        return sumErr / (2.0 * width * height);
+    }
+
+    public static double ComputeSimilarityScore(double ssimLuma, double meanAbsChromaError) =>
+        ssimLuma - ChromaErrorWeight * meanAbsChromaError;
+
+    static (byte[] Hit, int Quality, long MinBytes) SearchJpegQuality(
+        BitmapSource bmp, long targetBytes, CancellationToken ct, int minQuality = 12, int maxQuality = 92)
+    {
+        var bMax = EncodeJpeg(bmp, maxQuality);
+        if (bMax.Length <= targetBytes) return (bMax, maxQuality, bMax.Length);
+
+        var bMin = EncodeJpeg(bmp, minQuality);
+        if (bMin.Length > targetBytes) return (null, minQuality, bMin.Length);
+
+        byte[] best = bMin;
+        int bestQ = minQuality;
+        int lo = minQuality + 1, hi = maxQuality - 1;
         while (lo <= hi)
         {
             ct.ThrowIfCancellationRequested();
