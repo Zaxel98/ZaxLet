@@ -279,7 +279,9 @@ miscOk = miscOk && lv.Cpu is { } cvv && Math.Abs(cvv - 0.912) < 1e-9 && lv.Gpu i
 // iklan Spotify: templat di slot judul + artis "Spotify" (data nyata di playlog), lagu asli tidak ikut
 miscOk = miscOk && MediaFilter.IsAd("Spotify.exe", "Dengarkan musik bebas iklan.", "Spotify") && MediaFilter.IsAd(null, "Dengarkan musik bebas iklan.", "Spotify")
         && MediaFilter.IsAd("Spotify.exe", "Advertisement", "") && MediaFilter.IsAd("Spotify.exe", "Spotify", "")
-        && !MediaFilter.IsAd("Spotify.exe", "Hello!My World!!", "fhána") && !MediaFilter.IsAd("chrome.exe", "Advertisement", "") && !MediaFilter.IsAd("Spotify.exe", "Advertisement", "Some Band") && !MediaFilter.IsAd(null, "", "");
+        && !MediaFilter.IsAd("Spotify.exe", "Hello!My World!!", "fhána") && !MediaFilter.IsAd("chrome.exe", "Advertisement", "") && !MediaFilter.IsAd("Spotify.exe", "Advertisement", "Some Band") && !MediaFilter.IsAd(null, "", "")
+        && MediaFilter.IsAd(null, "Lagu-lagu cinta terbaik.", "100 Greatest Love Songs") && MediaFilter.IsAd(null, "DENGARKAN SEKARANG", "Filtr Indonesia")
+        && MediaFilter.ShortSpotifyAd("Spotify.exe", TimeSpan.FromSeconds(30)) && !MediaFilter.ShortSpotifyAd("Spotify.exe", TimeSpan.FromSeconds(200)) && !MediaFilter.ShortSpotifyAd("chrome.exe", TimeSpan.FromSeconds(30));
 // baris pill menurut waktu
 {
     var pr = ("Ashar", new DateTime(2026, 11, 7, 15, 12, 0));

@@ -265,7 +265,7 @@ public sealed class MediaService
             _rawTitle = _vidTitle; _rawArtist = _vidArtist;
             var shown = TrackId.Parse(_rawTitle, _rawArtist).Show;   // judul YouTube "Artis - Judul (Audio)" + kanal "artisVEVO" -> pasangan yang rapi
             Title = shown.Title; Artist = shown.Artist; Album = p.AlbumTitle ?? "";
-            IsAd = MediaFilter.IsAd(s.SourceAppUserModelId, p.Title, p.Artist);
+            IsAd = MediaFilter.IsAd(s.SourceAppUserModelId, p.Title, p.Artist) || MediaFilter.ShortSpotifyAd(s.SourceAppUserModelId, RawDuration);
             if (IsAd) { Title = ZaxLet.L.T("Iklan"); Album = ""; }   // teks templat Spotify di slot judul diganti keterangan iklan
         }
         if (newTrack)
@@ -374,6 +374,11 @@ public sealed class MediaService
             RawDuration = len;
             _pos = t.Position - t.StartTime;
             _posAt = t.LastUpdatedTime;
+        }
+        if (!IsAd && MediaFilter.ShortSpotifyAd(s.SourceAppUserModelId, len))   // iklan yang teksnya tak dikenal: ketahuan dari durasinya
+        {
+            IsAd = true; Title = ZaxLet.L.T("Iklan"); Album = ""; Lyrics = new(); LyricState = "ad";
+            Changed?.Invoke();
         }
     }
 
