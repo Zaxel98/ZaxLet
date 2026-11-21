@@ -25,22 +25,22 @@ public static class PonytailService
 
     public static bool Available => Directory.Exists(Dir);
 
-    /// <summary>Total sesi yang mulai hari ini dan 7 hari terakhir. Biaya sesi dicatat penuh pada hari mulainya.</summary>
-    public static (PonytailStats Today, PonytailStats Week) Read()
+    /// <summary>Total sesi yang mulai hari ini, sejak Senin, dan sejak tanggal 1. Biaya sesi dicatat penuh pada hari mulainya.</summary>
+    public static (PonytailStats Today, PonytailStats Week, PonytailStats Month) Read()
     {
-        var today = new PonytailStats(); var week = new PonytailStats();
-        if (!Available) return (today, week);
-        var d0 = DateTime.Today;
+        var today = new PonytailStats(); var week = new PonytailStats(); var month = new PonytailStats();
+        if (!Available) return (today, week, month);
+        var d0 = DateTime.Today; var wk = UsagePeriod.WeekStart(d0); var mo = UsagePeriod.MonthStart(d0);
         foreach (var f in Directory.EnumerateFiles(Dir, "*.csv"))
         {
             foreach (var r in Load(f))
             {
-                if (r.Started < d0.AddDays(-6)) continue;
-                Add(week, r);
+                if (r.Started >= mo) Add(month, r);
+                if (r.Started >= wk) Add(week, r);
                 if (r.Started >= d0) Add(today, r);
             }
         }
-        return (today, week);
+        return (today, week, month);
     }
 
     static void Add(PonytailStats s, Row r) { s.Cost += r.Cost; s.AgentMin += r.AgentMin; s.Tokens += r.Tokens; s.Turns += r.Turns; s.Sessions++; }

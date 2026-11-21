@@ -16,7 +16,7 @@ public sealed class UsageView : TabView
     public override string Key => "usage";
     public override string Glyph => "";
     public override string Label => "AI";
-    public override double H => 188;
+    public override double H => 204;
 
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -159,7 +159,7 @@ public sealed class UsageView : TabView
         return true;
     }
 
-    static void Fill(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null, (PonytailStats Today, PonytailStats Week)? codeOverride = null, ProviderUsage agyOverride = null)
+    static void Fill(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null, (PonytailStats Today, PonytailStats Week, PonytailStats Month)? codeOverride = null, ProviderUsage agyOverride = null)
     {
         host.Children.Clear();
         var head = new StackPanel { Orientation = Orientation.Horizontal };
@@ -226,32 +226,34 @@ public sealed class UsageView : TabView
         if (u.Name == "Antigravity") return;   // tokennya tampil sebagai kolom Agy di tabel Claude
         // tabel pemakaian: Total (semua catatan sesi) dan Code (sesi yang dicatat Ponytail)
         var code = u.Name == "Claude" && Settings.Cur.ShowPonytail && (codeOverride != null || PonytailService.Available);
-        PonytailStats pt = null, pw = null;
+        PonytailStats pt = null, pw = null, pm = null;
         if (code)
         {
-            if (codeOverride is { } co) (pt, pw) = co;
-            else try { (pt, pw) = PonytailService.Read(); } catch (Exception ex) { App.Log(ex); }
+            if (codeOverride is { } co) (pt, pw, pm) = co;
+            else try { (pt, pw, pm) = PonytailService.Read(); } catch (Exception ex) { App.Log(ex); }
         }
         var s = Settings.Cur;
         var agy = u.Name == "Claude" && s.CodexOn && s.Slot2 == "antigravity" ? (agyOverride ?? UsageService.I.Agy) : null;
         host.Children.Add(Head(code, agy != null));
-        host.Children.Add(Line("Today", u.TodayTok, u.TodayCost, code, pt, agy?.TodayTok));
-        host.Children.Add(Line("Week", u.WeekTok, u.WeekCost, code, pw, agy?.WeekTok));
+        // kolom: total token (Claude + Agy) | perkiraan biaya | Claude Code (token) | Antigravity (token)
+        host.Children.Add(Line("Today", u.TodayTok + (agy?.TodayTok ?? 0), u.TodayCost, code, pt, agy?.TodayTok));
+        host.Children.Add(Line("Week", u.WeekTok + (agy?.WeekTok ?? 0), u.WeekCost, code, pw, agy?.WeekTok));
+        host.Children.Add(Line("Month", u.MonthTok + (agy?.MonthTok ?? 0), u.MonthCost, code, pm, agy?.MonthTok));
     }
 
     /// <summary>Untuk <c>--ui-test</c>: isi tab AI dengan data contoh besar tanpa membaca log atau jaringan.</summary>
-    internal static UsageView Preview(ProviderUsage claude, ProviderUsage agy, PonytailStats pt, PonytailStats pw, Func<string, QuotaWindow, BurnProjection> burn)
+    internal static UsageView Preview(ProviderUsage claude, ProviderUsage agy, PonytailStats pt, PonytailStats pw, PonytailStats pm, Func<string, QuotaWindow, BurnProjection> burn)
     {
         var v = new UsageView();
         v._claude.Visibility = Visibility.Visible;
         v._codex.Visibility = Visibility.Visible;
-        Fill(v._claude, claude, burn, (pt, pw), agy);
+        Fill(v._claude, claude, burn, (pt, pw, pm), agy);
         Fill(v._codex, agy, burn);
         return v;
     }
 
     static readonly Brush AgyBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0xB4, 0xF8));
-    const double LabW = 36, CodeW = 100, AgyW = 48;   // lebar kolom tabel pemakaian; kolom token dan biaya selebar isinya (Auto) supaya angka tidak terpotong
+    const double LabW = 42, CodeW = 56, AgyW = 52;   // lebar kolom tabel pemakaian; kolom token dan biaya selebar isinya (Auto) supaya angka tidak terpotong
 
     /// <summary>Antigravity: satu baris per grup model, weekly dan 5h bersebelahan.</summary>
     static void PairBars(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null)
@@ -316,7 +318,7 @@ public sealed class UsageView : TabView
         if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.None }.At(0, 2));
         if (code)
         {
-            var t = p.Sessions == 0 ? "—" : Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00", CultureInfo.InvariantCulture) : "";
+            var t = p.Sessions == 0 ? "—" : UI.Tok(p.Tokens);
             g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
         }
         if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));

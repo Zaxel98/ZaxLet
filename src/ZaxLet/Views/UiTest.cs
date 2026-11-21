@@ -90,7 +90,7 @@ public static class UiTest
             var claude = new ProviderUsage
             {
                 Name = "Claude", Plan = "Max", Source = "api",
-                TodayTok = 245_800_000, WeekTok = 892_450_000, TodayCost = 1234.56, WeekCost = 4567.89,
+                TodayTok = 245_800_000, WeekTok = 892_450_000, MonthTok = 3_400_000_000, TodayCost = 1234.56, WeekCost = 4567.89, MonthCost = 12345.67,
                 Windows = new()
                 {
                     new QuotaWindow { Label = "5-hour", Pct = 82, Reset = now.AddHours(2).AddMinutes(15) },
@@ -100,7 +100,7 @@ public static class UiTest
             var agy = new ProviderUsage
             {
                 Name = "Antigravity", Plan = "Pro",
-                TodayTok = 156_400_000, WeekTok = 780_900_000,
+                TodayTok = 156_400_000, WeekTok = 780_900_000, MonthTok = 2_900_000_000,
                 Windows = new()
                 {
                     new QuotaWindow { Label = "Gemini Pro · weekly", Pct = 78, Reset = now.AddDays(2).AddHours(5) },
@@ -109,9 +109,10 @@ public static class UiTest
                     new QuotaWindow { Label = "Claude · 5h", Pct = 18, Reset = now.AddHours(4).AddMinutes(10) },
                 }
             };
-            var pt = new PonytailStats { Cost = 345.67, Turns = 1234, Sessions = 12 };
-            var pw = new PonytailStats { Cost = 1890.12, Turns = 9876, Sessions = 45 };
-            var aiBig = UsageView.Preview(claude, agy, pt, pw, (prov, w) =>
+            var pt = new PonytailStats { Cost = 345.67, Turns = 1234, Sessions = 12, Tokens = 210_000_000 };
+            var pw = new PonytailStats { Cost = 1890.12, Turns = 9876, Sessions = 45, Tokens = 860_000_000 };
+            var pm = new PonytailStats { Cost = 5890.40, Turns = 31000, Sessions = 160, Tokens = 3_210_000_000 };
+            var aiBig = UsageView.Preview(claude, agy, pt, pw, pm, (prov, w) =>
                 prov == "Antigravity" && w.Label == "Gemini Pro · 5h"
                     ? new BurnProjection(true, true, TimeSpan.FromMinutes(45), 18.5)
                     : new BurnProjection(true, false, null, 2.0));

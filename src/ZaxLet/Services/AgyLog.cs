@@ -16,11 +16,12 @@ static class AgyLog
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     static readonly Dictionary<string, (DateTime Mt, long Len, List<(long Ts, long Tok)> Ev)> _cache = new();
 
-    public static (long Today, long Week) Scan()
+    public static (long Today, long Week, long Month) Scan()
     {
         var now = DateTime.Now;
-        long today = new DateTimeOffset(now.Date).ToUnixTimeSeconds(), week = new DateTimeOffset(now.Date.AddDays(-6)).ToUnixTimeSeconds();
-        long t = 0, w = 0;
+        long today = new DateTimeOffset(now.Date).ToUnixTimeSeconds(), week = new DateTimeOffset(UsagePeriod.WeekStart(now)).ToUnixTimeSeconds(),
+             month = new DateTimeOffset(UsagePeriod.MonthStart(now)).ToUnixTimeSeconds(), oldest = Math.Min(week, month);
+        long t = 0, w = 0, m = 0;
         var live = new HashSet<string>();
         foreach (var dir in new[] { Path.Combine(Home, ".gemini", "antigravity", "conversations"), Path.Combine(Home, ".gemini", "antigravity-cli", "conversations") })
         {
@@ -29,18 +30,18 @@ static class AgyLog
             {
                 if (Path.GetFileName(f).StartsWith("conversation_summaries")) continue;
                 var fi = new FileInfo(f); live.Add(f);
-                // berkas yang terakhir diubah sebelum awal minggu tidak mungkin memuat langkah minggu ini
-                if (new DateTimeOffset(fi.LastWriteTime).ToUnixTimeSeconds() < week) continue;
+                // berkas yang terakhir diubah sebelum periode tertua tidak mungkin memuat langkahnya
+                if (new DateTimeOffset(fi.LastWriteTime).ToUnixTimeSeconds() < oldest) continue;
                 if (!_cache.TryGetValue(f, out var c) || c.Mt != fi.LastWriteTimeUtc || c.Len != fi.Length)
                 {
                     c = (fi.LastWriteTimeUtc, fi.Length, Read(f));
                     _cache[f] = c;
                 }
-                foreach (var (ts, tok) in c.Ev) { if (ts >= today) t += tok; if (ts >= week) w += tok; }
+                foreach (var (ts, tok) in c.Ev) { if (ts >= today) t += tok; if (ts >= week) w += tok; if (ts >= month) m += tok; }
             }
         }
         foreach (var k in _cache.Keys.Where(k => !live.Contains(k)).ToList()) _cache.Remove(k);
-        return (t, w);
+        return (t, w, m);
     }
 
     static List<(long, long)> Read(string path)

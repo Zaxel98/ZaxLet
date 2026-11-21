@@ -23,9 +23,18 @@ public sealed class ProviderUsage
     public string Name, Plan, Error;
     public string Source = "";   // Claude: "api" (login terminal, real-time) | "desktop" (catatan Claude Desktop) | "" (belum ada sumber)
     public List<QuotaWindow> Windows = new();
-    public long TodayTok, WeekTok;
-    public double TodayCost, WeekCost;
+    public long TodayTok, WeekTok, MonthTok;
+    public double TodayCost, WeekCost, MonthCost;
     public DateTime Updated;
+}
+
+/// <summary>Batas periode tabel pemakaian: minggu mulai Senin, bulan mulai tanggal 1 (waktu lokal).</summary>
+public static class UsagePeriod
+{
+    public static DateTime WeekStart(DateTime now) => now.Date.AddDays(-(((int)now.DayOfWeek + 6) % 7));
+    public static DateTime MonthStart(DateTime now) => new(now.Year, now.Month, 1);
+    /// <summary>Tanggal tertua yang masih dihitung (dikurangi satu hari sebagai cadangan zona waktu).</summary>
+    public static DateTime Oldest(DateTime now) { var a = WeekStart(now); var b = MonthStart(now); return (a < b ? a : b).AddDays(-1); }
 }
 
 /// <summary>
@@ -132,18 +141,20 @@ public sealed class UsageService
     void ScanAgy()
     {
         if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "antigravity") return;
-        (Agy.TodayTok, Agy.WeekTok) = AgyLog.Scan();
+        (Agy.TodayTok, Agy.WeekTok, Agy.MonthTok) = AgyLog.Scan();
         Agy.Updated = DateTime.Now;
     }
 
     static void Fill(ProviderUsage p, Dictionary<DateOnly, (long Tok, double Cost)> days)
     {
         var today = DateOnly.FromDateTime(DateTime.Now);
-        p.TodayTok = p.WeekTok = 0; p.TodayCost = p.WeekCost = 0;
+        p.TodayTok = p.WeekTok = p.MonthTok = 0; p.TodayCost = p.WeekCost = p.MonthCost = 0;
+        var wk = DateOnly.FromDateTime(UsagePeriod.WeekStart(DateTime.Now)); var mo = DateOnly.FromDateTime(UsagePeriod.MonthStart(DateTime.Now));
         foreach (var (d, v) in days)
         {
             if (d == today) { p.TodayTok += v.Tok; p.TodayCost += v.Cost; }
-            if (d > today.AddDays(-7)) { p.WeekTok += v.Tok; p.WeekCost += v.Cost; }
+            if (d >= wk) { p.WeekTok += v.Tok; p.WeekCost += v.Cost; }
+            if (d >= mo) { p.MonthTok += v.Tok; p.MonthCost += v.Cost; }
         }
         p.Updated = DateTime.Now;
     }
@@ -560,7 +571,7 @@ public sealed class UsageService
     {
         try { ScanDir(Path.Combine(ClaudeDir, "projects"), true); } catch (Exception ex) { App.Log(ex); }
         try { ScanDir(Path.Combine(CodexDir, "sessions"), false); } catch (Exception ex) { App.Log(ex); }
-        var cutoff = DateOnly.FromDateTime(DateTime.Now.AddDays(-8));
+        var cutoff = DateOnly.FromDateTime(UsagePeriod.Oldest(DateTime.Now));
         foreach (var d in _cDay.Keys.Where(k => k < cutoff).ToList()) _cDay.Remove(d);
         foreach (var d in _xDay.Keys.Where(k => k < cutoff).ToList()) _xDay.Remove(d);
         // pindaian awal menyisakan banyak buffer besar: kembalikan segera
@@ -572,7 +583,7 @@ public sealed class UsageService
     void ScanDir(string root, bool claude)
     {
         if (!Directory.Exists(root)) return;
-        var cutoff = DateTime.Now.AddDays(-8);
+        var cutoff = UsagePeriod.Oldest(DateTime.Now);
         foreach (var f in Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories))
         {
             var fi = new FileInfo(f);
