@@ -42,6 +42,20 @@ public static class UsbDrives
         return $"{Math.Max(1, bytes / 1024)} KB";
     }
 
+    public static bool IsSeen(char letter)
+    {
+        var c = char.ToUpperInvariant(letter);
+        lock (_lock) return _seen.Contains(c);
+    }
+
+    public static List<char> PresentDriveLetters()
+    {
+        uint mask = GetLogicalDrives();
+        if (mask != 0) return LettersFromMask(mask);
+        try { return DriveInfo.GetDrives().Where(d => d.Name.Length > 0).Select(d => char.ToUpperInvariant(d.Name[0])).ToList(); }
+        catch { return new List<char>(); }
+    }
+
     public static bool NoteArrival(char letter)
     {
         var c = char.ToUpperInvariant(letter);
@@ -86,17 +100,106 @@ public static class UsbDrives
         return null;
     }
 
-    public static bool IsRemovable(char letter)
+    public static bool IsRemovable(char letter) => IsRemovable(letter, out _);
+
+    public static bool IsRemovable(char letter, out string diag)
+    {
+        var c = char.ToUpperInvariant(letter);
+        if (c < 'C' || c > 'Z') { diag = $"USB {c}: DriveType=Floppy Decision=Reject Reason=Floppy"; return false; }
+        if (IsSystemDrive(c)) { diag = $"USB {c}: Decision=Reject Reason=SystemDrive"; return false; }
+        try
+        {
+            var dt = new DriveInfo(c + ":\\").DriveType;
+            if (dt is DriveType.CDRom or DriveType.Network or DriveType.Ram or DriveType.Unknown or DriveType.NoRootDirectory)
+            {
+                diag = $"USB {c}: DriveType={dt} Decision=Reject Reason=ExcludedDriveType";
+                return false;
+            }
+            if (dt == DriveType.Removable)
+            {
+                diag = $"USB {c}: DriveType={dt} Decision=Allow Reason=DriveTypeRemovable";
+                return true;
+            }
+            if (dt != DriveType.Fixed)
+            {
+                diag = $"USB {c}: DriveType={dt} Decision=Reject Reason=UnsupportedDriveType";
+                return false;
+            }
+
+            string path = $@"\\.\{c}:";
+            int busType = GetBusType(path);
+            if (busType == BusTypeUsb)
+            {
+                diag = $"USB {c}: DriveType={dt} BusType={busType} Caps=0x0 Decision=Allow Reason=BusTypeUsb";
+                return true;
+            }
+
+            uint allCaps = 0;
+            string matchedId = "";
+            string reason = "InternalBus";
+            bool allow = false;
+
+            if (!TryGetStorageDeviceNumber(path, out var devType, out var devNum))
+            {
+                reason = "NoDeviceNumber";
+            }
+            else if (!TryFindDiskDevInst(devType, devNum, out var devInst))
+            {
+                reason = "DevInstNotFound";
+            }
+            else
+            {
+                uint node = devInst;
+                for (int depth = 0; depth < 32 && node != 0; depth++)
+                {
+                    uint len = 4;
+                    if (CM_Get_DevNode_Registry_PropertyW(node, CM_DRP_CAPABILITIES, out _, out uint caps, ref len, 0) == 0)
+                    {
+                        allCaps |= caps;
+                        if (!allow && (caps & (CM_DEVCAP_REMOVABLE | CM_DEVCAP_SURPRISEREMOVALOK)) != 0)
+                        {
+                            allow = true;
+                            reason = $"DevCap(0x{caps:X})";
+                        }
+                    }
+
+                    var idBuf = new char[260];
+                    if (CM_Get_Device_IDW(node, idBuf, idBuf.Length, 0) == 0)
+                    {
+                        int nul = Array.IndexOf(idBuf, '\0');
+                        string devId = new(idBuf, 0, nul >= 0 ? nul : idBuf.Length);
+                        if (devId.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase) || devId.StartsWith("USBSTOR\\", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (matchedId.Length == 0) matchedId = devId;
+                            if (!allow)
+                            {
+                                allow = true;
+                                reason = devId.StartsWith("USBSTOR\\", StringComparison.OrdinalIgnoreCase) ? "USBSTOR" : "USB";
+                            }
+                        }
+                    }
+
+                    if (CM_Get_Parent(out uint parent, node, 0) != 0 || parent == node) break;
+                    node = parent;
+                }
+            }
+
+            diag = $"USB {c}: DriveType={dt} BusType={busType} Caps=0x{allCaps:X}{(matchedId.Length > 0 ? $" Id={matchedId}" : "")} Decision={(allow ? "Allow" : "Reject")} Reason={reason}";
+            return allow;
+        }
+        catch (Exception ex)
+        {
+            diag = $"USB {c}: Decision=Reject Reason=Exception({ex.GetType().Name}:{ex.Message})";
+            return false;
+        }
+    }
+
+    static bool IsSystemDrive(char c)
     {
         try
         {
-            var c = char.ToUpperInvariant(letter);
-            if (c < 'C' || c > 'Z') return false;   // abaikan floppy A:/B:
-            var dt = new DriveInfo(c + ":\\").DriveType;
-            if (dt is DriveType.CDRom or DriveType.Network or DriveType.Ram or DriveType.Unknown or DriveType.NoRootDirectory)
-                return false;
-            if (dt == DriveType.Removable) return true;
-            return dt == DriveType.Fixed && IsUsbBus($@"\\.\{c}:");
+            var root = Path.GetPathRoot(Environment.SystemDirectory);
+            return !string.IsNullOrEmpty(root) && char.ToUpperInvariant(root[0]) == c;
         }
         catch { return false; }
     }
@@ -139,6 +242,9 @@ public static class UsbDrives
     }
 
     const int CR_REMOVE_VETOED = 0x00000017;
+    const uint CM_DRP_CAPABILITIES = 0x00000010;
+    const uint CM_DEVCAP_REMOVABLE = 0x00000004;
+    const uint CM_DEVCAP_SURPRISEREMOVALOK = 0x00000080;
     const uint FILE_SHARE_READ = 1, FILE_SHARE_WRITE = 2, OPEN_EXISTING = 3;
     const uint IOCTL_STORAGE_GET_DEVICE_NUMBER = 0x002D1080;
     const uint IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400;
@@ -158,6 +264,9 @@ public static class UsbDrives
 
     [StructLayout(LayoutKind.Sequential)]
     struct SP_DEVINFO_DATA { public int cbSize; public Guid ClassGuid; public uint DevInst; public IntPtr Reserved; }
+
+    [DllImport("kernel32.dll")]
+    static extern uint GetLogicalDrives();
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr CreateFileW(string lpFileName, uint dwDesiredAccess, uint dwShareMode, IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
@@ -187,19 +296,25 @@ public static class UsbDrives
     static extern int CM_Get_Parent(out uint pdnDevInst, uint dnDevInst, uint ulFlags);
 
     [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
+    static extern int CM_Get_DevNode_Registry_PropertyW(uint dnDevInst, uint ulProperty, out uint pulRegDataType, out uint buffer, ref uint pulLength, uint ulFlags);
+
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
+    static extern int CM_Get_Device_IDW(uint dnDevInst, [Out] char[] buffer, int bufferLen, uint ulFlags);
+
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
     static extern int CM_Request_Device_EjectW(uint dnDevInst, out uint pVetoType, [Out] char[] pszVetoName, int ulNameLength, uint ulFlags);
 
-    static bool IsUsbBus(string path)
+    static int GetBusType(string path)
     {
         var h = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
-        if (h == INVALID_HANDLE_VALUE) return false;
+        if (h == INVALID_HANDLE_VALUE) return -1;
         try
         {
             var q = new STORAGE_PROPERTY_QUERY();
             var buf = new byte[64];
             if (!DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, ref q, Marshal.SizeOf<STORAGE_PROPERTY_QUERY>(), buf, buf.Length, out int ret, IntPtr.Zero) || ret < 32)
-                return false;
-            return BitConverter.ToInt32(buf, 28) == BusTypeUsb;
+                return -1;
+            return BitConverter.ToInt32(buf, 28);
         }
         finally { CloseHandle(h); }
     }
