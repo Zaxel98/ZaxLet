@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Display;
 import android.view.WindowManager;
 import java.io.ByteArrayOutputStream;
@@ -38,6 +39,8 @@ final class ScreenStream {
     private volatile boolean stopping;
     private volatile int level;
     private int curW, curH, curRot = -1;
+    private volatile int capN;   // bingkai yang dikompres, untuk log diagnostik
+    private int sentN; private long sentBytes, maxSendMs, lastLogMs;
     private String infoJson;
     private long lastCaptureMs;
 
@@ -183,6 +186,7 @@ final class ScreenStream {
 
             byte[] jpeg = baos.toByteArray();
             synchronized (frameLock) {
+                capN++;
                 latestFrame = jpeg;
                 frameLock.notifyAll();
             }
@@ -252,6 +256,12 @@ final class ScreenStream {
                     long t0 = SystemClock.elapsedRealtime();
                     w.sendBinary(frame, frame.length);
                     long dt = SystemClock.elapsedRealtime() - t0;
+                    sentN++; sentBytes += frame.length; if (dt > maxSendMs) maxSendMs = dt;
+                    long nowLog = SystemClock.elapsedRealtime();
+                    if (nowLog - lastLogMs >= 5000) {
+                        Log.i("ZaxLetScr", "cap=" + capN + " sent=" + sentN + " avgKB=" + (sentN > 0 ? sentBytes / sentN / 1024 : 0) + " maxSendMs=" + maxSendMs + " level=" + level + " size=" + curW + "x" + curH + " audQ=" + AudioService.audioQueued);
+                        lastLogMs = nowLog; sentN = 0; sentBytes = 0; maxSendMs = 0; capN = 0;
+                    }
 
                     long now = SystemClock.elapsedRealtime();
                     if (dt > SLOW_SEND_MS) {
