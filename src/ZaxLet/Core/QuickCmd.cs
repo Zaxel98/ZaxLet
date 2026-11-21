@@ -12,7 +12,7 @@ public static class QuickCmd
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
+    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  tp <naskah>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
