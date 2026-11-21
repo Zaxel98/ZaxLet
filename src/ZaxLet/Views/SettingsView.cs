@@ -20,9 +20,9 @@ public sealed class SettingsView : TabView
 
     static readonly (string Key, string Label, string Glyph)[] Pages =
     {
-        ("general", "Umum", ""), ("island", "Island", ""), ("music", "Musik", ""), ("phone", "HP", ""),
-        ("system", "Usage & Monitor", ""), ("calendar", "Kalender & Sholat", ""), ("remind", "Pengingat", "\U0001F4A7"), ("tools", "Alat", ""),
-        ("addons", "Addon", ""),
+        ("general", "Umum", ""), ("island", "Island", ""), ("content", "Isi & tab", "\uE71D"), ("shortcuts", "Pintasan", "\uE765"),
+        ("music", "Musik", ""), ("phone", "HP", ""), ("system", "Usage & Monitor", ""), ("calendar", "Kalender & Sholat", ""),
+        ("remind", "Pengingat", "\U0001F4A7"), ("tools", "Alat", ""), ("addons", "Addon", ""),
     };
 
     readonly StackPanel _cats = new();
@@ -34,10 +34,12 @@ public sealed class SettingsView : TabView
     /// <summary>Kunci halaman lama (idle, usage, prayer, notif, ...) dipetakan ke halaman baru; dipakai flag --page.</summary>
     static string Normalize(string p) => p switch
     {
-        "idle" or "tabs" => "island", "usage" or "monitor" => "system", "prayer" => "calendar", "water" => "remind",
+        "idle" or "tabs" => "content", "keys" or "pintasan" => "shortcuts", "usage" or "monitor" => "system", "prayer" => "calendar", "water" => "remind",
         "apps" => "tools", "notif" => "phone",
         _ => p
     };
+
+    static readonly Dictionary<string, bool> _secOpen = new();
 
     static readonly Brush CardBg = UI.B("#FF1F1F24"), Sep = UI.B("#FF2C2C33"),
         Fg = UI.B("#FFE6E6EA"), Dim = UI.B("#FFB4B4BC");
@@ -130,17 +132,34 @@ public sealed class SettingsView : TabView
             }
             group.Children.Add(row);
         }
-        foreach (var (raw0, ctl) in PageRows(_page))
+        var pageRows = PageRows(_page).ToList();
+        int totalSections = pageRows.Count(r => r.Item1.StartsWith('§'));
+        int secIdx = -1;
+        bool secOpen = true, inMore = false;
+        foreach (var (raw0, ctl) in pageRows)
         {
             var raw = raw0;
-            if (raw.StartsWith('§')) { CloseGroup(); _rows.Children.Add(SectionHeader(raw[1..], _rows.Children.Count == 0)); continue; }
+            if (raw.StartsWith('§'))
+            {
+                CloseGroup();
+                inMore = false;
+                secIdx++;
+                var title = raw[1..];
+                var secKey = _page + ":" + title;
+                bool defOpen = secIdx == 0 || (title != "Tab" && !(totalSections > 4 && secIdx >= 3));
+                secOpen = _secOpen.TryGetValue(secKey, out var saved) ? saved : defOpen;
+                _rows.Children.Add(SectionHeader(title, _rows.Children.Count == 0, secOpen, () => { _secOpen[secKey] = !secOpen; Render(); }));
+                continue;
+            }
             bool adv = raw.StartsWith('~'), more = raw.StartsWith('¶');
             if ((adv || more) && !Settings.Cur.Advanced) continue;   // opsi lanjutan tersembunyi kecuali Mode lanjutan menyala
             if (more)
             {
+                inMore = true;
                 if (!moreHdr) { moreHdr = true; CloseGroup(); _rows.Children.Add(MoreHeader()); }
                 if (!_moreOpen) continue;
             }
+            else if (!inMore && !secOpen) continue;
             AddRow(Row(adv || more ? raw[1..] : raw, ctl));
         }
         CloseGroup();
@@ -182,7 +201,9 @@ public sealed class SettingsView : TabView
     static readonly Dictionary<string, string> PageHints = new()
     {
         ["general"] = "Bahasa, tampilan, pembaruan, dan cadangan.",
-        ["island"] = "Cara island membuka, bersembunyi, dan bergestur, serta apa yang tampil saat diam.",
+        ["island"] = "Tampilan island, cara membuka, menyembunyikan, dan gestur.",
+        ["content"] = "Elemen yang tampil di pill saat diam serta urutan dan visibilitas tab.",
+        ["shortcuts"] = "Klik kotak pintasan lalu tekan kombinasi tombol (format seperti Ctrl + Alt + Space); kosongkan untuk mematikan.",
         ["music"] = "Lirik, tulisan Latin, karaoke, dan pembacaan posisi YouTube.",
         ["phone"] = "Sambungkan HP, notifikasi, dan kamera. Mulai dari Panduan sambung HP.",
         ["system"] = "Kuota Claude dan Codex serta kinerja PC.",
@@ -321,7 +342,6 @@ public sealed class SettingsView : TabView
                 break;
 
             case "island":
-                var pos = new[] { ("left", "Kiri"), ("center", "Tengah"), ("right", "Kanan") };
                 yield return ("§Tampilan island", null);
                 yield return ("Tema\nHitam bawaan, atau warna lain; Neon: garis tepi mengikuti warna sampul lagu", Choice(new[] { ("black", "Hitam"), ("aurora", "Aurora"), ("matcha", "Matcha"), ("senja", "Senja"), ("neon", "Neon") }, () => s.Theme, v => s.Theme = v));
                 yield return ("Bentuk island\nNotch: bahu cekung di kiri dan kanan seperti takik layar. Dynamic: kapsul bulat", Choice(new[] { ("notch", "Notch"), ("pill", "Dynamic") }, () => s.IslandShape, v => s.IslandShape = v));
@@ -337,14 +357,11 @@ public sealed class SettingsView : TabView
                     yield return ("Monitor", Choice(screens.Select((sc, i) => (i.ToString(), i == 0 ? "Monitor utama" : $"Monitor {i + 1}")).ToArray(), () => s.MonitorIdx.ToString(), v => s.MonitorIdx = int.Parse(v)));
                 yield return ("§Cara membuka", null);
                 yield return ("Cara membuka pill", Choice(new[] { ("hover", "Kursor di atas pill"), ("click", "Klik kiri") }, () => s.HoverOpen ? "hover" : "click", v => s.HoverOpen = v == "hover"));
-                yield return ("Pintasan buka island\nMis. ctrl+alt+space; tekan lagi untuk menutup. Kosongkan untuk mematikan", Txt(() => s.OpenKey, v => s.OpenKey = v.Trim().ToLowerInvariant(), 150));
-                yield return ("Pintasan Aksi cepat\nKolom ketik perintah singkat: t 10m, fokus 25, catat beli susu, w link, minum 250, tema neon. Mis. ctrl+alt+k; kosongkan untuk mematikan", Txt(() => s.QuickKey, v => s.QuickKey = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~Jeda sebelum menutup", Dur(() => s.CloseDelayMs / 1000.0, v => s.CloseDelayMs = (int)(v * 1000), 0.05, 600));
                 yield return ("§Menyembunyikan island", null);
                 yield return ("Sembunyikan saat fullscreen", Toggle(() => s.AutoHideFullscreen, v => s.AutoHideFullscreen = v));
                 yield return ("Klik kanan pill = sembunyikan\nKursor ke tepi atas untuk mengintip, klik kanan lagi untuk menampilkan terus", Toggle(() => s.RightClickHide, v => s.RightClickHide = v));
                 yield return ("Tahan Alt di atas pill = hilang sementara", Toggle(() => s.AltGhost, v => s.AltGhost = v));
-                yield return ("Pintasan sembunyikan pill\nMenu tray juga bisa menyembunyikan island", Txt(() => s.HideKey, v => s.HideKey = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~Otomatis tampil lagi setelah\n0 = manual", Num(0, 240, 5, " mnt", () => s.SnoozeMin, v => s.SnoozeMin = v));
                 yield return ("Menyingkir otomatis bila menutupi tombol aplikasi lain", Toggle(() => s.YieldOn, v => s.YieldOn = v));
                 yield return ("~Pil jam kecil saat menyingkir\nBukan hilang total: tetap tampil sebagai jam kecil (atau jam dan tanggal)", Choice(new[] { ("off", "Mati"), ("clock", "Jam"), ("date", "Jam dan tanggal") }, () => s.MiniClock, v => s.MiniClock = v));
@@ -353,6 +370,14 @@ public sealed class SettingsView : TabView
                 yield return ("Popup OSD (volume, kecerahan, Caps Lock, Bluetooth, mikrofon)", Toggle(() => s.OsdOn, v => s.OsdOn = v));
                 yield return ("Tampilkan aplikasi yang memakai mikrofon/kamera", Toggle(() => s.PrivacyOn, v => s.PrivacyOn = v));
                 yield return ("Notifikasi unduhan selesai", Toggle(() => s.DownloadAlert, v => s.DownloadAlert = v));
+                // "¶" = opsi lanjutan yang jarang disentuh: dilipat di bawah satu kepala "Lainnya"
+                yield return ("¶Kelengkungan sudut\n0 = otomatis; makin besar makin bulat", Num(0, 40, 4, " px", () => s.PillRadius, v => s.PillRadius = v == 0 || v >= 8 ? v : 8));
+                yield return ("¶Lebar tambahan saat idle\nMelebarkan pill saat tertutup supaya lebih lega", Num(0, 160, 10, " px", () => s.IdleExtra, v => s.IdleExtra = v));
+                yield return ("¶Kehalusan animasi\nOtomatis: animasi latar 30 fps, buka/tutup/ganti tab 60 fps. Penuh: semua 60 fps. Berlaku setelah ZaxLet dimulai ulang", Choice(new[] { ("auto", "Otomatis"), ("full", "Penuh (60 fps)") }, () => s.AnimFps, v => s.AnimFps = v));
+                break;
+
+            case "content":
+                var pos = new[] { ("left", "Kiri"), ("center", "Tengah"), ("right", "Kanan") };
                 yield return ("§Isi pill saat diam", null);
                 yield return ("Baterai", Toggle(() => s.IdleBattery, v => s.IdleBattery = v));
                 yield return ("~Angka persen baterai", Toggle(() => s.IdleBatteryPct, v => s.IdleBatteryPct = v));
@@ -394,10 +419,22 @@ public sealed class SettingsView : TabView
                     ctl.Children.Add(Toggle(() => !s.HiddenTabs.Contains(k), v => { s.HiddenTabs.Remove(k); if (!v) s.HiddenTabs.Add(k); }));
                     yield return (IslandWindow.TabMeta[k].Label, ctl);
                 }
-                // "¶" = opsi lanjutan yang jarang disentuh: dilipat di bawah satu kepala "Lainnya"
-                yield return ("¶Kelengkungan sudut\n0 = otomatis; makin besar makin bulat", Num(0, 40, 4, " px", () => s.PillRadius, v => s.PillRadius = v == 0 || v >= 8 ? v : 8));
-                yield return ("¶Lebar tambahan saat idle\nMelebarkan pill saat tertutup supaya lebih lega", Num(0, 160, 10, " px", () => s.IdleExtra, v => s.IdleExtra = v));
-                yield return ("¶Kehalusan animasi\nOtomatis: animasi latar 30 fps, buka/tutup/ganti tab 60 fps. Penuh: semua 60 fps. Berlaku setelah ZaxLet dimulai ulang", Choice(new[] { ("auto", "Otomatis"), ("full", "Penuh (60 fps)") }, () => s.AnimFps, v => s.AnimFps = v));
+                break;
+
+            case "shortcuts":
+                yield return ("§Global", null);
+                yield return ("Pintasan buka island\nTekan lagi untuk menutup", KeyRec(() => s.OpenKey, v => s.OpenKey = v));
+                yield return ("Pintasan Aksi cepat\nKolom ketik perintah singkat: t 10m, fokus 25, catat beli susu, w link, minum 250, tema neon", KeyRec(() => s.QuickKey, v => s.QuickKey = v));
+                yield return ("Pintasan sembunyikan pill\nMenu tray juga bisa menyembunyikan island", KeyRec(() => s.HideKey, v => s.HideKey = v));
+                yield return ("Pintasan tangkap area", KeyRec(() => s.CapKey, v => s.CapKey = v));
+                if (s.Advanced)
+                {
+                    yield return ("§Aplikasi rapat", null);
+                    yield return ("~Pintasan Discord: mic", KeyRec(() => s.AppKeys.GetValueOrDefault("discord.mic", ""), v => s.AppKeys["discord.mic"] = v));
+                    yield return ("~Pintasan Discord: deafen", KeyRec(() => s.AppKeys.GetValueOrDefault("discord.deaf", ""), v => s.AppKeys["discord.deaf"] = v));
+                    yield return ("~Pintasan Meet: mic", KeyRec(() => s.AppKeys.GetValueOrDefault("meet.mic", ""), v => s.AppKeys["meet.mic"] = v));
+                    yield return ("~Pintasan Meet: kamera", KeyRec(() => s.AppKeys.GetValueOrDefault("meet.cam", ""), v => s.AppKeys["meet.cam"] = v));
+                }
                 break;
 
             case "music":
@@ -573,7 +610,6 @@ public sealed class SettingsView : TabView
                 yield return ("§Tangkap layar", null);
                 yield return ("Folder tangkapan (kosong = Pictures\\ZaxLet)", Txt(() => s.CapDir, v => s.CapDir = v.Trim(), 150));
                 yield return ("Salin tangkapan ke clipboard", Toggle(() => s.CapClipboard, v => s.CapClipboard = v));
-                yield return ("Pintasan tangkap area\nMis. ctrl+shift+s; kosongkan untuk mematikan", Txt(() => s.CapKey, v => s.CapKey = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~FPS rekam layar", Choice(new[] { ("15", "15"), ("30", "30"), ("60", "60") }, () => s.RecFps.ToString(), v => s.RecFps = int.Parse(v)));
                 yield return ("§Clipboard", null);
                 yield return ("Riwayat clipboard (hanya di memori)", Toggle(() => s.ClipboardOn, v => s.ClipboardOn = v));
@@ -599,10 +635,6 @@ public sealed class SettingsView : TabView
                 yield return ("Tahan notifikasi HP selama rapat", Toggle(() => s.MeetHold, v => s.MeetHold = v));
                 yield return ("§Discord dan Meet", null);
                 yield return ("Panduan Discord\n" + (DiscordRpc.I.Connected ? L.T("Tersambung") + (DiscordRpc.I.InVoice ? " · voice: " + DiscordRpc.I.Channel : "") : DiscordRpc.Configured ? DiscordRpc.I.Status : L.T("Cara cepat siap; cara lengkap belum disambungkan")), Act("Buka panduan", () => DiscordGuide.Show(true), UI.Fg));
-                yield return ("~Pintasan Discord: mic\nFormat: ctrl+shift+m, ctrl+d, f9", Txt(() => s.AppKeys.GetValueOrDefault("discord.mic", ""), v => s.AppKeys["discord.mic"] = v.Trim().ToLowerInvariant(), 150));
-                yield return ("~Pintasan Discord: deafen", Txt(() => s.AppKeys.GetValueOrDefault("discord.deaf", ""), v => s.AppKeys["discord.deaf"] = v.Trim().ToLowerInvariant(), 150));
-                yield return ("~Pintasan Meet: mic", Txt(() => s.AppKeys.GetValueOrDefault("meet.mic", ""), v => s.AppKeys["meet.mic"] = v.Trim().ToLowerInvariant(), 150));
-                yield return ("~Pintasan Meet: kamera", Txt(() => s.AppKeys.GetValueOrDefault("meet.cam", ""), v => s.AppKeys["meet.cam"] = v.Trim().ToLowerInvariant(), 150));
                 yield return ("~Atur ulang sambungan Discord", Act("Atur ulang", () => { s.DiscordClientId = s.DiscordSecret = ""; s.DiscordSetupAsked = false; DiscordRpc.I.ResetToken(); Render(); }, UI.Warn));
                 yield return ("§Teleprompter", null);
                 yield return ("Kecepatan gulir (kata/menit)", Num(60, 300, 10, " kpm", () => Math.Clamp(s.PrompterWpm, 60, 300), v => s.PrompterWpm = v));
@@ -727,11 +759,21 @@ public sealed class SettingsView : TabView
         return b;
     }
 
-    static UIElement SectionHeader(string title, bool first = false)
+    static UIElement SectionHeader(string title, bool first = false, bool open = true, Action toggle = null)
     {
-        var sp = new StackPanel { Margin = new Thickness(2, first ? 6 : 22, 0, 6) };
-        sp.Children.Add(UI.T(title, FontSection, UI.Accent, true));
-        return sp;
+        if (toggle == null)
+        {
+            var sp = new StackPanel { Margin = new Thickness(2, first ? 6 : 22, 0, 6) };
+            sp.Children.Add(UI.T(title, FontSection, UI.Accent, true));
+            return sp;
+        }
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(UI.T(title, FontSection, UI.Accent, true));
+        var chev = UI.Icon(open ? "" : "", 10, UI.Accent); chev.Margin = new Thickness(6, 1, 0, 0);
+        row.Children.Add(chev);
+        var b = UI.Btn(row, toggle, Brushes.Transparent, 6, new Thickness(2, 4, 2, 4));
+        b.Margin = new Thickness(0, first ? 4 : 18, 0, 4); b.HorizontalAlignment = HorizontalAlignment.Left;
+        return b;
     }
 
     static void Chg(Action extra = null) { extra?.Invoke(); Settings.Apply(); }
@@ -849,6 +891,146 @@ public sealed class SettingsView : TabView
         tb.LostFocus += (_, _) => Commit();
         tb.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) { Commit(); Keyboard.ClearFocus(); } };
         return tb;
+    }
+
+    static string FormatHotkey(string combo)
+    {
+        if (string.IsNullOrWhiteSpace(combo)) return L.T("Kosong");
+        var parts = combo.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(" + ", parts.Select(p => p.ToLowerInvariant() switch
+        {
+            "ctrl" => "Ctrl", "alt" => "Alt", "shift" => "Shift", "win" => "Win",
+            "space" => "Space", "enter" => "Enter", "esc" => "Esc", "tab" => "Tab",
+            _ => char.ToUpperInvariant(p[0]) + p[1..]
+        }));
+    }
+
+    static bool IsValidHotkey(string combo)
+    {
+        if (string.IsNullOrWhiteSpace(combo)) return false;
+        int keys = 0;
+        foreach (var part in combo.ToLowerInvariant().Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part is "alt" or "ctrl" or "shift" or "win") continue;
+            bool ok = part is "space" or "enter" or "esc" or "tab"
+                || (part.Length == 1 && char.IsLetterOrDigit(part[0]))
+                || (part.StartsWith('f') && int.TryParse(part[1..], out var n) && n is >= 1 and <= 24);
+            if (!ok) return false;
+            keys++;
+        }
+        return keys == 1;
+    }
+
+    static string CaptureKeyCombo(System.Windows.Input.KeyEventArgs e)
+    {
+        var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
+        if (key is System.Windows.Input.Key.LeftCtrl or System.Windows.Input.Key.RightCtrl
+            or System.Windows.Input.Key.LeftAlt or System.Windows.Input.Key.RightAlt
+            or System.Windows.Input.Key.LeftShift or System.Windows.Input.Key.RightShift
+            or System.Windows.Input.Key.LWin or System.Windows.Input.Key.RWin) return null;
+        var k = key switch
+        {
+            System.Windows.Input.Key.Space => "space",
+            System.Windows.Input.Key.Enter => "enter",
+            System.Windows.Input.Key.Tab => "tab",
+            System.Windows.Input.Key.Escape => "esc",
+            >= System.Windows.Input.Key.A and <= System.Windows.Input.Key.Z => ((char)('a' + (key - System.Windows.Input.Key.A))).ToString(),
+            >= System.Windows.Input.Key.D0 and <= System.Windows.Input.Key.D9 => ((char)('0' + (key - System.Windows.Input.Key.D0))).ToString(),
+            >= System.Windows.Input.Key.NumPad0 and <= System.Windows.Input.Key.NumPad9 => ((char)('0' + (key - System.Windows.Input.Key.NumPad0))).ToString(),
+            >= System.Windows.Input.Key.F1 and <= System.Windows.Input.Key.F24 => "f" + (1 + (key - System.Windows.Input.Key.F1)),
+            _ => ""
+        };
+        if (k.Length == 0) return "";
+        var mods = Keyboard.Modifiers;
+        var parts = new List<string>(5);
+        if ((mods & ModifierKeys.Control) != 0) parts.Add("ctrl");
+        if ((mods & ModifierKeys.Alt) != 0) parts.Add("alt");
+        if ((mods & ModifierKeys.Shift) != 0) parts.Add("shift");
+        if ((mods & ModifierKeys.Windows) != 0) parts.Add("win");
+        parts.Add(k);
+        return string.Join("+", parts);
+    }
+
+    static bool IsDuplicateHotkey(string combo)
+    {
+        var norm = (combo ?? "").Trim().ToLowerInvariant();
+        if (norm.Length == 0) return false;
+        var s = Settings.Cur;
+        string[] all =
+        {
+            s.OpenKey, s.QuickKey, s.HideKey, s.CapKey,
+            s.AppKeys.GetValueOrDefault("discord.mic", ""), s.AppKeys.GetValueOrDefault("discord.deaf", ""),
+            s.AppKeys.GetValueOrDefault("meet.mic", ""), s.AppKeys.GetValueOrDefault("meet.cam", ""),
+        };
+        return all.Count(x => (x ?? "").Trim().ToLowerInvariant() == norm) > 1;
+    }
+
+    UIElement KeyRec(Func<string> get, Action<string> set)
+    {
+        var txt = UI.T("", FontCtl, Fg, true);
+        txt.TextAlignment = TextAlignment.Center;
+        txt.VerticalAlignment = VerticalAlignment.Center;
+        var box = new Border
+        {
+            Child = txt, Background = UI.Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 5, 12, 5),
+            MinWidth = 140, Cursor = Cursors.Hand, Focusable = true, FocusVisualStyle = null,
+            BorderThickness = new Thickness(1), BorderBrush = Brushes.Transparent
+        };
+        var clr = UI.Btn(UI.T("×", 13, Dim), () => { set(""); Chg(); Render(); }, UI.Card, 10, new Thickness(8, 4, 8, 4));
+        clr.Margin = new Thickness(6, 0, 0, 0);
+        clr.ToolTip = L.T("Hapus pintasan");
+        var top = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        top.Children.Add(box);
+        top.Children.Add(clr);
+        var warn = UI.T("Pintasan sama dengan pengaturan lain", FontCaption, Dim);
+        warn.Margin = new Thickness(0, 4, 0, 0);
+        warn.HorizontalAlignment = HorizontalAlignment.Right;
+        warn.TextWrapping = TextWrapping.Wrap;
+        warn.Visibility = IsDuplicateHotkey(get()) ? Visibility.Visible : Visibility.Collapsed;
+        var wrap = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        wrap.Children.Add(top);
+        wrap.Children.Add(warn);
+
+        bool recording = false;
+        void Paint()
+        {
+            if (recording)
+            {
+                txt.Text = L.T("Tekan kombinasi tombol...");
+                txt.Foreground = UI.Accent;
+                box.BorderBrush = UI.Accent;
+            }
+            else
+            {
+                var v = get();
+                txt.Text = FormatHotkey(v);
+                txt.Foreground = string.IsNullOrWhiteSpace(v) ? Dim : Fg;
+                box.BorderBrush = Brushes.Transparent;
+            }
+        }
+        box.MouseLeftButtonDown += (_, e) => { e.Handled = true; recording = true; Paint(); box.Focus(); };
+        box.LostKeyboardFocus += (_, _) => { if (recording) { recording = false; Paint(); } };
+        box.PreviewKeyDown += (_, e) =>
+        {
+            if (!recording) return;
+            e.Handled = true;
+            var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
+            if (key == System.Windows.Input.Key.Escape && Keyboard.Modifiers == ModifierKeys.None)
+            {
+                recording = false; Paint(); Keyboard.ClearFocus(); return;
+            }
+            if ((key == System.Windows.Input.Key.Back || key == System.Windows.Input.Key.Delete) && Keyboard.Modifiers == ModifierKeys.None)
+            {
+                recording = false; set(""); Chg(); Render(); return;
+            }
+            var combo = CaptureKeyCombo(e);
+            if (combo == null) return;
+            recording = false;
+            if (combo.Length > 0 && IsValidHotkey(combo)) { set(combo); Chg(); Render(); }
+            else { Paint(); Keyboard.ClearFocus(); }
+        };
+        Paint();
+        return wrap;
     }
 
     static UIElement Act(string label, Action click, Brush fg) =>
