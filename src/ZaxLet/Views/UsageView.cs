@@ -236,7 +236,7 @@ public sealed class UsageView : TabView
     }
 
     static readonly Brush AgyBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0xB4, 0xF8));
-    const double TokW = 50, CodeW = 104, AgyW = 54;   // lebar kolom tabel pemakaian (kolom Total memakai TokW minimal agar "78,3M" tidak jadi "78,3…")
+    const double LabW = 36, CodeW = 100, AgyW = 48;   // lebar kolom tabel pemakaian; kolom token dan biaya selebar isinya (Auto) supaya angka tidak terpotong
 
     /// <summary>Antigravity: satu baris per grup model, weekly dan 5h bersebelahan.</summary>
     static void PairBars(StackPanel host, ProviderUsage u)
@@ -282,29 +282,29 @@ public sealed class UsageView : TabView
 
     static Grid Head(bool code, bool agy)
     {
-        var g = UI.Cols(40, 0, -1, 0, 0);
+        var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);
         g.Margin = new Thickness(0, 7, 0, 1);
-        g.Children.Add(new TextBlock { Text = L.T("Total"), FontSize = 10.5, Foreground = UI.Faint, MinWidth = TokW }.At(0, 1));
-        if (code) g.Children.Add(new TextBlock { Text = "Code", FontSize = 10.5, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 3));
-        if (agy) g.Children.Add(new TextBlock { Text = "Agy", FontSize = 10.5, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 4));
+        g.Children.Add(new TextBlock { Text = L.T("Total"), FontSize = 10.5, Foreground = UI.Faint }.At(0, 1));
+        if (code) g.Children.Add(new TextBlock { Text = "Code", FontSize = 10.5, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
+        if (agy) g.Children.Add(new TextBlock { Text = "Agy", FontSize = 10.5, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
         return g;
     }
 
     static Grid Line(string label, long tok, double cost, bool code, PonytailStats p, long? agy)
     {
-        var g = UI.Cols(40, 0, -1, 0, 0);   // token = lebar isi (tidak pernah dipotong), biaya = sisa lebar, rata kanan
+        var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);   // label | token | biaya (Auto: tidak pernah dipotong) | sisa | Code | Agy
         g.Margin = new Thickness(0, 1, 0, 0);
         g.Children.Add(UI.T(label, 12, UI.Dim));
         var tk = UI.T(UI.Tok(tok), 12, UI.Dim);
-        tk.TextTrimming = TextTrimming.None; tk.MinWidth = TokW;
+        tk.TextTrimming = TextTrimming.None; tk.Margin = new Thickness(0, 0, 10, 0);
         g.Children.Add(tk.At(0, 1));
-        if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Right }.At(0, 2));
+        if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.None }.At(0, 2));
         if (code)
         {
             var t = p.Sessions == 0 ? "—" : (Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00", CultureInfo.InvariantCulture) + " · " : "") + p.Turns + " turn";
-            g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 3));
+            g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
         }
-        if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 4));
+        if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
         return g;
     }
 }
