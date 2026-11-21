@@ -727,8 +727,7 @@ public sealed class SettingsView : TabView
             left.Children.Add(c);
         }
         bool isWide = ctl is TextBox
-            || ctl is FrameworkElement { Tag: "wide" }
-            || (!string.IsNullOrWhiteSpace(cap) && L.T(cap).Length > 60);
+            || ctl is FrameworkElement { Tag: "wide" };
         if (isWide)
         {
             // kontrol lebar (pilihan panjang, kotak teks, keterangan panjang, add-on, daftar HP) di bawah label
@@ -825,36 +824,14 @@ public sealed class SettingsView : TabView
             }
             pop.IsOpen = !pop.IsOpen;
         }, UI.Card, 10, new Thickness(12, 5, 12, 5));
-        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";
         pop.PlacementTarget = b;
+        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";   // label panjang ("Automatic (follow Windows)") di bawah judul, bukan terpotong di kanan
         Paint();
         return b;
     }
 
     static UIElement Choice((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra = null)
-    {
-        if (opts.Length >= 4) return Dropdown(opts, get, set, extra);
-        var txt = UI.T("", FontCtl, Fg, true);
-        txt.MinWidth = 96; txt.TextWrapping = TextWrapping.Wrap; txt.TextTrimming = TextTrimming.None; txt.TextAlignment = TextAlignment.Center;
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(UI.Icon("", 9, Dim));
-        row.Children.Add(txt);
-        row.Children.Add(UI.Icon("", 9, Dim));
-        var b = new Border { Child = row, Background = UI.Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5), Cursor = Cursors.Hand };
-        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";
-        void Paint() { txt.Text = L.T(Array.Find(opts, o => o.Key == get()).Label ?? get()); txt.ToolTip = txt.Text; }
-        b.MouseLeftButtonUp += (_, e) =>
-        {
-            int i = Math.Max(0, Array.FindIndex(opts, o => o.Key == get()));
-            bool back = e.GetPosition(b).X < b.ActualWidth / 3;   // sepertiga kiri = mundur
-            i = (i + (back ? opts.Length - 1 : 1)) % opts.Length;
-            set(opts[i].Key);
-            Chg(extra);
-            Paint();
-        };
-        Paint();
-        return b;
-    }
+        => Dropdown(opts, get, set, extra);
 
     static UIElement Num(int min, int max, int step, string suffix, Func<int> get, Action<int> set, Action extra = null)
     {
@@ -883,13 +860,37 @@ public sealed class SettingsView : TabView
         return tb;
     }
 
-    static UIElement Txt(Func<string> get, Action<string> set, double width = 170)
+    static UIElement Txt(Func<string> get, Action<string> set, double width = 170, string hint = "Ketik di sini…")
     {
-        var tb = new TextBox { Width = width, FontSize = FontCtl, Text = get() };
-        void Commit() { set(tb.Text); Chg(); tb.Text = get(); }
+        var tb = new TextBox
+        {
+            FontSize = FontCtl, Foreground = Fg, CaretBrush = Fg,
+            Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+            Padding = new Thickness(9, 5, 9, 5), VerticalContentAlignment = VerticalAlignment.Center,
+            Text = get() ?? ""
+        };
+        var ph = new TextBlock
+        {
+            Text = L.T(hint), Foreground = UI.Faint, FontSize = FontCtl,
+            IsHitTestVisible = false, Margin = new Thickness(10, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = string.IsNullOrEmpty(tb.Text) ? Visibility.Visible : Visibility.Collapsed
+        };
+        void SyncPh() => ph.Visibility = string.IsNullOrEmpty(tb.Text) ? Visibility.Visible : Visibility.Collapsed;
+        void Commit() { set(tb.Text); Chg(); tb.Text = get() ?? ""; SyncPh(); }
+        tb.TextChanged += (_, _) => SyncPh();
         tb.LostFocus += (_, _) => Commit();
         tb.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) { Commit(); Keyboard.ClearFocus(); } };
-        return tb;
+        var g = new Grid();
+        g.Children.Add(tb);
+        g.Children.Add(ph);
+        return new Border
+        {
+            Width = width, Tag = "wide",
+            Background = CardBg, BorderBrush = UI.Hairline, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10), ClipToBounds = true,
+            Child = g
+        };
     }
 
     static string FormatHotkey(string combo)
