@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
     private TextView audNote;
     private EditText msg;
     private Check cNotif, cBattery, cPost;
+    private boolean autoAudTried, inAudPrompt;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() { public void run() { refresh(); ui.postDelayed(this, 1500); } };
 
@@ -88,6 +89,13 @@ public class MainActivity extends Activity {
         ac.addView(Ui.button(this, "Notifikasi ke PC", false, v -> startActivity(new Intent(this, AppsActivity.class))), Ui.gap(this, 8));
         audBtn = Ui.button(this, "", false, v -> toggleAudio());
         ac.addView(audBtn, Ui.gap(this, 8));
+        Switch autoAud = new Switch(this);
+        autoAud.setText("Mulai audio otomatis saat aplikasi dibuka");
+        autoAud.setTextColor(Ui.TEXT);
+        autoAud.setTextSize(14);
+        autoAud.setChecked(Net.sp.getBoolean("autoaud", false));
+        autoAud.setOnCheckedChangeListener((btn, on) -> Net.sp.edit().putBoolean("autoaud", on).apply());
+        ac.addView(autoAud, Ui.gap(this, 8));
         audNote = Ui.text(this, "", 12, Ui.DIM, false);
         ac.addView(audNote, Ui.gap(this, 4));
 
@@ -137,8 +145,16 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); handle(i); }
-    @Override protected void onResume() { super.onResume(); ui.post(tick); }
+    @Override protected void onResume() {
+        super.onResume();
+        ui.post(tick);
+        if (!autoAudTried && Net.sp.getBoolean("autoaud", false) && Net.paired() && !AudioService.alive && Build.VERSION.SDK_INT >= 29) {
+            autoAudTried = true;
+            toggleAudio();
+        }
+    }
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(tick); }
+    @Override protected void onStop() { super.onStop(); if (!inAudPrompt) autoAudTried = false; }
 
     private boolean listenerOn() {
         String l = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
@@ -277,7 +293,10 @@ public class MainActivity extends Activity {
                 startForegroundService(new Intent(this, ConnService.class));
                 toast(denied ? "Layanan diaktifkan (sebagian izin ditolak)" : "Layanan diaktifkan");
             }
-        } else if (c == 10 && r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio();
+        } else if (c == 10) {
+            inAudPrompt = false;
+            if (r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio();
+        }
     }
 
     /** Audio HP -> PC: izin rekam audio, lalu dialog rekam layar Android (wajib untuk menangkap audio aplikasi lain); hasilnya diteruskan ke AudioService. */
@@ -285,7 +304,8 @@ public class MainActivity extends Activity {
         if (AudioService.alive) { startService(new Intent(this, AudioService.class).setAction("STOP")); ui.postDelayed(this::refresh, 400); return; }
         if (!Net.paired()) { toast("Pasangkan dulu dengan ZaxLet di PC"); return; }
         if (Build.VERSION.SDK_INT < 29) { toast("Butuh Android 10 ke atas"); return; }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 10); return; }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { inAudPrompt = true; requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 10); return; }
+        inAudPrompt = true;
         startActivityForResult(((android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE)).createScreenCaptureIntent(), 10);
     }
 
@@ -301,6 +321,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int rc, int res, Intent d) {
         if (rc == 10) {
+            inAudPrompt = false;
             if (res == RESULT_OK && d != null) startForegroundService(new Intent(this, AudioService.class).putExtra("rc", res).putExtra("data", d));
             ui.postDelayed(this::refresh, 600);
             return;

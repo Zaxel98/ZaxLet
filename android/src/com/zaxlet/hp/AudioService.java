@@ -36,12 +36,27 @@ public class AudioService extends Service {
     private Thread audThread;
     private Thread sendThread;
     private final Object qLock = new Object();
+    private final Object wake = new Object();
     private final ArrayDeque<byte[]> queue = new ArrayDeque<>(MAX_QUEUE_FRAMES);
     private int droppedChunks;
     private int sentFrames;
     private long maxSendMs;
 
     @Override public IBinder onBind(Intent i) { return null; }
+
+    private Notification note(String text) {
+        PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, AudioService.class).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE);
+        return new Notification.Builder(this, "zaxlet-aud").setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("Audio HP → PC")
+                .setContentText(text).setOngoing(true)
+                .addAction(new Notification.Action.Builder(null, "Matikan", stop).build()).build();
+    }
+
+    private void setNote(String text) {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(2, note(text));
+        } catch (Exception ignored) { }
+    }
 
     @Override public int onStartCommand(Intent in, int flags, int startId) {
         if (in != null && "STOP".equals(in.getAction())) { shutdown(); return START_NOT_STICKY; }
@@ -51,12 +66,8 @@ public class AudioService extends Service {
         err = "";
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.createNotificationChannel(new NotificationChannel("zaxlet-aud", "Audio ke PC", NotificationManager.IMPORTANCE_LOW));
-        PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, AudioService.class).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE);
-        Notification n = new Notification.Builder(this, "zaxlet-aud").setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("Audio HP → PC")
-                .setContentText("Speaker HP senyap, suara diputar di PC").setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, "Matikan", stop).build()).build();
         try {
-            startForeground(2, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);   // wajib sebelum getMediaProjection (Android 14)
+            startForeground(2, note("Menyambung ulang…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);   // wajib sebelum getMediaProjection (Android 14)
             mp = ((MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE)).getMediaProjection(in.getIntExtra("rc", 0), data);
             mp.registerCallback(new MediaProjection.Callback() { @Override public void onStop() { shutdown(); } }, null);
             AudioPlaybackCaptureConfiguration cfg = new AudioPlaybackCaptureConfiguration.Builder(mp)
@@ -79,10 +90,8 @@ public class AudioService extends Service {
         long lastLogMs = SystemClock.elapsedRealtime();
         try {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
-            Ws w = new Ws("/aud/ws");   // sambung dulu: bila PC tidak terjangkau, speaker HP tidak sempat dibisukan
             synchronized (this) {
-                if (stopping) { w.close(); return; }
-                ws = w;
+                if (stopping) return;
                 WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wm != null) {
                     int mode = Build.VERSION.SDK_INT >= 29 ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
@@ -90,18 +99,7 @@ public class AudioService extends Service {
                     wifiLock.setReferenceCounted(false);
                     wifiLock.acquire();
                 }
-            }
-            w.sock.setTcpNoDelay(true);
-            w.sock.setSendBufferSize(65536);
-            synchronized (qLock) {
-                queue.clear();
-                droppedChunks = 0;
-                sentFrames = 0;
-                maxSendMs = 0;
-            }
-            synchronized (this) {
-                if (stopping) return;
-                sendThread = new Thread(() -> sendLoop(w), "zaxlet-aud-tx");
+                sendThread = new Thread(this::sendLoop, "zaxlet-aud-tx");
                 sendThread.start();
                 rec.startRecording();
                 mute(true);
@@ -112,15 +110,17 @@ public class AudioService extends Service {
                 if (n < 0) { shortOrErrReads++; break; }
                 if (n < buf.length) shortOrErrReads++;
                 int valid = n & ~3;
-                if (valid > 0) {
+                if (valid > 0 && ws != null) {
                     byte[] chunk = Arrays.copyOf(buf, valid);
                     synchronized (qLock) {
-                        while (queue.size() >= MAX_QUEUE_FRAMES) {
-                            queue.pollFirst();
-                            droppedChunks++;
+                        if (ws != null) {
+                            while (queue.size() >= MAX_QUEUE_FRAMES) {
+                                queue.pollFirst();
+                                droppedChunks++;
+                            }
+                            queue.addLast(chunk);
+                            qLock.notifyAll();
                         }
-                        queue.addLast(chunk);
-                        qLock.notifyAll();
                     }
                 }
                 if (++tick % 25 == 0) {
@@ -146,10 +146,12 @@ public class AudioService extends Service {
         } catch (Throwable e) { if (!stopping) err = "Audio berhenti: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()); }
         finally {
             stopping = true;
-            synchronized (qLock) { qLock.notifyAll(); }
-            synchronized (this) {
-                try { if (ws != null) { ws.close(); ws = null; } } catch (Exception ignored) { }
+            synchronized (qLock) {
+                ws = null;
+                queue.clear();
+                qLock.notifyAll();
             }
+            synchronized (wake) { wake.notifyAll(); }
             if (sendThread != null) {
                 sendThread.interrupt();
                 try { sendThread.join(1000); } catch (InterruptedException ignored) { }
@@ -159,31 +161,62 @@ public class AudioService extends Service {
         }
     }
 
-    private void sendLoop(Ws w) {
-        try {
-            while (!stopping) {
-                byte[] chunk;
+    private void sendLoop() {
+        int backoff = 1000;
+        boolean everConnected = false;
+        while (!stopping) {
+            Ws w = null;
+            try {
+                w = new Ws("/aud/ws");
+                if (stopping) { w.close(); break; }
+                w.sock.setTcpNoDelay(true);
+                w.sock.setSendBufferSize(65536);
+                backoff = 1000;
+                everConnected = true;
                 synchronized (qLock) {
-                    while (queue.isEmpty() && !stopping) {
-                        try { qLock.wait(); } catch (InterruptedException e) { return; }
+                    queue.clear();
+                    droppedChunks = 0;
+                    sentFrames = 0;
+                    maxSendMs = 0;
+                    ws = w;
+                }
+                setNote("Speaker HP senyap, suara diputar di PC");
+                while (!stopping) {
+                    byte[] chunk;
+                    synchronized (qLock) {
+                        while (queue.isEmpty() && !stopping) {
+                            try { qLock.wait(); } catch (InterruptedException e) { return; }
+                        }
+                        if (stopping) break;
+                        chunk = queue.pollFirst();
                     }
-                    if (stopping) break;
-                    chunk = queue.pollFirst();
+                    if (chunk == null) continue;
+                    long t0 = SystemClock.elapsedRealtime();
+                    w.sendBinary(chunk, chunk.length);
+                    long dt = SystemClock.elapsedRealtime() - t0;
+                    synchronized (qLock) {
+                        sentFrames++;
+                        if (dt > maxSendMs) maxSendMs = dt;
+                    }
                 }
-                if (chunk == null) continue;
-                long t0 = SystemClock.elapsedRealtime();
-                w.sendBinary(chunk, chunk.length);
-                long dt = SystemClock.elapsedRealtime() - t0;
+            } catch (Throwable ignored) {
+                // sambungan putus/gagal: pertahankan tangkapan audio & senyap, buang antrean basi, coba sambung lagi
+                if (!everConnected && !stopping) { err = "Audio gagal: PC tidak terjangkau"; shutdown(); return; }   // sambungan pertama gagal: berhenti seperti dulu, HP tidak dibisukan tanpa tujuan
+            } finally {
                 synchronized (qLock) {
-                    sentFrames++;
-                    if (dt > maxSendMs) maxSendMs = dt;
+                    if (ws == w) ws = null;
+                    queue.clear();
+                }
+                if (w != null) try { w.close(); } catch (Exception ignored) { }
+            }
+            if (stopping) break;
+            setNote("Menyambung ulang…");
+            synchronized (wake) {
+                if (!stopping) {
+                    try { wake.wait(backoff); } catch (InterruptedException e) { break; }
                 }
             }
-        } catch (Throwable e) {
-            if (!stopping) {
-                err = "Audio berhenti: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-                shutdown();
-            }
+            backoff = Math.min(backoff * 2, 10000);
         }
     }
 
@@ -205,7 +238,9 @@ public class AudioService extends Service {
         if (!alive) return;
         stopping = true;
         synchronized (qLock) { qLock.notifyAll(); }
-        try { if (ws != null) ws.close(); } catch (Exception e) { }
+        synchronized (wake) { wake.notifyAll(); }
+        Ws w = ws;
+        if (w != null) try { w.close(); } catch (Exception e) { }
         try { if (rec != null) rec.stop(); } catch (Exception e) { }
         if (audThread == null) cleanup();
     }
