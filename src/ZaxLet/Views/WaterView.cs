@@ -45,7 +45,7 @@ public sealed class WaterView : TabView
     readonly BigRing _ring = new(96);
     readonly TextBlock _amount = new() { Foreground = UI.Fg, VerticalAlignment = VerticalAlignment.Center }, _next = UI.T("", 11.5, UI.Dim);
     readonly StackPanel _btns = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-    readonly StackPanel _week = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom, Height = 70 };
+    readonly StackPanel _week = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
 
     public WaterView()
     {
@@ -58,8 +58,8 @@ public sealed class WaterView : TabView
         mid.Children.Add(_btns);
         g.Children.Add(mid.At(0, 1));
         var right = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        right.Children.Add(UI.T("7 hari", 11, UI.Faint));
-        _week.Margin = new Thickness(0, 4, 0, 0);
+        right.Children.Add(UI.T("7 hari", 10, UI.Faint));
+        _week.Margin = new Thickness(0, 3, 0, 0);
         right.Children.Add(_week);
         g.Children.Add(right.At(0, 2));
         Children.Add(g);
@@ -96,11 +96,12 @@ public sealed class WaterView : TabView
         _week.Children.Clear();
         foreach (var (day, ml) in w.Last7())
         {
-            double h = Math.Clamp((double)ml / w.Goal, 0.04, 1) * 52;
+            double h = Math.Clamp((double)ml / w.Goal, 0.04, 1) * 96;
             var col = new StackPanel { Width = 15, Margin = new Thickness(0, 0, 3, 0), VerticalAlignment = VerticalAlignment.Bottom };
             col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(3), Background = ml >= w.Goal ? UI.Good : day == DateTime.Today ? UI.Info : UI.CardOn });
-            var d = UI.T(day.ToString("ddd")[..1].ToUpper(), 9.5, UI.Faint);
+            var d = UI.T(day.ToString("ddd")[..1].ToUpper(), 10, UI.Faint);
             d.HorizontalAlignment = HorizontalAlignment.Center;
+            d.Margin = new Thickness(0, 2, 0, 0);
             col.Children.Add(d);
             _week.Children.Add(col);
         }

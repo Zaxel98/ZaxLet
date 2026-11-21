@@ -114,7 +114,7 @@ public sealed class WishlistView : TabView
             name.TextWrapping = TextWrapping.Wrap; name.MaxHeight = 34; name.ToolTip = it.Title;   // dua baris, sisanya dipotong
             info.Children.Add(name);
             var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
-            if (it.Price != "") { var pr = UI.T(it.Price, 12, UI.Accent, true); pr.Margin = new Thickness(0, 0, 8, 0); line.Children.Add(pr); }
+            if (it.Price != "") { var pr = UI.T(it.Price, 12, UI.Fg, true); pr.Margin = new Thickness(0, 0, 8, 0); line.Children.Add(pr); }
             if (it.Source != "") line.Children.Add(new Border { Background = UI.CardOn, CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 1, 6, 1), Child = UI.T(it.Source, 10.5, UI.Dim) });
             info.Children.Add(line);
             g.Children.Add(info.At(0, 1));
