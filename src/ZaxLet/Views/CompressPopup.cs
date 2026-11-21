@@ -18,12 +18,14 @@ public sealed class CompressPopup : Window
 {
     static CompressPopup _cur;
     static int _lastTargetKb = 200;
+    static bool _lastKeepResolution = true;
 
     readonly string _src;
     readonly long _srcBytes;
     readonly bool _isPdf;
     readonly TextBox _kbBox;
     readonly Slider _slider;
+    readonly CheckBox _keepResCheck;
     readonly TextBlock _sliderLabel, _liveLabel, _statusLabel;
     readonly Border _runBtn;
     readonly TextBlock _runBtnText;
@@ -135,10 +137,24 @@ public sealed class CompressPopup : Window
         _liveLabel.Margin = new Thickness(0, 0, 0, 8);
         root.Children.Add(_liveLabel);
 
+        _keepResCheck = new CheckBox
+        {
+            Content = L.T("Pertahankan resolusi (bisa lebih buram)"),
+            IsChecked = _lastKeepResolution,
+            Foreground = UI.Fg,
+            FontSize = 12,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 8),
+            Visibility = _isPdf ? Visibility.Collapsed : Visibility.Visible
+        };
+        _keepResCheck.Checked += (_, _) => _lastKeepResolution = true;
+        _keepResCheck.Unchecked += (_, _) => _lastKeepResolution = false;
+        root.Children.Add(_keepResCheck);
+
         // Honest limits
         var limitText = _isPdf
             ? "Gambar di dalam PDF dikompres ulang; teks dan vektor tetap tajam. Jika target tak tercapai, halaman diubah menjadi gambar (teks tidak bisa diseleksi). PDF berpassword ditolak. File asli tidak diubah."
-            : "Keluaran selalu JPEG (transparansi diisi putih). File asli tidak diubah.";
+            : "Resolusi piksel dipertahankan secara default dengan menurunkan kualitas JPEG dan penghalusan ringan bila perlu. Hapus centang di atas untuk mengizinkan penurunan resolusi. Keluaran selalu JPEG (transparansi diisi putih). File asli tidak diubah.";
         var limitLabel = UI.T(limitText, 11, UI.Dim);
         limitLabel.TextWrapping = TextWrapping.Wrap;
         limitLabel.TextTrimming = TextTrimming.None;
@@ -303,11 +319,13 @@ public sealed class CompressPopup : Window
         }
 
         long targetBytes = kb * 1024L;
+        bool keepRes = _keepResCheck.IsChecked == true;
         _running = true;
         _runBtn.IsEnabled = false;
         _runBtn.Opacity = 0.5;
         _kbBox.IsEnabled = false;
         _slider.IsEnabled = false;
+        _keepResCheck.IsEnabled = false;
         _runBtnText.Text = L.T("Memproses...");
         ShowProgress(L.T("Mengompres..."));
 
@@ -317,11 +335,12 @@ public sealed class CompressPopup : Window
         try
         {
             bool usedRaster = false;
+            string imgMethod = null;
             string outPath = await Task.Run(() =>
             {
                 return _isPdf
                     ? FileCompress.PdfToTarget(_src, targetBytes, token, msg => Dispatcher.BeginInvoke(() => { if (_running) ShowProgress(msg); }), out usedRaster)
-                    : FileCompress.ImageToTarget(_src, targetBytes, token);
+                    : FileCompress.ImageToTarget(_src, targetBytes, token, keepRes, out imgMethod);
             }, token);
 
             if (string.IsNullOrEmpty(outPath) || !File.Exists(outPath))
@@ -332,7 +351,9 @@ public sealed class CompressPopup : Window
 
             long outBytes = new FileInfo(outPath).Length;
             Shelf.Add(outPath);
-            string modeNote = _isPdf ? (usedRaster ? " · Teks jadi gambar" : " · Teks tetap tajam") : "";
+            string modeNote = _isPdf
+                ? (usedRaster ? " · Teks jadi gambar" : " · Teks tetap tajam")
+                : (!string.IsNullOrEmpty(imgMethod) ? $" · {imgMethod}" : "");
             string resultMsg = L.F("Dikompres: {0} -> {1}", FileCompress.FmtSize(_srcBytes), FileCompress.FmtSize(outBytes)) + modeNote;
             ShowProgress(resultMsg);
             IslandWindow.Instance?.Alert(resultMsg, 6);
@@ -355,6 +376,7 @@ public sealed class CompressPopup : Window
             _runBtn.Opacity = 1.0;
             _kbBox.IsEnabled = true;
             _slider.IsEnabled = true;
+            _keepResCheck.IsEnabled = true;
             _runBtnText.Text = L.T("Kompres");
         }
     }

@@ -60,35 +60,106 @@ public static class FileCompress
     }
 
     /// <summary>Kompres gambar ke JPEG dengan ukuran <= targetBytes. Keluaran selalu JPEG.</summary>
-    public static string ImageToTarget(string src, long targetBytes, CancellationToken ct)
+    public static string ImageToTarget(string src, long targetBytes, CancellationToken ct) =>
+        ImageToTarget(src, targetBytes, ct, keepResolution: true, out _);
+
+    public static string ImageToTarget(string src, long targetBytes, CancellationToken ct, bool keepResolution) =>
+        ImageToTarget(src, targetBytes, ct, keepResolution, out _);
+
+    public static string ImageToTarget(string src, long targetBytes, CancellationToken ct, bool keepResolution, out string methodNote)
     {
         ValidateSource(src, ref targetBytes);
         ct.ThrowIfCancellationRequested();
 
-        var (baseBmp, origLongSide) = DecodeImageNormalized(src);
-        int longSide = Math.Min(origLongSide, Math.Max(baseBmp.PixelWidth, baseBmp.PixelHeight));
+        long srcBytes = new FileInfo(src).Length;
+        long searchTarget = srcBytes > 1 ? Math.Min(targetBytes, srcBytes - 1) : targetBytes;
+
+        var (baseBmp, origLongSide) = DecodeImageNormalized(src, allowDecodeCap: !keepResolution);
         long smallest = long.MaxValue;
         byte[] bestBytes = null;
+        methodNote = null;
 
-        while (true)
+        if (keepResolution)
         {
-            ct.ThrowIfCancellationRequested();
-            var scaled = ScaleToLongSide(baseBmp, longSide);
-            var (hit, minBytes) = SearchJpegQuality(scaled, targetBytes, ct);
-            if (minBytes < smallest) smallest = minBytes;
-            if (hit != null)
+            // Tangga filter: tanpa filter -> 1x halus -> 2x halus -> 2x halus + reduksi chroma 2x2 YCbCr
+            byte[] buf1 = null, buf2 = null;
+            int w = 0, h = 0, stride = 0;
+
+            for (int level = 0; level < 4; level++)
             {
-                bestBytes = hit;
-                break;
+                ct.ThrowIfCancellationRequested();
+                BitmapSource candidate;
+                if (level == 0)
+                {
+                    candidate = baseBmp;
+                }
+                else if (level == 1)
+                {
+                    var raw = CopyToBgr32(baseBmp, out w, out h, out stride);
+                    buf1 = Blur3x3Weighted(raw, w, h, stride);
+                    candidate = CreateBgr32(buf1, w, h, stride);
+                }
+                else if (level == 2)
+                {
+                    buf2 = Blur3x3Weighted(buf1, w, h, stride);
+                    candidate = CreateBgr32(buf2, w, h, stride);
+                }
+                else
+                {
+                    var chroma = ReduceChroma2x2YCbCr(buf2, w, h, stride);
+                    candidate = CreateBgr32(chroma, w, h, stride);
+                }
+
+                var (hit, q, minBytes) = SearchJpegQuality(candidate, searchTarget, ct);
+                if (minBytes < smallest) smallest = minBytes;
+                if (hit != null)
+                {
+                    bestBytes = hit;
+                    methodNote = level switch
+                    {
+                        0 => $"kualitas {q}",
+                        1 => $"kualitas {q}, haluskan 1x",
+                        2 => $"kualitas {q}, haluskan 2x",
+                        _ => $"kualitas {q}, haluskan 2x + chroma"
+                    };
+                    break;
+                }
             }
-            if (longSide <= MinImageLongSide) break;
-            int next = (int)Math.Round(longSide * 0.85);
-            if (next >= longSide) next = longSide - 1;
-            longSide = Math.Max(MinImageLongSide, next);
+        }
+        else
+        {
+            int initialLongSide = Math.Min(origLongSide, Math.Max(baseBmp.PixelWidth, baseBmp.PixelHeight));
+            int longSide = initialLongSide;
+
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var scaled = ScaleToLongSide(baseBmp, longSide);
+                var (hit, q, minBytes) = SearchJpegQuality(scaled, searchTarget, ct);
+                if (minBytes < smallest) smallest = minBytes;
+                if (hit != null)
+                {
+                    bestBytes = hit;
+                    methodNote = longSide < initialLongSide
+                        ? $"resolusi diturunkan ke {longSide} px"
+                        : $"kualitas {q}";
+                    break;
+                }
+                if (longSide <= MinImageLongSide) break;
+                int next = (int)Math.Round(longSide * 0.9);
+                if (next >= longSide) next = longSide - 1;
+                longSide = Math.Max(MinImageLongSide, next);
+            }
         }
 
-        if (bestBytes == null)
+        if (bestBytes == null || bestBytes.Length >= srcBytes)
+        {
+            if (smallest >= srcBytes)
+                throw new InvalidOperationException(L.F("File sudah paling kecil ({0}); hasil kompresi tidak lebih kecil dari file asli.", FmtSize(srcBytes)));
+            if (keepResolution)
+                throw new InvalidOperationException(L.F("Target tidak tercapai pada resolusi penuh. Ukuran terkecil: {0}. Hapus centang \"Pertahankan resolusi\" untuk mengecilkan ukuran piksel.", FmtSize(smallest)));
             throw new InvalidOperationException(L.F("Target tidak tercapai. Ukuran terkecil: {0}.", FmtSize(smallest)));
+        }
 
         var outPath = UniqueOutputPath(src, bestBytes.Length, ".jpg");
         File.WriteAllBytes(outPath, bestBytes);
@@ -577,7 +648,7 @@ public static class FileCompress
         if (targetBytes < MinTargetBytes) targetBytes = MinTargetBytes;
     }
 
-    static (BitmapSource Bmp, int OrigLongSide) DecodeImageNormalized(string src)
+    static (BitmapSource Bmp, int OrigLongSide) DecodeImageNormalized(string src, bool allowDecodeCap = true)
     {
         int origW, origH;
         ushort orientation = 1;
@@ -600,7 +671,7 @@ public static class FileCompress
 
         int origLong = Math.Max(origW, origH);
         BitmapSource raw;
-        if (origLong > MaxDecodeLongSide)
+        if (allowDecodeCap && origLong > MaxDecodeLongSide)
         {
             var bi = new BitmapImage();
             bi.BeginInit();
@@ -698,16 +769,122 @@ public static class FileCompress
         return ms.ToArray();
     }
 
-    static (byte[] Hit, long MinBytes) SearchJpegQuality(BitmapSource bmp, long targetBytes, CancellationToken ct)
+    static byte[] CopyToBgr32(BitmapSource bmp, out int width, out int height, out int stride)
     {
-        var b90 = EncodeJpeg(bmp, 90);
-        if (b90.Length <= targetBytes) return (b90, b90.Length);
+        BitmapSource bgr32 = bmp.Format == PixelFormats.Bgr32
+            ? bmp
+            : new FormatConvertedBitmap(bmp, PixelFormats.Bgr32, null, 0);
+        width = bgr32.PixelWidth;
+        height = bgr32.PixelHeight;
+        stride = width * 4;
+        var buf = new byte[stride * height];
+        bgr32.CopyPixels(buf, stride, 0);
+        return buf;
+    }
 
-        var b40 = EncodeJpeg(bmp, 40);
-        if (b40.Length > targetBytes) return (null, b40.Length);
+    static BitmapSource CreateBgr32(byte[] buf, int width, int height, int stride)
+    {
+        var res = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgr32, null, buf, stride);
+        res.Freeze();
+        return res;
+    }
 
-        byte[] best = b40;
-        int lo = 41, hi = 89;
+    static byte[] Blur3x3Weighted(byte[] src, int width, int height, int stride)
+    {
+        var dst = new byte[src.Length];
+        if (width <= 0 || height <= 0) return dst;
+
+        for (int y = 0; y < height; y++)
+        {
+            int ym = y > 0 ? y - 1 : 0;
+            int yp = y + 1 < height ? y + 1 : height - 1;
+            int rowM = ym * stride;
+            int row0 = y * stride;
+            int rowP = yp * stride;
+
+            for (int x = 0; x < width; x++)
+            {
+                int xm = (x > 0 ? x - 1 : 0) * 4;
+                int x0 = x * 4;
+                int xp = (x + 1 < width ? x + 1 : width - 1) * 4;
+
+                for (int c = 0; c < 3; c++)
+                {
+                    int sum =
+                        src[rowM + xm + c] + 2 * src[rowM + x0 + c] + src[rowM + xp + c] +
+                        2 * src[row0 + xm + c] + 4 * src[row0 + x0 + c] + 2 * src[row0 + xp + c] +
+                        src[rowP + xm + c] + 2 * src[rowP + x0 + c] + src[rowP + xp + c];
+                    dst[row0 + x0 + c] = (byte)((sum + 8) >> 4);
+                }
+                dst[row0 + x0 + 3] = 255;
+            }
+        }
+        return dst;
+    }
+
+    static byte[] ReduceChroma2x2YCbCr(byte[] src, int width, int height, int stride)
+    {
+        var dst = new byte[src.Length];
+        Span<double> ys = stackalloc double[4];
+        for (int y = 0; y < height; y += 2)
+        {
+            int yEnd = Math.Min(y + 2, height);
+            for (int x = 0; x < width; x += 2)
+            {
+                int xEnd = Math.Min(x + 2, width);
+                double sumCb = 0, sumCr = 0;
+                int count = 0;
+
+                for (int py = y; py < yEnd; py++)
+                {
+                    int row = py * stride;
+                    for (int px = x; px < xEnd; px++)
+                    {
+                        int idx = row + px * 4;
+                        byte b = src[idx];
+                        byte g = src[idx + 1];
+                        byte r = src[idx + 2];
+                        ys[count++] = 0.299 * r + 0.587 * g + 0.114 * b;
+                        sumCb += -0.168736 * r - 0.331264 * g + 0.5 * b + 128.0;
+                        sumCr += 0.5 * r - 0.418688 * g - 0.081312 * b + 128.0;
+                    }
+                }
+
+                double cb = sumCb / count - 128.0;
+                double cr = sumCr / count - 128.0;
+                int k = 0;
+                for (int py = y; py < yEnd; py++)
+                {
+                    int row = py * stride;
+                    for (int px = x; px < xEnd; px++)
+                    {
+                        double luma = ys[k++];
+                        int r = Math.Clamp((int)Math.Round(luma + 1.402 * cr), 0, 255);
+                        int g = Math.Clamp((int)Math.Round(luma - 0.344136 * cb - 0.714136 * cr), 0, 255);
+                        int b = Math.Clamp((int)Math.Round(luma + 1.772 * cb), 0, 255);
+                        int idx = row + px * 4;
+                        dst[idx] = (byte)b;
+                        dst[idx + 1] = (byte)g;
+                        dst[idx + 2] = (byte)r;
+                        dst[idx + 3] = 255;
+                    }
+                }
+            }
+        }
+        return dst;
+    }
+
+    static (byte[] Hit, int Quality, long MinBytes) SearchJpegQuality(BitmapSource bmp, long targetBytes, CancellationToken ct)
+    {
+        var b92 = EncodeJpeg(bmp, 92);
+        if (b92.Length <= targetBytes) return (b92, 92, b92.Length);
+
+        var b12 = EncodeJpeg(bmp, 12);
+        if (b12.Length > targetBytes) return (null, 12, b12.Length);
+
+        byte[] best = b12;
+        int bestQ = 12;
+        int lo = 13, hi = 91;
         while (lo <= hi)
         {
             ct.ThrowIfCancellationRequested();
@@ -716,6 +893,7 @@ public static class FileCompress
             if (cur.Length <= targetBytes)
             {
                 best = cur;
+                bestQ = mid;
                 lo = mid + 1;
             }
             else
@@ -723,7 +901,7 @@ public static class FileCompress
                 hi = mid - 1;
             }
         }
-        return (best, best.Length);
+        return (best, bestQ, best.Length);
     }
 
     static (byte[] Hit, long MinBytes) SearchPdfQuality(List<(BitmapSource Bmp, double WidthPt, double HeightPt)> pages, long targetBytes, CancellationToken ct)
