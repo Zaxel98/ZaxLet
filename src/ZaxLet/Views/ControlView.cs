@@ -84,12 +84,12 @@ public sealed class ControlView : TabView
         left.Margin = new Thickness(0, 0, 12, 0);
         left.Children.Add(UI.T("Perangkat keluaran", 13, null, true));
         left.Children.Add(_devErr.At(1));
-        left.Children.Add(devScroll.At(2));
+        left.Children.Add(UI.Fade(devScroll).At(2));
 
         var right = UI.Rows(0, 0, -1);
         right.Children.Add(UI.T("Volume aplikasi", 13, null, true));
         right.Children.Add(UI.T("Mengikuti perangkat keluaran utama", 11, UI.Dim).At(1));
-        right.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list, Margin = new Thickness(0, 6, 0, 0) }.At(2));
+        right.Children.Add(UI.Fade(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list, Margin = new Thickness(0, 6, 0, 0) }).At(2));
 
         var root = UI.Cols(-1, -3);
         root.Children.Add(left.At(0, 0));

@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -33,7 +34,7 @@ public sealed class ClipboardView : TabView
         findBox.Children.Add(_find); findBox.Children.Add(ph);
         root.Children.Add(findBox.At(1));
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list, Margin = new Thickness(0, 8, 0, 0) };
-        root.Children.Add(scroll.At(2));
+        root.Children.Add(UI.Fade(scroll).At(2));
         Children.Add(root);
     }
 
@@ -96,6 +97,7 @@ public sealed class ClipboardView : TabView
                     finally { IslandWindow.Instance?.KeepOpen(false); }
                 };
             }
+            ToolTipService.SetPlacement(cell, PlacementMode.Bottom);   // tooltip di bawah baris: bawaan (kanan-bawah kursor) menutupi tombol pin dan hapus
             row.Children.Add(cell);
             var pin = UI.IconBtn("", () => ClipboardHistory.TogglePin(item), 11, null);
             ((TextBlock)pin.Child).Foreground = item.Pinned ? UI.Accent : UI.Faint;

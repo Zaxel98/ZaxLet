@@ -20,9 +20,10 @@ public static class UI
         return b;
     }
 
-    public static readonly Brush Fg = B("#FFFFFFFF"), Dim = B("#A6FFFFFF"), Faint = B("#8CFFFFFF"),   // putih 55%: kontras ≥ 5:1 di atas hitam dan ≥ 5:1 di atas CardOn (sebelumnya 35% ≈ 3:1)
-        Card = B("#1AFFFFFF"), CardOn = B("#33FFFFFF"),
-        Bad = B("#FFFF5C5C"), Warn = B("#FFFFB454"), Good = B("#FF34D399"), Track = B("#26FFFFFF");
+    // Palet gelap bergaya Raycast: teks putih-keabuan bertingkat, permukaan transparan di atas hitam, garis tepi 1px, status berwarna jenuh.
+    public static readonly Brush Fg = B("#FFF4F4F6"), Dim = B("#A6FFFFFF"), Faint = B("#8CFFFFFF"),   // putih 55%: kontras ≥ 5:1 di atas hitam dan ≥ 5:1 di atas CardOn
+        Card = B("#14FFFFFF"), CardOn = B("#29FFFFFF"), Hairline = B("#1FFFFFFF"),
+        Bad = B("#FFFF6161"), Warn = B("#FFFFC533"), Good = B("#FF59D499"), Info = B("#FF57C1FF"), Track = B("#26FFFFFF");
 
     // warna aksen bisa diganti dari Pengaturan; dibaca saat tampilan digambar ulang
     public static Brush Accent { get; private set; } = B("#FF2DD4BF");
@@ -110,16 +111,19 @@ public static class UI
         r.SetValue(System.Windows.Shapes.Shape.StrokeThicknessProperty, 1.5);
         r.SetValue(System.Windows.Shapes.Rectangle.RadiusXProperty, 8.0);
         r.SetValue(System.Windows.Shapes.Rectangle.RadiusYProperty, 8.0);
+        r.SetValue(FrameworkElement.MarginProperty, new Thickness(-2));
         var st = new Style();
         st.Setters.Add(new Setter(Control.TemplateProperty, new ControlTemplate { VisualTree = r }));
         return st;
     }
 
-    public static Border Btn(UIElement content, Action click, Brush bg = null, double radius = 10, Thickness? pad = null)
+    public static Border Btn(UIElement content, Action click, Brush bg = null, double radius = 8, Thickness? pad = null)
     {
+        var rest = bg ?? Card;
         var b = new BtnBorder
         {
-            Child = content, Background = bg ?? Card, CornerRadius = new CornerRadius(radius),
+            Child = content, Background = rest, CornerRadius = new CornerRadius(radius),
+            BorderBrush = ReferenceEquals(rest, Card) ? Hairline : Brushes.Transparent, BorderThickness = new Thickness(1),
             Padding = pad ?? new Thickness(10, 6, 10, 6), Cursor = Cursors.Hand,
             Focusable = true, FocusVisualStyle = FocusRing, Click = click
         };
@@ -137,8 +141,10 @@ public static class UI
             sc.BeginAnimation(ScaleTransform.ScaleXProperty, a);
             sc.BeginAnimation(ScaleTransform.ScaleYProperty, a);
         }
-        b.MouseEnter += (_, _) => b.Opacity = .8;
-        b.MouseLeave += (_, _) => { b.Opacity = 1; Scale(1, 140); };
+        // sorot: permukaan naik satu tingkat (teks tidak diredupkan); tombol transparan/berwarna hanya sedikit meredup
+        bool lift = ReferenceEquals(rest, Card) || ReferenceEquals(rest, Brushes.Transparent);
+        b.MouseEnter += (_, _) => { if (lift) b.Background = CardOn; else b.Opacity = .85; };
+        b.MouseLeave += (_, _) => { if (lift) b.Background = rest; else b.Opacity = 1; Scale(1, 140); };
         b.PreviewMouseLeftButtonDown += (_, _) => Scale(.93, 70);
         b.MouseLeftButtonUp += (_, _) => { Scale(1, 160); click(); };
         return b;
@@ -160,6 +166,21 @@ public static class UI
         var g = new Grid();
         foreach (var h in heights)
             g.RowDefinitions.Add(new RowDefinition { Height = h < 0 ? new GridLength(-h, GridUnitType.Star) : h == 0 ? GridLength.Auto : new GridLength(h) });
+        return g;
+    }
+
+    /// <summary>Bungkus ScrollViewer dengan pudar hitam di tepi bawah selama masih ada isi di bawahnya (bar gulir disembunyikan, jadi tanpa ini baris yang terpotong tampak seperti salah tata letak).</summary>
+    public static Grid Fade(ScrollViewer sv)
+    {
+        var fade = new Border
+        {
+            Height = 22, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false, Visibility = Visibility.Collapsed,
+            Background = new LinearGradientBrush(Color.FromArgb(0, 0, 0, 0), Colors.Black, 90)
+        };
+        sv.ScrollChanged += (_, _) => fade.Visibility = sv.ScrollableHeight - sv.VerticalOffset > 1 ? Visibility.Visible : Visibility.Collapsed;
+        var g = new Grid();
+        g.Children.Add(sv);
+        g.Children.Add(fade);
         return g;
     }
 

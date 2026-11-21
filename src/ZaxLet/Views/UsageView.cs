@@ -236,6 +236,7 @@ public sealed class UsageView : TabView
     }
 
     static readonly Brush AgyBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0xB4, 0xF8));
+    const double TokW = 50, CodeW = 104, AgyW = 54;   // lebar kolom tabel pemakaian (kolom Total memakai TokW minimal agar "78,3M" tidak jadi "78,3…")
 
     /// <summary>Antigravity: satu baris per grup model, weekly dan 5h bersebelahan.</summary>
     static void PairBars(StackPanel host, ProviderUsage u)
@@ -243,9 +244,23 @@ public sealed class UsageView : TabView
         var live = (u.Windows ?? new List<QuotaWindow>()).Where(w => w != null && !string.IsNullOrEmpty(w.Label) && !(u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now));
         foreach (var grp in live.GroupBy(w => w.Label.Split(" · ")[0]))
         {
-            var name = UI.T(grp.Key, 11, UI.Dim);
-            name.Margin = new Thickness(0, 4, 0, 0);
-            host.Children.Add(name);
+            // nama grup di kiri; prakiraan habis di kanan (sel bar terlalu sempit: "weekly 51% 3d 22h · Habis ±…" terpotong). Tanpa jendela yang akan habis: "Aman".
+            var head = UI.Cols(-1, 0);
+            head.Margin = new Thickness(0, 4, 0, 0);
+            head.Children.Add(UI.T(grp.Key, 11, UI.Dim));
+            var warn = new TextBlock { FontSize = 10.5, VerticalAlignment = VerticalAlignment.Center };
+            var parts = new List<string>();
+            bool anyData = false;
+            foreach (var w in grp.OrderBy(w => w.Label.EndsWith("5h") ? 1 : 0))
+            {
+                var b = UsageService.I.Burn(u.Name, w);
+                anyData |= b.HasData;
+                if (b.HasData && b.WillExhaust) parts.Add((w.Label.EndsWith("5h") ? "5h " : "weekly ") + BurnRate.Format(b));
+            }
+            if (parts.Count > 0) { warn.Text = string.Join(" · ", parts); warn.Foreground = UI.Bad; }
+            else if (anyData) { warn.Text = L.T("Aman"); warn.Foreground = UI.Faint; }
+            head.Children.Add(warn.At(0, 1));
+            host.Children.Add(head);
             var row = UI.Cols(-1, 12, -1);
             int c = 0;
             foreach (var w in grp.OrderBy(w => w.Label.EndsWith("5h") ? 1 : 0))
@@ -255,8 +270,6 @@ public sealed class UsageView : TabView
                 t.Inlines.Add(new Run((w.Label.EndsWith("5h") ? "5h" : "weekly") + "  ") { FontSize = 11, Foreground = UI.Dim });
                 t.Inlines.Add(new Run($"{Math.Round(w.Pct)}%") { FontSize = 13, FontWeight = FontWeights.SemiBold });
                 if (w.Reset != null) t.Inlines.Add(new Run("  " + UI.Span(w.Reset.Value - DateTimeOffset.Now)) { FontSize = 10.5, Foreground = UI.Faint });
-                var burn = UsageService.I.Burn(u.Name, w);
-                if (burn.HasData) t.Inlines.Add(new Run(" · " + BurnRate.Format(burn)) { FontSize = 10.5, Foreground = burn.WillExhaust ? UI.Bad : UI.Dim });
                 cell.Children.Add(t);
                 var bar = new Bar(4) { Margin = new Thickness(0, 2, 0, 0) };
                 cell.Children.Add(bar);
@@ -269,27 +282,29 @@ public sealed class UsageView : TabView
 
     static Grid Head(bool code, bool agy)
     {
-        var g = UI.Cols(40, -1, 0, 0, 0);
+        var g = UI.Cols(40, 0, -1, 0, 0);
         g.Margin = new Thickness(0, 7, 0, 1);
-        g.Children.Add(UI.T("Total", 10.5, UI.Faint).At(0, 1));
-        if (code) g.Children.Add(new TextBlock { Text = "Code", FontSize = 10.5, Foreground = UI.Accent, Width = 100, TextAlignment = TextAlignment.Right }.At(0, 3));
-        if (agy) g.Children.Add(new TextBlock { Text = "Agy", FontSize = 10.5, Foreground = AgyBrush, Width = 60, TextAlignment = TextAlignment.Right }.At(0, 4));
+        g.Children.Add(new TextBlock { Text = L.T("Total"), FontSize = 10.5, Foreground = UI.Faint, MinWidth = TokW }.At(0, 1));
+        if (code) g.Children.Add(new TextBlock { Text = "Code", FontSize = 10.5, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 3));
+        if (agy) g.Children.Add(new TextBlock { Text = "Agy", FontSize = 10.5, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 4));
         return g;
     }
 
     static Grid Line(string label, long tok, double cost, bool code, PonytailStats p, long? agy)
     {
-        var g = UI.Cols(40, -1, 0, 0, 0);
+        var g = UI.Cols(40, 0, -1, 0, 0);   // token = lebar isi (tidak pernah dipotong), biaya = sisa lebar, rata kanan
         g.Margin = new Thickness(0, 1, 0, 0);
         g.Children.Add(UI.T(label, 12, UI.Dim));
-        g.Children.Add(UI.T(UI.Tok(tok), 12, UI.Dim).At(0, 1));
-        if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 8, 0) }.At(0, 2));
+        var tk = UI.T(UI.Tok(tok), 12, UI.Dim);
+        tk.TextTrimming = TextTrimming.None; tk.MinWidth = TokW;
+        g.Children.Add(tk.At(0, 1));
+        if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Right }.At(0, 2));
         if (code)
         {
             var t = p.Sessions == 0 ? "—" : (Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00", CultureInfo.InvariantCulture) + " · " : "") + p.Turns + " turn";
-            g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = 100, TextAlignment = TextAlignment.Right }.At(0, 3));
+            g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 3));
         }
-        if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = 60, TextAlignment = TextAlignment.Right }.At(0, 4));
+        if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 4));
         return g;
     }
 }
