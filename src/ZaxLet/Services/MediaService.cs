@@ -413,11 +413,12 @@ public sealed class MediaService
             {
                 if ((DateTime.Now - _seekAt).TotalSeconds < 2) return;   // setelah lompatan kita, tunggu halaman menerapkannya
                 // tab yang tertutup/tak tampil: YouTube berhenti memperbarui bilahnya, nilainya macet. Bacaan yang tidak ikut maju sejak pembacaan lalu
-                // diabaikan (posisi terus diperkirakan dari yang terakhir sah, dan laporan Windows boleh mengambil alih); kalau tidak, posisi diputar ulang ke nilai basi tiap 2 dtk.
+                // diabaikan: posisi terus diperkirakan dari bacaan sah terakhir. Laporan Windows (SMTC) dari Firefox juga basi (diukur: tak diperbarui
+                // 351 dtk sementara video jalan), jadi tidak boleh mengambil alih (_uiaAt tetap segar); kalau tidak, posisi diputar ulang ke nilai basi.
                 var now = DateTime.Now;
                 bool live = !Playing || _uiaValAt == DateTime.MinValue || Math.Abs((r.Pos - _uiaVal) - (now - _uiaValAt).TotalSeconds) < 2.0;
                 _uiaVal = r.Pos; _uiaValAt = now;
-                if (!live) { _uiaAt = DateTime.MinValue; return; }
+                if (!live) { _uiaAt = now; return; }
                 _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bilah memuat detik yang dibulatkan ke bawah
                 _posAt = DateTimeOffset.Now; _uiaAt = DateTime.Now; _goodTimeline = true;
                 if (RawDuration <= TimeSpan.Zero) RawDuration = TimeSpan.FromSeconds(r.Max);
