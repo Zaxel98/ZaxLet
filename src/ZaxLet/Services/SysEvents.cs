@@ -116,9 +116,12 @@ public static class Brightness
 public sealed class BluetoothWatch
 {
     readonly Dictionary<string, string> _names = new();
+    readonly HashSet<string> _checked = new();
+    readonly HashSet<string> _stale = new();   // id yang masih ada di daftar DeviceWatcher tetapi Windows bilang sudah putus
     readonly List<DeviceWatcher> _w = new();
+    System.Threading.Timer _poll;
     public event Action<string, bool> Changed;   // nama, tersambung?
-    public List<string> Connected() { lock (_names) return _names.Values.Distinct(StringComparer.OrdinalIgnoreCase).ToList(); }
+    public List<string> Connected() { lock (_names) return _names.Where(p => !_stale.Contains(p.Key)).Select(p => p.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList(); }
 
     public void Start()
     {
@@ -126,6 +129,30 @@ public sealed class BluetoothWatch
         {
             Add(BluetoothDevice.GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus.Connected));
             Add(BluetoothLEDevice.GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus.Connected));
+            _poll = new System.Threading.Timer(_ => Reconcile(), null, 4000, 4000);
+        }
+        catch (Exception ex) { App.Log(ex); }
+    }
+
+    /// <summary>Event Removed milik DeviceWatcher sering tidak datang untuk headset klasik: cocokkan daftar dengan status Windows tiap 4 detik, di kedua arah.</summary>
+    void Reconcile()
+    {
+        try
+        {
+            KeyValuePair<string, string>[] snap;
+            lock (_names) snap = _names.ToArray();
+            foreach (var (id, name) in snap)
+            {
+                if (BtBattery.IsConnected(id) is not bool on) continue;
+                bool fire;
+                lock (_names)
+                {
+                    bool first = _checked.Add(id);   // entri basi sejak awal (headset sudah mati saat ZaxLet mulai): sembunyikan tanpa peringatan atau jeda musik
+                    fire = on ? _stale.Remove(id) : _stale.Add(id);
+                    if (first && !on) fire = false;
+                }
+                if (fire) Changed?.Invoke(name, on);
+            }
         }
         catch (Exception ex) { App.Log(ex); }
     }
@@ -134,12 +161,12 @@ public sealed class BluetoothWatch
     {
         var w = DeviceInformation.CreateWatcher(aqs);
         bool ready = false;
-        w.Added += (_, d) => { lock (_names) _names[d.Id] = d.Name; if (ready) Changed?.Invoke(d.Name, true); };
+        w.Added += (_, d) => { lock (_names) { _names[d.Id] = d.Name; _stale.Remove(d.Id); } if (ready) Changed?.Invoke(d.Name, true); };
         w.Removed += (_, u) =>
         {
-            string n;
-            lock (_names) { if (!_names.Remove(u.Id, out n)) return; }
-            if (ready) Changed?.Invoke(n, false);
+            string n; bool was;
+            lock (_names) { if (!_names.Remove(u.Id, out n)) return; was = !_stale.Remove(u.Id); }   // sudah dilaporkan putus oleh Reconcile: jangan dobel
+            if (ready && was) Changed?.Invoke(n, false);
         };
         w.EnumerationCompleted += (_, _) => ready = true;
         w.Start();
@@ -164,6 +191,37 @@ public static class BtBattery
     const uint FilterEnumerator = 1, FilterPresent = 0x100, HfpType = 0x3;   // DEVPROP_TYPE_BYTE
     static DevKey Battery = new() { Id = new Guid("104EA319-6EE2-4701-BD47-8DDBF425BBE5"), Pid = 2 };
     static DevKey FriendlyName = new() { Id = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), Pid = 14 };
+
+    static DevKey IsConn = new() { Id = new Guid("83DA6326-97A6-4088-9453-A1923F573B29"), Pid = 15 };   // DEVPKEY_Device_IsConnected
+
+    /// <summary>
+    /// Status sambung sebenarnya dari Windows untuk id WinRT ("Bluetooth#Bluetooth{adaptor}-{mac}"). null = tidak diketahui (node tidak ditemukan): jangan dianggap putus.
+    /// Daftar "Connected" milik DeviceWatcher bisa basi (headset sudah mati tapi tidak pernah dikirim Removed), jadi ini dipakai sebagai kebenaran.
+    /// </summary>
+    public static bool? IsConnected(string winrtId)
+    {
+        try
+        {
+            int dash = winrtId.LastIndexOf('-');
+            if (dash < 0) return null;
+            var mac = winrtId[(dash + 1)..].Replace(":", "").ToUpperInvariant();
+            if (mac.Length != 12) return null;
+            foreach (var enumerator in new[] { "BTHENUM", "BTHLE" })
+            {
+                if (CM_Get_Device_ID_List_SizeW(out var len, enumerator, FilterEnumerator) != 0 || len < 2) continue;
+                var buf = new char[len];
+                if (CM_Get_Device_ID_ListW(enumerator, buf, len, FilterEnumerator) != 0) continue;
+                foreach (var id in new string(buf).Split('\0', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!id.StartsWith(enumerator + @"\DEV_" + mac, StringComparison.OrdinalIgnoreCase) || CM_Locate_DevNodeW(out var inst, id, 1) != 0) continue;   // 1 = PHANTOM: node perangkat yang sedang putus tidak "hadir"
+                    var b = new byte[1]; uint sz = 1;
+                    if (CM_Get_DevNode_PropertyW(inst, ref IsConn, out _, b, ref sz, 0) == 0) return b[0] != 0;
+                }
+            }
+        }
+        catch (Exception ex) { App.Log(ex); }
+        return null;
+    }
 
     /// <summary>"soundcore R50i NC Hands-Free AG" -> "soundcore R50i NC".</summary>
     public static string Clean(string n) => System.Text.RegularExpressions.Regex.Replace(n ?? "", @"\s+Hands-Free( AG)?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
