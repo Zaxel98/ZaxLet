@@ -316,7 +316,7 @@ public sealed class UsageView : TabView
         if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.None }.At(0, 2));
         if (code)
         {
-            var t = p.Sessions == 0 ? "—" : (Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00", CultureInfo.InvariantCulture) + " · " : "") + p.Turns + " turn";
+            var t = p.Sessions == 0 ? "—" : Settings.Cur.ShowCost ? "$" + p.Cost.ToString("0.00", CultureInfo.InvariantCulture) : "";
             g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
         }
         if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
