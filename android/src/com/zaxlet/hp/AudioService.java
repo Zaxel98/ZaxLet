@@ -26,9 +26,11 @@ public class AudioService extends Service {
     private static final int MAX_QUEUE_FRAMES = 20;   // ~400 ms batas antrean sebelum buang potongan terlama
 
     static volatile boolean alive;
+    static volatile boolean videoActive;
     static volatile String err = "";
     private volatile boolean stopping;
     private MediaProjection mp;
+    private ScreenStream screenStream;
     private AudioRecord rec;
     private Ws ws;
     private AudioManager am;
@@ -79,6 +81,15 @@ public class AudioService extends Service {
         } catch (Throwable e) { err = "Audio gagal: " + e.getMessage(); alive = true; shutdown(); return START_NOT_STICKY; }
         am = (AudioManager) getSystemService(AUDIO_SERVICE);
         alive = true; stopping = false;
+        videoActive = in.getBooleanExtra("video", false);
+        if (videoActive) {
+            screenStream = new ScreenStream(this, mp, () -> {
+                screenStream = null;
+                videoActive = false;
+                if (!stopping) setNote("Speaker HP senyap, suara diputar di PC");
+            });
+            screenStream.start();
+        }
         audThread = new Thread(this::run, "zaxlet-aud");
         audThread.start();
         return START_NOT_STICKY;
@@ -180,7 +191,7 @@ public class AudioService extends Service {
                     maxSendMs = 0;
                     ws = w;
                 }
-                setNote("Speaker HP senyap, suara diputar di PC");
+                setNote(videoActive ? "Layar + audio HP -> PC" : "Speaker HP senyap, suara diputar di PC");
                 while (!stopping) {
                     byte[] chunk;
                     synchronized (qLock) {
@@ -239,6 +250,8 @@ public class AudioService extends Service {
         stopping = true;
         synchronized (qLock) { qLock.notifyAll(); }
         synchronized (wake) { wake.notifyAll(); }
+        ScreenStream ss = screenStream;
+        if (ss != null) try { ss.stop(); } catch (Exception e) { }
         Ws w = ws;
         if (w != null) try { w.close(); } catch (Exception e) { }
         try { if (rec != null) rec.stop(); } catch (Exception e) { }
@@ -247,7 +260,9 @@ public class AudioService extends Service {
 
     // lepas rec dan pulihkan volume hanya setelah zaxlet-aud keluar agar tidak berpacu dengan rec.read/setStreamVolume
     private synchronized void cleanup() {
-        alive = false; stopping = true; audThread = null;
+        alive = false; videoActive = false; stopping = true; audThread = null;
+        ScreenStream ss = screenStream; screenStream = null;
+        if (ss != null) try { ss.stop(); } catch (Exception e) { }
         synchronized (qLock) { queue.clear(); qLock.notifyAll(); }
         try { if (ws != null) { ws.close(); ws = null; } } catch (Exception e) { }
         try { if (rec != null) { rec.stop(); rec.release(); rec = null; } } catch (Exception e) { }

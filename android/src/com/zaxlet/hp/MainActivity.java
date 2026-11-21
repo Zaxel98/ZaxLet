@@ -26,11 +26,11 @@ public class MainActivity extends Activity {
 
     private View stDot;
     private TextView stTitle, stDetail, stDiag;
-    private Button toggle, audBtn;
-    private TextView audNote;
+    private Button toggle, audBtn, scrBtn, accBtn;
+    private TextView audNote, accStatus;
     private EditText msg;
     private Check cNotif, cBattery, cPost;
-    private boolean autoAudTried, inAudPrompt;
+    private boolean autoAudTried, inAudPrompt, pendingVideo;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() { public void run() { refresh(); ui.postDelayed(this, 1500); } };
 
@@ -87,8 +87,17 @@ public class MainActivity extends Activity {
         r2.addView(small(Ui.button(this, "Kirim", true, v -> sendText(msg.getText().toString(), () -> msg.setText("")))), kp);
         ac.addView(r2, Ui.gap(this, 8));
         ac.addView(Ui.button(this, "Notifikasi ke PC", false, v -> startActivity(new Intent(this, AppsActivity.class))), Ui.gap(this, 8));
-        audBtn = Ui.button(this, "", false, v -> toggleAudio());
+        audBtn = Ui.button(this, "", false, v -> toggleAudio(false));
         ac.addView(audBtn, Ui.gap(this, 8));
+        scrBtn = Ui.button(this, "", false, v -> toggleAudio(true));
+        ac.addView(scrBtn, Ui.gap(this, 8));
+        LinearLayout accRow = new LinearLayout(this);
+        accRow.setGravity(Gravity.CENTER_VERTICAL);
+        accStatus = Ui.text(this, "", 13, Ui.DIM, false);
+        accRow.addView(accStatus, new LinearLayout.LayoutParams(0, -2, 1f));
+        accBtn = small(Ui.button(this, "Aktifkan", false, v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
+        accRow.addView(accBtn, new LinearLayout.LayoutParams(-2, -2));
+        ac.addView(accRow, Ui.gap(this, 8));
         Switch autoAud = new Switch(this);
         autoAud.setText("Mulai audio otomatis saat aplikasi dibuka");
         autoAud.setTextColor(Ui.TEXT);
@@ -150,7 +159,7 @@ public class MainActivity extends Activity {
         ui.post(tick);
         if (!autoAudTried && Net.sp.getBoolean("autoaud", false) && Net.paired() && !AudioService.alive && Build.VERSION.SDK_INT >= 29) {
             autoAudTried = true;
-            toggleAudio();
+            toggleAudio(false);
         }
     }
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(tick); }
@@ -177,8 +186,13 @@ public class MainActivity extends Activity {
         stDiag.setText(on ? "Notifikasi: dilihat " + NotifService.seen + ", terkirim " + NotifService.sent + (NotifService.lastErr.isEmpty() ? "" : " (" + NotifService.lastErr + ")") : "");
         stDiag.setVisibility(on ? View.VISIBLE : View.GONE);
         audBtn.setText(AudioService.alive ? "Matikan audio ke PC" : "Audio HP ke PC");
-        audNote.setText(AudioService.alive ? "Speaker HP senyap, suara diputar di PC bersama audio lain." : AudioService.err);
+        scrBtn.setText(AudioService.alive ? "Matikan layar + audio" : "Layar + audio HP ke PC");
+        audNote.setText(AudioService.alive ? (AudioService.videoActive ? "Layar + audio HP sedang dikirim ke PC." : "Speaker HP senyap, suara diputar di PC bersama audio lain.") : AudioService.err);
         audNote.setVisibility(audNote.getText().length() == 0 ? View.GONE : View.VISIBLE);
+        boolean accOn = ZaxAccess.instance != null;
+        accStatus.setText("Kontrol dari PC: " + (accOn ? "aktif" : "belum aktif"));
+        accStatus.setTextColor(accOn ? Ui.ACC : Ui.DIM);
+        accBtn.setVisibility(accOn ? View.GONE : View.VISIBLE);
         toggle.setText(alive ? "Matikan" : "Aktifkan");
         toggle.setBackground(Ui.shape(this, alive ? Ui.FIELD : Ui.ACC, 14));
         toggle.setTextColor(alive ? Ui.TEXT : Ui.ON_ACC);
@@ -295,15 +309,16 @@ public class MainActivity extends Activity {
             }
         } else if (c == 10) {
             inAudPrompt = false;
-            if (r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio();
+            if (r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) toggleAudio(pendingVideo);
         }
     }
 
-    /** Audio HP -> PC: izin rekam audio, lalu dialog rekam layar Android (wajib untuk menangkap audio aplikasi lain); hasilnya diteruskan ke AudioService. */
-    private void toggleAudio() {
+    /** Audio (dan opsional layar) HP -> PC: izin rekam audio, lalu dialog rekam layar Android; hasilnya diteruskan ke AudioService. */
+    private void toggleAudio(boolean video) {
         if (AudioService.alive) { startService(new Intent(this, AudioService.class).setAction("STOP")); ui.postDelayed(this::refresh, 400); return; }
         if (!Net.paired()) { toast("Pasangkan dulu dengan ZaxLet di PC"); return; }
         if (Build.VERSION.SDK_INT < 29) { toast("Butuh Android 10 ke atas"); return; }
+        pendingVideo = video;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { inAudPrompt = true; requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 10); return; }
         inAudPrompt = true;
         startActivityForResult(((android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE)).createScreenCaptureIntent(), 10);
@@ -322,7 +337,7 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int rc, int res, Intent d) {
         if (rc == 10) {
             inAudPrompt = false;
-            if (res == RESULT_OK && d != null) startForegroundService(new Intent(this, AudioService.class).putExtra("rc", res).putExtra("data", d));
+            if (res == RESULT_OK && d != null) startForegroundService(new Intent(this, AudioService.class).putExtra("rc", res).putExtra("data", d).putExtra("video", pendingVideo));
             ui.postDelayed(this::refresh, 600);
             return;
         }
