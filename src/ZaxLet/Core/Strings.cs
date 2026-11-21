@@ -571,5 +571,17 @@ public static class Strings
         ["Pertahankan resolusi (bisa lebih buram)"] = "Keep resolution (may be blurrier)",
         ["Gambar di dalam PDF dikompres ulang; teks dan vektor tetap tajam. Jika target tak tercapai, halaman diubah menjadi gambar (teks tidak bisa diseleksi). PDF berpassword ditolak. File asli tidak diubah."] = "Images inside the PDF are recompressed; text and vectors stay sharp. If the target isn't reached, pages are converted to images (text won't be selectable). Password-protected PDFs are rejected. Original file is unchanged.",
         ["Resolusi piksel dipertahankan secara default dengan menurunkan kualitas JPEG dan penghalusan ringan bila perlu. Hapus centang di atas untuk mengizinkan penurunan resolusi. Keluaran selalu JPEG (transparansi diisi putih). File asli tidak diubah."] = "Pixel resolution is kept by default by lowering JPEG quality and applying light smoothing if needed. Uncheck above to allow downscaling. Output is always JPEG (transparency filled with white). Original file is unchanged.",
+
+        // pengaturan: tab Isi & tab, Pintasan, dan perekam tombol
+        ["Isi & tab"] = "Content & tabs", ["Pintasan"] = "Shortcuts",
+        ["Tampilan island, cara membuka, menyembunyikan, dan gestur."] = "Island appearance, how it opens, hides, and gestures.",
+        ["Elemen yang tampil di pill saat diam serta urutan dan visibilitas tab."] = "Items shown on the idle pill, plus tab order and visibility.",
+        ["Klik kotak pintasan lalu tekan kombinasi tombol (format seperti Ctrl + Alt + Space); kosongkan untuk mematikan."] = "Click a shortcut box and press a key combination (e.g. Ctrl + Alt + Space); clear to turn off.",
+        ["Global"] = "Global", ["Aplikasi rapat"] = "Meeting apps",
+        ["Tekan lagi untuk menutup"] = "Press again to close",
+        ["Kolom ketik perintah singkat: t 10m, fokus 25, catat beli susu, w link, minum 250, tema neon"] = "A box for short commands: t 10m, fokus 25, catat buy milk, w link, minum 250, tema neon",
+        ["Kosong"] = "Empty", ["Hapus pintasan"] = "Clear shortcut",
+        ["Pintasan sama dengan pengaturan lain"] = "Same shortcut as another setting",
+        ["Tekan kombinasi tombol..."] = "Press a key combination...",
     };
 }
