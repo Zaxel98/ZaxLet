@@ -87,6 +87,7 @@ public static class Strings
         ["HP tersambung · {0}"] = "Phone connected · {0}", ["Diterima dari HP · {0}"] = "Received from phone · {0}", ["Memori terbanyak"] = "Top memory",
 
         // jendela pengaturan
+        ["Pratinjau"] = "Preview", ["kemiripan {0}%"] = "similarity {0}%", ["Hasil cukup buram; pertimbangkan menaikkan target atau mengizinkan resolusi turun"] = "The result is quite blurry; consider a higher target or allowing the resolution to drop",
         ["ZaxLet · Pengaturan"] = "ZaxLet · Settings", ["Pratinjau langsung"] = "Live preview",
         ["Klik ikon tab untuk melihat tampilannya. Pill idle di atas mengikuti pill yang sebenarnya."] = "Click a tab icon to preview it. The idle pill above follows the real one.",
 
