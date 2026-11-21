@@ -19,6 +19,19 @@ public sealed class DupWindow : Window
 {
     static DupWindow _cur;
 
+    static readonly Brush
+        WindowBg = UI.B("#FF16161A"),
+        CardBg = UI.B("#FF1F1F24"),
+        TextFg = UI.B("#FFE6E6EA"),
+        CaptionFg = UI.B("#FFB4B4BC");
+
+    static TextBlock RawText(string text, double size, Brush fg, bool bold = false)
+    {
+        var t = UI.T("", size, fg, bold);
+        t.Text = text;
+        return t;
+    }
+
     sealed class FileEntry
     {
         public DupFile File;
@@ -67,58 +80,61 @@ public sealed class DupWindow : Window
 
         IslandWindow.Instance?.KeepOpen(true);
 
-        var root = UI.Rows(0, 0, -1, 0);
+        var root = UI.Rows(0, -1, 0);
 
-        // Header (bisa diseret untuk memindahkan jendela)
+        // Header (bisa diseret untuk memindahkan jendela): judul, status, dan path dalam 3 baris Auto
         var head = UI.Cols(-1, 0, 0);
+        head.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        head.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        head.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        head.Margin = new Thickness(0, 0, 0, 10);
         head.Background = Brushes.Transparent;
         head.MouseLeftButtonDown += (_, e) => { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); };
 
-        var titleStack = new StackPanel();
-        titleStack.Children.Add(UI.T("Pencari file duplikat", 14.5, UI.Fg, true));
-        _folderLabel = UI.T(folder ?? "", 11.5, UI.Dim);
-        _folderLabel.Margin = new Thickness(0, 2, 8, 0);
-        titleStack.Children.Add(_folderLabel);
-        head.Children.Add(titleStack);
+        head.Children.Add(UI.T("Pencari file duplikat", 14.5, TextFg, true).At(0, 0));
 
-        var pickBtn = UI.Btn(UI.T("Pilih folder", 11.5, UI.Fg), PickFolder, UI.CardOn, 8, new Thickness(10, 5, 10, 5));
-        pickBtn.Margin = new Thickness(0, 0, 6, 0);
-        pickBtn.VerticalAlignment = VerticalAlignment.Center;
-        head.Children.Add(pickBtn.At(0, 1));
+        var statusRow = UI.Cols(-1, 0);
+        statusRow.Margin = new Thickness(0, 3, 8, 0);
+        _statusLabel = UI.T("", 12, CaptionFg);
+        statusRow.Children.Add(_statusLabel);
 
-        var closeBtn = UI.IconBtn("", Close, 12, UI.Card);
-        closeBtn.Padding = new Thickness(6);
-        closeBtn.VerticalAlignment = VerticalAlignment.Center;
-        head.Children.Add(closeBtn.At(0, 2));
-        root.Children.Add(head);
-
-        // Baris progres + tombol batal
-        var progRow = UI.Cols(-1, 0);
-        progRow.Margin = new Thickness(0, 10, 0, 8);
-        _statusLabel = UI.T("", 12, UI.Dim);
-        _statusLabel.TextWrapping = TextWrapping.Wrap;
-        _statusLabel.TextTrimming = TextTrimming.None;
-        progRow.Children.Add(_statusLabel);
-
-        _cancelBtn = UI.Btn(UI.T("Batal", 11.5, UI.Fg), CancelScan, UI.CardOn, 8, new Thickness(10, 4, 10, 4));
+        _cancelBtn = UI.Btn(UI.T("Batal", 11.5, TextFg), CancelScan, UI.CardOn, 8, new Thickness(10, 4, 10, 4));
         _cancelBtn.Visibility = Visibility.Collapsed;
         _cancelBtn.Margin = new Thickness(8, 0, 0, 0);
-        progRow.Children.Add(_cancelBtn.At(0, 1));
-        root.Children.Add(progRow);
+        statusRow.Children.Add(_cancelBtn.At(0, 1));
+        head.Children.Add(statusRow.At(1, 0));
+
+        _folderLabel = RawText(folder ?? "", 11.5, CaptionFg);
+        _folderLabel.Margin = new Thickness(0, 3, 8, 0);
+        _folderLabel.ToolTip = folder ?? "";
+        head.Children.Add(_folderLabel.At(2, 0));
+
+        var pickBtn = UI.Btn(UI.T("Pilih folder", 11.5, TextFg), PickFolder, UI.CardOn, 8, new Thickness(10, 5, 10, 5));
+        pickBtn.Margin = new Thickness(0, 0, 6, 0);
+        pickBtn.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetRowSpan(pickBtn, 3);
+        head.Children.Add(pickBtn.At(0, 1));
+
+        var closeBtn = UI.IconBtn("", Close, 12, CardBg);
+        closeBtn.Padding = new Thickness(6);
+        closeBtn.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetRowSpan(closeBtn, 3);
+        head.Children.Add(closeBtn.At(0, 2));
+        root.Children.Add(head.At(0));
 
         // Daftar grup duplikat
         var listBox = new Border
         {
-            Background = UI.B("#12FFFFFF"),
+            Background = Brushes.Transparent,
             CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(8),
+            Padding = new Thickness(0),
             Child = new ScrollViewer
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = _groupsPanel
             }
         };
-        root.Children.Add(listBox.At(2));
+        root.Children.Add(listBox.At(1));
 
         // Footer: total hemat + tombol aksi
         var foot = UI.Cols(-1, 0, 0);
@@ -132,13 +148,13 @@ public sealed class DupWindow : Window
         SetRecycleEnabled(false);
         foot.Children.Add(_recycleBtn.At(0, 1));
 
-        var closeFootBtn = UI.Btn(UI.T("Tutup", 12, UI.Fg), Close, UI.Card, 8, new Thickness(12, 6, 12, 6));
+        var closeFootBtn = UI.Btn(UI.T("Tutup", 12, TextFg), Close, CardBg, 8, new Thickness(12, 6, 12, 6));
         foot.Children.Add(closeFootBtn.At(0, 2));
-        root.Children.Add(foot.At(3));
+        root.Children.Add(foot.At(2));
 
         Content = new Border
         {
-            Background = UI.B("#F20B0B0D"),
+            Background = WindowBg,
             BorderBrush = UI.Track,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(16),
@@ -186,6 +202,7 @@ public sealed class DupWindow : Window
         if (_busy) return;
         _folder = folder;
         _folderLabel.Text = folder;
+        _folderLabel.ToolTip = folder;
         _groupsPanel.Children.Clear();
         _groups.Clear();
         UpdateSavings();
@@ -254,11 +271,14 @@ public sealed class DupWindow : Window
             var gs = new GroupState { Group = g };
             var stack = new StackPanel();
 
-            var hdr = UI.T(
-                $"{g.Files.Count} berkas · {DupFinder.FmtSize(g.Size)} per berkas · {DupFinder.FmtSize((g.Files.Count - 1) * g.Size)} duplikat",
-                12, UI.Fg, true);
-            hdr.Margin = new Thickness(0, 0, 0, 6);
-            stack.Children.Add(hdr);
+            var hdrGrid = UI.Cols(-1, 0);
+            hdrGrid.Margin = new Thickness(0, 0, 0, 6);
+            var hdrLeft = RawText(L.F("{0} berkas · {1} per berkas", g.Files.Count, DupFinder.FmtSize(g.Size)), 12.5, CaptionFg, true);
+            var hdrRight = RawText(L.F("{0} duplikat", DupFinder.FmtSize((g.Files.Count - 1) * g.Size)), 12.5, CaptionFg);
+            hdrRight.Margin = new Thickness(8, 0, 0, 0);
+            hdrGrid.Children.Add(hdrLeft);
+            hdrGrid.Children.Add(hdrRight.At(0, 1));
+            stack.Children.Add(hdrGrid);
 
             for (int i = 0; i < g.Files.Count; i++)
             {
@@ -269,11 +289,11 @@ public sealed class DupWindow : Window
                 {
                     IsChecked = !newest,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 8, 0)
+                    HorizontalAlignment = HorizontalAlignment.Center
                 };
 
-                var keepBadge = UI.T("Simpan", 10.5, UI.Good, true);
-                keepBadge.Margin = new Thickness(0, 0, 6, 0);
+                var keepBadge = UI.T("Simpan", 10.5, UI.Accent, true);
+                keepBadge.Margin = new Thickness(4, 0, 4, 0);
                 keepBadge.Visibility = newest ? Visibility.Visible : Visibility.Collapsed;
 
                 var entry = new FileEntry
@@ -288,24 +308,30 @@ public sealed class DupWindow : Window
                 cb.Checked += (_, _) => OnEntryToggled(gs);
                 cb.Unchecked += (_, _) => OnEntryToggled(gs);
 
-                var rowGrid = UI.Cols(0, 0, -1, 0);
+                var rowGrid = UI.Cols(24, 60, -1, 80, 130);
                 rowGrid.Children.Add(cb);
                 rowGrid.Children.Add(keepBadge.At(0, 1));
 
-                var pathTxt = UI.T(ShortenPath(file.Path, _folder), 11.5, UI.Fg);
+                var pathTxt = RawText(ShortenPath(file.Path, _folder), 11.5, TextFg);
+                pathTxt.Margin = new Thickness(0, 0, 8, 0);
                 pathTxt.ToolTip = file.Path;
                 rowGrid.Children.Add(pathTxt.At(0, 2));
 
-                var metaTxt = UI.T($"{DupFinder.FmtSize(file.Size)} · {file.Modified:yyyy-MM-dd HH:mm}", 11, UI.Dim);
-                metaTxt.Margin = new Thickness(10, 0, 0, 0);
-                rowGrid.Children.Add(metaTxt.At(0, 3));
+                var sizeTxt = RawText(DupFinder.FmtSize(file.Size), 11, CaptionFg);
+                sizeTxt.HorizontalAlignment = HorizontalAlignment.Right;
+                sizeTxt.TextAlignment = TextAlignment.Right;
+                rowGrid.Children.Add(sizeTxt.At(0, 3));
+
+                var dateTxt = RawText($"{file.Modified:yyyy-MM-dd HH:mm}", 11, CaptionFg);
+                dateTxt.HorizontalAlignment = HorizontalAlignment.Right;
+                dateTxt.TextAlignment = TextAlignment.Right;
+                rowGrid.Children.Add(dateTxt.At(0, 4));
 
                 var rowBorder = new Border
                 {
-                    Background = UI.Card,
-                    CornerRadius = new CornerRadius(6),
-                    Padding = new Thickness(8, 5, 8, 5),
-                    Margin = new Thickness(0, 0, 0, 4),
+                    Height = 32,
+                    Background = Brushes.Transparent,
+                    Padding = new Thickness(4, 0, 4, 0),
                     Child = rowGrid,
                     ToolTip = file.Path + L.T("\nKlik dua kali untuk membuka lokasi di Explorer")
                 };
@@ -319,12 +345,12 @@ public sealed class DupWindow : Window
 
             gs.Card = new Border
             {
-                Background = UI.B("#14FFFFFF"),
+                Background = CardBg,
                 BorderBrush = UI.Track,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(10, 8, 10, 6),
-                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(12, 10, 12, 8),
+                Margin = new Thickness(0, 0, 0, 10),
                 Child = stack
             };
             _groups.Add(gs);
@@ -387,6 +413,9 @@ public sealed class DupWindow : Window
             }
         }
         _savingsLabel.Text = L.F("Bisa dihemat: {0}", DupFinder.FmtSize(bytes));
+        _recycleBtnText.Text = count > 0
+            ? L.F("Pindahkan yang dicentang ke Recycle Bin ({0:N0})", count)
+            : L.T("Pindahkan yang dicentang ke Recycle Bin");
         SetRecycleEnabled(!_busy && count > 0);
     }
 
