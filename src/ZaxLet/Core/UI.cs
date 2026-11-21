@@ -25,6 +25,9 @@ public static class UI
         Card = B("#1FFFFFFF"), CardOn = B("#33FFFFFF"), Hairline = B("#2EFFFFFF"), BadBg = B("#CC9B1C24"),   // Card 12% (chip terbaca di atas hitam), Hairline 18%
         Bad = B("#FFFF6161"), Warn = B("#FFFFC533"), Good = B("#FF59D499"), Info = B("#FF57C1FF"), Track = B("#26FFFFFF");
 
+    // permukaan opak untuk jendela biasa (Pengaturan, Duplicate finder): kanvas -> kartu -> garis, tingkatan netral bergaya Raycast
+    public static readonly Brush WinBg = B("#FF0D0E10"), WinCard = B("#FF151618"), WinSep = B("#FF242728");
+
     // warna aksen bisa diganti dari Pengaturan; dibaca saat tampilan digambar ulang
     public static Brush Accent { get; private set; } = B("#FF2DD4BF");
     public static Brush AccentBg { get; private set; } = B("#2E2DD4BF");

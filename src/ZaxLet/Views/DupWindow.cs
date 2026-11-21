@@ -21,10 +21,10 @@ public sealed class DupWindow : Window
     static DupWindow _cur;
 
     static readonly Brush
-        WindowBg = UI.B("#FF16161A"),
-        CardBg = UI.B("#FF1F1F24"),
-        TextFg = UI.B("#FFE6E6EA"),
-        CaptionFg = UI.B("#FFB4B4BC");
+        WindowBg = UI.WinBg,
+        CardBg = UI.WinCard,
+        TextFg = UI.Fg,
+        CaptionFg = UI.Dim;
 
     static TextBlock RawText(string text, double size, Brush fg, bool bold = false)
     {

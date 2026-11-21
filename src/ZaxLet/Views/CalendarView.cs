@@ -122,8 +122,8 @@ public sealed class CalendarView : TabView
             var cell = new Border
             {
                 Width = 28, Height = 21, CornerRadius = new CornerRadius(7), Cursor = Cursors.Hand,
-                Background = _c.HasTasks(d) ? (_c.On(d).All(t => t.Done) ? DoneRed : TaskRed) : d == _sel ? UI.CardOn : Brushes.Transparent,   // merah = ada catatan/tugas di tanggal itu
-                BorderBrush = d == today ? UI.Accent : d == _sel ? UI.B("#99FFFFFF") : Brushes.Transparent, BorderThickness = new Thickness(1.3)
+                Background = _c.HasTasks(d) ? (_c.On(d).All(t => t.Done) ? DoneRed : TaskRed) : d == _sel ? UI.CardOn : d == today ? UI.AccentBg : Brushes.Transparent,   // merah = ada catatan/tugas; hari ini = isi aksen + cincin tebal, supaya tidak tertukar dengan tanggal bertugas
+                BorderBrush = d == today ? UI.Accent : d == _sel ? UI.B("#99FFFFFF") : Brushes.Transparent, BorderThickness = new Thickness(d == today ? 2 : 1.3)
             };
             if (_c.HasTasks(d) && inMonth) label.Foreground = Brushes.White;
             cell.Child = label;

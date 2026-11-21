@@ -14,8 +14,7 @@ namespace ZaxLet;
 /// </summary>
 public sealed class SettingsWindow : Window
 {
-    static readonly Brush Bg = UI.B("#FF16161A"), CardBg = UI.B("#FF1F1F24"), Sep = UI.B("#FF2C2C33"),
-        Fg = UI.B("#FFE6E6EA"), Dim = UI.B("#FFB4B4BC");
+    static readonly Brush Bg = UI.WinBg, CardBg = UI.WinCard, Sep = UI.WinSep, Fg = UI.Fg, Dim = UI.Dim;
 
     static SettingsWindow _i;
     static bool _previewVisible;

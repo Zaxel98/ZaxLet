@@ -41,8 +41,8 @@ public sealed class SettingsView : TabView
 
     static readonly Dictionary<string, bool> _secOpen = new();
 
-    static readonly Brush CardBg = UI.B("#FF1F1F24"), Sep = UI.B("#FF2C2C33"),
-        Fg = UI.B("#FFE6E6EA"), Dim = UI.B("#FFB4B4BC");
+    static readonly Brush CardBg = UI.WinCard, Sep = UI.WinSep, Fg = UI.Fg, Dim = UI.Dim;   // palet jendela disatukan dengan token UI (dulu #1F1F24/#2C2C33/#E6E6EA/#B4B4BC)
+    const double CaptionMaxW = 520;   // keterangan tidak melebar penuh di jendela lebar: baris ~70 karakter
 
     const double FontLabel = 13.5, FontCaption = 12, FontCat = 13.5, FontSearch = 13, FontCtl = 13, FontSection = 14;
 
@@ -112,7 +112,8 @@ public sealed class SettingsView : TabView
         if (PageHints.TryGetValue(_page, out var hint))
         {
             var h = UI.T(hint, FontCaption, Dim);
-            h.TextWrapping = TextWrapping.Wrap; h.Margin = new Thickness(2, 0, 0, 10);
+            h.TextWrapping = TextWrapping.Wrap; h.Margin = new Thickness(2, 0, 0, 12);
+            h.MaxWidth = CaptionMaxW; h.HorizontalAlignment = HorizontalAlignment.Left;
             _rows.Children.Add(h);
         }
         bool moreHdr = false;
@@ -721,7 +722,8 @@ public sealed class SettingsView : TabView
         if (!string.IsNullOrWhiteSpace(cap))
         {
             var c = UI.T(cap, FontCaption, Dim);
-            c.TextWrapping = TextWrapping.Wrap; c.TextTrimming = TextTrimming.None; c.Margin = new Thickness(0, 3, 0, 0);
+            c.TextWrapping = TextWrapping.Wrap; c.TextTrimming = TextTrimming.None; c.Margin = new Thickness(0, 4, 0, 0);
+            c.MaxWidth = CaptionMaxW; c.HorizontalAlignment = HorizontalAlignment.Left; c.LineHeight = 17; c.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
             left.Children.Add(c);
         }
         bool isWide = ctl is TextBox
