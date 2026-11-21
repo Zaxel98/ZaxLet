@@ -145,9 +145,19 @@ public static class UI
             sc.BeginAnimation(ScaleTransform.ScaleYProperty, a);
         }
         // sorot: permukaan naik satu tingkat (teks tidak diredupkan); tombol transparan/berwarna hanya sedikit meredup
-        bool lift = ReferenceEquals(rest, Card) || ReferenceEquals(rest, Brushes.Transparent);
-        b.MouseEnter += (_, _) => { if (lift) b.Background = CardOn; else b.Opacity = .85; };
-        b.MouseLeave += (_, _) => { if (lift) b.Background = rest; else b.Opacity = 1; Scale(1, 140); };
+        bool canLift = ReferenceEquals(rest, Card) || ReferenceEquals(rest, Brushes.Transparent);
+        bool lifted = false;
+        b.MouseEnter += (_, _) =>
+        {
+            if (canLift && ReferenceEquals(b.Background, rest)) { b.Background = CardOn; lifted = true; }
+            else b.Opacity = .85;
+        };
+        b.MouseLeave += (_, _) =>
+        {
+            if (lifted) { lifted = false; if (ReferenceEquals(b.Background, CardOn)) b.Background = rest; }
+            else b.Opacity = 1;
+            Scale(1, 140);
+        };
         b.PreviewMouseLeftButtonDown += (_, _) => Scale(.93, 70);
         b.MouseLeftButtonUp += (_, _) => { Scale(1, 160); click(); };
         return b;
@@ -172,18 +182,32 @@ public static class UI
         return g;
     }
 
-    /// <summary>Bungkus ScrollViewer dengan pudar hitam di tepi bawah selama masih ada isi di bawahnya (bar gulir disembunyikan, jadi tanpa ini baris yang terpotong tampak seperti salah tata letak).</summary>
+    /// <summary>Bungkus ScrollViewer dengan pudar di tepi bawah selama masih ada isi di bawahnya (bar gulir disembunyikan, jadi tanpa ini baris yang terpotong tampak seperti salah tata letak).</summary>
     public static Grid Fade(ScrollViewer sv)
     {
-        var fade = new Border
+        var stop = new GradientStop(Colors.White, 1);
+        var mask = new LinearGradientBrush(new GradientStopCollection
         {
-            Height = 22, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false, Visibility = Visibility.Collapsed,
-            Background = new LinearGradientBrush(Color.FromArgb(0, 0, 0, 0), Colors.Black, 90)
-        };
-        sv.ScrollChanged += (_, _) => fade.Visibility = sv.ScrollableHeight - sv.VerticalOffset > 1 ? Visibility.Visible : Visibility.Collapsed;
+            stop,
+            new GradientStop(Colors.Transparent, 1)
+        }, 90);
+        void Update()
+        {
+            double h = sv.ActualHeight;
+            if (h > 0 && sv.ScrollableHeight - sv.VerticalOffset > 1)
+            {
+                stop.Offset = Math.Max(0, 1 - 22 / h);
+                if (!ReferenceEquals(sv.OpacityMask, mask)) sv.OpacityMask = mask;
+            }
+            else if (sv.OpacityMask != null)
+            {
+                sv.OpacityMask = null;
+            }
+        }
+        sv.ScrollChanged += (_, _) => Update();
+        sv.SizeChanged += (_, _) => Update();
         var g = new Grid();
         g.Children.Add(sv);
-        g.Children.Add(fade);
         return g;
     }
 
