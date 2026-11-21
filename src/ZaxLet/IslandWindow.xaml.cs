@@ -57,8 +57,12 @@ public partial class IslandWindow : Window
     readonly TranslateTransform _pillMove = new();
     bool _ghost;   // Alt ditahan di atas pill: pill menghilang sementara supaya yang di belakangnya bisa diklik
     readonly DispatcherTimer _trimOpenT = new() { Interval = TimeSpan.FromSeconds(4) };
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmFlush();
+
     TabView _cur;
     bool _open, _waveOn, _fs, _peek, _capturing;
+    readonly Queue<(string Text, double Seconds, Action OnClick, bool Sound)> _pendingAlerts = new();
     string _alert, _idleKey = "";
     DateTime _alertUntil, _quotaAt = DateTime.MinValue;
     (double W, double H) _idle = (200, IdleH);
@@ -118,7 +122,7 @@ public partial class IslandWindow : Window
 
         Pill.SizeChanged += (_, _) => BuildShape();
         // kursor yang masuk lewat daftar notifikasi tidak membuka pill, supaya daftar bisa digulir dengan roda mouse
-        Pill.MouseEnter += (_, _) => { _closeT.Stop(); if (Settings.Cur.HoverOpen && !OverNotifRows() && !(Settings.Cur.AltGhost && Native.AltDown())) Open(); };
+        Pill.MouseEnter += (_, _) => { if (_capturing) return; _closeT.Stop(); if (Settings.Cur.HoverOpen && !OverNotifRows() && !(Settings.Cur.AltGhost && Native.AltDown())) Open(); };
         Pill.MouseLeave += (_, _) => { if (_open) _closeT.Start(); };
         Pill.MouseLeftButtonUp += (_, _) => { if (HandleClickAction()) return; Open(); };
         // klik kanan = mode sembunyi seperti saat fullscreen (kembali lewat pintasan, menu tray, atau sendiri setelah jeda); kolom teks dan item yang menangani klik kanan sendiri dilewati
@@ -398,7 +402,7 @@ public partial class IslandWindow : Window
     }
 
     // ---------- buka / tutup ----------
-    public void OpenNow() { if (_snooze) SetSnooze(false); Open(); _closeT.Start(); }
+    public void OpenNow() { if (_capturing) return; if (_snooze) SetSnooze(false); Open(); _closeT.Start(); }
 
     /// <summary>Buka island langsung di tab tertentu (perintah "buka monitor" di Aksi cepat).</summary>
     public void GoTab(string key) { OpenNow(); if (_open) Select(key); }
@@ -558,6 +562,7 @@ public partial class IslandWindow : Window
 
     void Peek()
     {
+        if (_capturing) return;
         Native.GetCursorPos(out var pt);
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var sb = Scr.Bounds;
@@ -575,12 +580,17 @@ public partial class IslandWindow : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
+            if (_capturing)
+            {
+                _pendingAlerts.Enqueue((text, seconds, onClick, sound));
+                return;
+            }
             _alert = text;
             _alertAction = onClick;
             _alertUntil = DateTime.Now.AddSeconds(seconds);
             RefreshIdle();
+            if (sound) SystemSounds.Asterisk.Play();
         });
-        if (sound) SystemSounds.Asterisk.Play();
     }
 
     void Tick()
@@ -904,7 +914,7 @@ public partial class IslandWindow : Window
     public void KeepOpen(bool on) { Dragging = on; if (!on && _open) _closeT.Start(); }
 
     // dipakai ToolsView: sembunyikan pill sebelum menangkap layar
-    public void HideForCapture(Action capture, int delayMs = 120)
+    public void HideForCapture(Action capture, int delayMs = 200)
     {
         if (_capturing) return;
         _capturing = true;
@@ -919,6 +929,7 @@ public partial class IslandWindow : Window
         _pillMove.BeginAnimation(TranslateTransform.YProperty, null);
         _shown = false;
         Hide(); // Windows mengaktifkan jendela di bawahnya, jadi mode "Jendela" menangkap aplikasi terakhir
+        try { DwmFlush(); } catch { }
         Dispatcher.BeginInvoke(DispatcherPriority.Render, () =>
         {
             var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMs) };
@@ -927,7 +938,16 @@ public partial class IslandWindow : Window
                 t.Stop();
                 try { capture(); }
                 catch (Exception ex) { App.Log(ex); }
-                finally { _capturing = false; SyncVisible(); }
+                finally
+                {
+                    _capturing = false;
+                    SyncVisible();
+                    while (_pendingAlerts.Count > 0)
+                    {
+                        var a = _pendingAlerts.Dequeue();
+                        Alert(a.Text, a.Seconds, a.OnClick, a.Sound);
+                    }
+                }
             };
             t.Start();
         });

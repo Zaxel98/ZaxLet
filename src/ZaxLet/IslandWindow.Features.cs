@@ -257,25 +257,41 @@ public partial class IslandWindow
     }
 
     IntPtr _devNotify;
-    DateTime _lastDevChange = DateTime.MinValue;
     DispatcherTimer _usbFallbackT;
-
-    static IEnumerable<char> CurrentDriveLetters()
-    {
-        try { return System.IO.DriveInfo.GetDrives().Where(d => d.Name.Length > 0).Select(d => char.ToUpperInvariant(d.Name[0])).ToArray(); }
-        catch { return Array.Empty<char>(); }
-    }
 
     static void NotifyUsbArrival(char letter)
     {
-        if (!UsbDrives.IsRemovable(letter) || !UsbDrives.NoteArrival(letter)) return;
         var drv = char.ToUpperInvariant(letter);
-        Instance?.Alert(L.F("Flashdisk {0}:", drv), 8, () => UsbDrives.OpenExplorer(drv));
+        if (UsbDrives.IsSeen(drv)) return;
+        try
+        {
+            var di = new System.IO.DriveInfo(drv + ":\\");
+            var dt = di.DriveType;
+            if (dt is not (System.IO.DriveType.Removable or System.IO.DriveType.Fixed))
+            {
+                if (UsbDrives.NoteArrival(drv))
+                {
+                    UsbDrives.IsRemovable(drv, out var skipDiag);
+                    App.Log(new Exception(skipDiag));
+                }
+                return;
+            }
+            if (!di.IsReady) return;
+            if (!UsbDrives.NoteArrival(drv)) return;
+            bool ok = UsbDrives.IsRemovable(drv, out var diag);
+            App.Log(new Exception(diag));
+            if (!ok) return;
+            string label = "";
+            try { label = di.VolumeLabel?.Trim() ?? ""; } catch { }
+            string msg = L.F("Flashdisk {0}:", drv) + (label.Length > 0 ? $" · {label}" : "");
+            Instance?.Alert(msg, 8, () => UsbDrives.OpenExplorer(drv));
+        }
+        catch (Exception ex) { App.Log(ex); }
     }
 
     static void ScanNewUsbDrives()
     {
-        var present = CurrentDriveLetters().ToList();
+        var present = UsbDrives.PresentDriveLetters();
         UsbDrives.PruneRemoved(present);
         foreach (var c in present) NotifyUsbArrival(c);
     }
@@ -286,7 +302,6 @@ public partial class IslandWindow
         if (msg == 0x031D) { ClipboardHistory.Capture(); WishBridge.OnClipboard(); handled = true; }   // WM_CLIPBOARDUPDATE
         else if (msg == 0x0219)   // WM_DEVICECHANGE
         {
-            _lastDevChange = DateTime.UtcNow;
             long ev = wp.ToInt64();
             if (ev == 0x8000 && lp != IntPtr.Zero)   // DBT_DEVICEARRIVAL
             {
@@ -311,7 +326,7 @@ public partial class IslandWindow
                 }
                 else if (devType == 5)
                 {
-                    UsbDrives.PruneRemoved(CurrentDriveLetters());
+                    UsbDrives.PruneRemoved(UsbDrives.PresentDriveLetters());
                 }
             }
         }
@@ -327,7 +342,7 @@ public partial class IslandWindow
         try { AddClipboardFormatListener(hwnd); } catch (Exception ex) { App.Log(ex); }
         try
         {
-            foreach (var c in CurrentDriveLetters()) UsbDrives.NoteArrival(c);
+            foreach (var c in UsbDrives.PresentDriveLetters()) UsbDrives.NoteArrival(c);
             var filter = new DEV_BROADCAST_DEVICEINTERFACE
             {
                 dbcc_size = Marshal.SizeOf<DEV_BROADCAST_DEVICEINTERFACE>(),
@@ -337,9 +352,8 @@ public partial class IslandWindow
             _devNotify = RegisterDeviceNotification(hwnd, ref filter, 0);
         }
         catch (Exception ex) { App.Log(ex); }
-        // Cadangan 5 dtk hanya berjalan saat tidak ada WM_DEVICECHANGE dalam 1 menit terakhir (lebih ringan dan andal bila broadcast terlewat).
-        _usbFallbackT = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _usbFallbackT.Tick += (_, _) => { if (DateTime.UtcNow - _lastDevChange > TimeSpan.FromMinutes(1)) ScanNewUsbDrives(); };
+        _usbFallbackT = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _usbFallbackT.Tick += (_, _) => ScanNewUsbDrives();
         _usbFallbackT.Start();
         ReminderService.I.Start();
         _bt.Changed += (name, on) =>
