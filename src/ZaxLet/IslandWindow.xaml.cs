@@ -659,6 +659,7 @@ public partial class IslandWindow : Window
 
         // baris di bawah notifikasi: peringatan > timer > lirik (tetap ada walau notifikasi menumpuk)
         string text = null;
+        double pace = 0;   // >0 hanya untuk lirik: running text mengikuti lama baris dan berhenti di ujung
         Brush br = UI.Dim;
         if (_alert != null)
         {
@@ -672,10 +673,12 @@ public partial class IslandWindow : Window
         {
             var l = ms.CurrentLine();
             text = string.IsNullOrWhiteSpace(l) ? "♪" : s.IdleRomaji ? Translit.Of(l) ?? l : l;
+            pace = ms.CurrentLineSpan();
         }
         if (FsMusicOn && text == null && shownRows == 0 && !string.IsNullOrWhiteSpace(ms.Title)) text = "♪ " + ms.Title;   // layar penuh tanpa lirik: judul lagu saja
         if (!_fs && !mini && text == null && shownRows == 0 && s.IdleContext) text = ContextLine();   // paling akhir: kalah dari peringatan, timer, lirik, dan notifikasi
         Row2.Visibility = text != null ? Visibility.Visible : Visibility.Collapsed;
+        Row2.PaceSeconds = pace;
         if (Row2.Text != (text ?? "")) Row2.Text = text ?? "";
         Row2.Foreground = br;
 

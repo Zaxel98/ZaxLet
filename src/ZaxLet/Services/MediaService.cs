@@ -483,6 +483,13 @@ public sealed class MediaService
         return i < 0 ? "" : Lyrics[i].Text;
     }
 
+    /// <summary>Perkiraan lama baris yang sedang tampil (detik), untuk menyetel kecepatan running text.</summary>
+    public double CurrentLineSpan()
+    {
+        int i = CurrentIndex();
+        return i < 0 ? 0 : Est(i).Span;
+    }
+
     public int CurrentIndex()
     {
         if (Lyrics.Count == 0) return -1;

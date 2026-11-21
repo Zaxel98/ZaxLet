@@ -28,6 +28,9 @@ public sealed class Marquee : Grid
 
     public Brush Foreground { get => _t.Foreground; set => _t.Foreground = value; }
 
+    /// <summary>Lama baris (detik) untuk lirik: teks panjang digeser sekali sepanjang lama itu dan berhenti di ujung. 0 = berjalan bolak-balik terus.</summary>
+    public double PaceSeconds { get; set; }
+
     void Restart()
     {
         _x.BeginAnimation(TranslateTransform.XProperty, null);
@@ -37,6 +40,14 @@ public sealed class Marquee : Grid
         if (avail <= 0 || w <= avail + 1) { _t.HorizontalAlignment = HorizontalAlignment.Center; return; }
         _t.HorizontalAlignment = HorizontalAlignment.Left;
         double dist = w - avail + 24;
+        if (PaceSeconds > 0)
+        {
+            // sekali jalan, berhenti di ujung (tidak kembali ke awal); selesai sedikit sebelum baris berikutnya
+            var once = new DoubleAnimation(0, -dist, TimeSpan.FromSeconds(Math.Max(1, PaceSeconds * 0.85))) { FillBehavior = FillBehavior.HoldEnd };
+            Timeline.SetDesiredFrameRate(once, 30);
+            _x.BeginAnimation(TranslateTransform.XProperty, once);
+            return;
+        }
         var run = TimeSpan.FromSeconds(Math.Max(2, dist / 38));   // ~38 px per detik
         var a = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
         a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.2))));              // jeda awal supaya sempat terbaca
