@@ -83,6 +83,11 @@ final class ScreenStream {
     }
 
     private void setupCapture(boolean force) {
+        try { setupCaptureInner(force); }
+        catch (Throwable e) { AudioService.err = "Layar gagal: " + e.getMessage(); }   // jangan sampai menjatuhkan aplikasi
+    }
+
+    private void setupCaptureInner(boolean force) {
         if (stopping) return;
         WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
         if (wm == null) return;
@@ -109,16 +114,21 @@ final class ScreenStream {
 
         if (!force && w == curW && h == curH && rot == curRot && vdisplay != null) return;
 
-        releaseCapture();
         if (stopping) return;
 
         curW = w;
         curH = h;
         curRot = rot;
         int dpi = ctx.getResources().getDisplayMetrics().densityDpi;
-        reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2);
-        reader.setOnImageAvailableListener(this::onImage, capHandler);
-        vdisplay = mp.createVirtualDisplay("zaxlet-scr", w, h, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, capHandler);
+        ImageReader old = reader;
+        ImageReader nr = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2);
+        nr.setOnImageAvailableListener(this::onImage, capHandler);
+        // Android 14+: createVirtualDisplay kedua pada MediaProjection yang sama melempar SecurityException (app force close), jadi ubah ukuran yang ada
+        if (vdisplay == null) vdisplay = mp.createVirtualDisplay("zaxlet-scr", w, h, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, nr.getSurface(), null, capHandler);
+        else { vdisplay.resize(w, h, dpi); vdisplay.setSurface(nr.getSurface()); }
+        reader = nr;
+        if (old != null) try { old.close(); } catch (Exception ignored) { }
+        if (reusableBmp != null) { try { reusableBmp.recycle(); } catch (Exception ignored) { } reusableBmp = null; }
 
         try {
             JSONObject info = new JSONObject();
