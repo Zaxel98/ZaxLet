@@ -206,7 +206,7 @@ final class ScreenStream {
                 w = new Ws("/scr/ws");
                 if (stopping) { w.close(); break; }
                 w.sock.setTcpNoDelay(true);
-                w.sock.setSendBufferSize(131072);
+                w.sock.setSendBufferSize(32768);   // kecil: 256 KB di kernel = 20 bingkai usang yang tetap terkirim setelah macet (layar tampak ngebut/tertinggal)
                 backoff = 1000;
                 ws = w;
 

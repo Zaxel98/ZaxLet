@@ -233,7 +233,8 @@ public class AudioService extends Service {
 
                 if (stopping) { w.close(); break; }
                 w.sock.setTcpNoDelay(true);
-                w.sock.setSendBufferSize(65536);
+                // Opus: buffer kecil agar macet jaringan terlihat seketika dan paket usang dibuang di antrean (bukan menumpuk 8 dtk di kernel lalu menyembur); PCM butuh buffer besar
+                w.sock.setSendBufferSize(enc != null ? 4096 : 65536);
                 backoff = 1000;
                 everConnected = true;
                 synchronized (qLock) {

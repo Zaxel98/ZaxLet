@@ -37,10 +37,6 @@ public class ZaxAccess extends AccessibilityService {
     @Override public void onInterrupt() { }
 
     void perform(JSONObject o) {
-        try { performInner(o); } catch (Throwable ignored) { }   // satu perintah buruk tidak boleh menjatuhkan layanan
-    }
-
-    private void performInner(JSONObject o) {
         if (o == null) return;
         String t = o.optString("t", "");
         if ("key".equals(t)) {
