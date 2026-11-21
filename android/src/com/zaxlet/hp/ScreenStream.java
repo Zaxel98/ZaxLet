@@ -37,7 +37,7 @@ final class ScreenStream {
     private final Runnable onStopped;
 
     private volatile boolean stopping;
-    private volatile int level;
+    private volatile int level = 2;   // mulai ringan: bingkai 36-40 KB (tingkat 0) memicu macet 5 dtk di hotspot laptop, 12-17 KB hanya 1-2 dtk
     private int curW, curH, curRot = -1;
     private volatile int capN;   // bingkai yang dikompres, untuk log diagnostik
     private int sentN; private long sentBytes, maxSendMs, lastLogMs;
@@ -273,7 +273,7 @@ final class ScreenStream {
                         }
                     } else {
                         if (fastSinceMs == 0) fastSinceMs = now;
-                        else if (now - fastSinceMs >= STEP_UP_MS && level > 0) {
+                        else if (now - fastSinceMs >= STEP_UP_MS && level > 1) {
                             int prevSide = LONG_SIDES[level];
                             level--;
                             fastSinceMs = now;
