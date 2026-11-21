@@ -70,7 +70,7 @@ public static class UiTest
         {
             ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()),
             ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()),
-            ("usage", () => new UsageView()), ("monitor", () => new MonitorView()), ("today", () => new CalendarView()),
+            ("usage", () => new UsageView()), ("monitor", () => MonitorView.Preview()), ("today", () => new CalendarView()),
             ("prayer", () => new PrayerView()), ("comm", () => new AppsView()), ("clipboard", () => new ClipboardView()),
             ("capture", () => new ToolsView()), ("eyes", () => new EyeView()),
         })

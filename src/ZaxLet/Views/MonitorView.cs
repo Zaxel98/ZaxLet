@@ -16,122 +16,141 @@ public sealed class MonitorView : TabView
     public override string Label => "Monitor";
     public override double H => 204;
 
-    static readonly Brush Blue = UI.B("#FF3B82F6"), Pink = UI.B("#FFF472B6"), Teal = UI.B("#FF2DD4BF");
+    static readonly Brush Blue = UI.B("#FF3B82F6"), Teal = UI.B("#FF2DD4BF");
 
     readonly SysMon _s = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
-    readonly RingBadge _rC = new("C", 26), _rM = new("M", 22), _rG = new("G", 22);
-    readonly TextBlock _cpu = UI.T("", 14, null, true), _gpu = UI.T("", 14, null, true), _temp = UI.T("", 14, null, true), _mem = UI.T("", 12.5), _bat = UI.T("", 12.5);
-    readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5), _netType = UI.T("none", 10.5, UI.Dim);
-    readonly TextBlock _gwPing = UI.T("—", 11.5, UI.Dim, true), _gwMeta = UI.T("", 10.5, UI.Dim);
-    readonly TextBlock _netPing = UI.T("—", 11.5, UI.Dim, true), _netMeta = UI.T("", 10.5, UI.Dim);
-    readonly Spark _cpuSpark = new(90, 22, Blue, 40, 1.0), _downSpark = new(46, 16, Blue), _upSpark = new(46, 16, Teal);
-    readonly Bar _memBar = new(5);
-    readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Height = 24 };
+
+    // 4 ukuran huruf: 18 (angka utama), 12.5 (isi), 11.5 (judul/kontrol), 10 (keterangan redup)
+    readonly TextBlock _cpu = UI.T("0%", 18, null, true), _cpuLbl = UI.T("CPU", 10, UI.Dim);
+    readonly TextBlock _memPct = UI.T("0%", 18, null, true), _memLbl = UI.T("RAM", 10, UI.Dim);
+    readonly TextBlock _gpu = UI.T("—", 18, null, true), _gpuLbl = UI.T("GPU", 10, UI.Dim);
+    readonly Bar _cpuBar = new(4), _memBar = new(4), _gpuBar = new(4);
+    readonly ColumnDefinition _gpuCol = new() { Width = new GridLength(1, GridUnitType.Star) };
+    readonly StackPanel _gpuBox = new();
+
+    readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0), Height = 20 };
     readonly List<Border> _coreBars = new();
-    string _kill; DateTime _killUntil;
-    readonly StackPanel _top = new(), _gpuBox = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+    readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5), _netType = UI.T("", 10, UI.Dim);
+    readonly Spark _downSpark = new(48, 16, Blue), _upSpark = new(48, 16, Teal);
+    readonly TextBlock _gwPing = UI.T("—", 12.5, UI.Dim, true), _gwMeta = UI.T("", 10, UI.Dim);
+    readonly TextBlock _netPing = UI.T("—", 12.5, UI.Dim, true), _netMeta = UI.T("", 10, UI.Dim);
+
     readonly Border _batHost = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+    readonly TextBlock _bat = UI.T("", 12.5);
+    readonly TextBlock _acTxt = UI.T("Auto-clear", 11.5, UI.Dim, true);
+    Border _acBtn;
+
+    readonly StackPanel _top = new();
+    string _kill; DateTime _killUntil;
     StackPanel _rightPanel;
-    Border _ovBtn, _acBtn;
-    readonly TextBlock _ovTxt = UI.T("Overlay", 11, UI.Dim, true), _acTxt = UI.T("Auto-clear", 10.5, UI.Dim, true);
+    Border _ovBtn;
+    readonly TextBlock _ovTxt = UI.T("Overlay", 11.5, UI.Dim, true);
     readonly TextBlock _rightTitle = UI.T("Memori terbanyak", 11.5, UI.Dim);
-    readonly TextBlock _usageTxt = UI.T("", 10.5, UI.Dim);
+    readonly TextBlock _usageTxt = UI.T("", 10, UI.Dim);
     readonly StackPanel _perfBox = new() { ClipToBounds = true, Height = 168 };   // tinggi tetap: ganti daftar proses tanpa mengubah ukuran island
     PerfProbe _probe;   // hidup hanya selama tab terbuka dan "tampilkan di island" menyala
+    bool _preview;
 
     public MonitorView()
     {
         var left = new StackPanel();
 
-        // CPU: cincin C + persen + suhu + grafik riwayat, GPU di kanan
-        var a = UI.Cols(0, 0, 0, -1, 0);
-        a.Children.Add(_rC);
-        _cpu.Margin = new Thickness(7, 0, 0, 0);
-        a.Children.Add(_cpu.At(0, 1));
-        _temp.Visibility = Visibility.Collapsed;
-        a.Children.Add(_temp.At(0, 2));
-        _cpuSpark.HorizontalAlignment = HorizontalAlignment.Left;
-        _cpuSpark.Margin = new Thickness(8, 0, 8, 0);
-        _cpuSpark.VerticalAlignment = VerticalAlignment.Center;
-        a.Children.Add(_cpuSpark.At(0, 3));
-        _gpuBox.Children.Add(_rG);
-        _gpu.Margin = new Thickness(7, 0, 0, 0);
-        _gpuBox.Children.Add(_gpu);
-        a.Children.Add(_gpuBox.At(0, 4));
-        left.Children.Add(a);
+        // tiga unit seragam: CPU, RAM, GPU (angka besar, bar tipis status, label redup di bawah)
+        var units = new Grid();
+        units.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        units.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        units.ColumnDefinitions.Add(_gpuCol);
+
+        var cpuUnit = MakeUnit(_cpu, _cpuBar, _cpuLbl, 0);
+        var memUnit = MakeUnit(_memPct, _memBar, _memLbl, 12);
+        _gpuBox = MakeUnit(_gpu, _gpuBar, _gpuLbl, 12);
+        units.Children.Add(cpuUnit.At(0, 0));
+        units.Children.Add(memUnit.At(0, 1));
+        units.Children.Add(_gpuBox.At(0, 2));
+        left.Children.Add(units);
 
         left.Children.Add(_coreBox);
 
-        // memori: cincin M + angka + bar
-        var m = UI.Cols(0, 0, -1, 0);
-        m.Margin = new Thickness(0, 7, 0, 0);
-        m.Children.Add(_rM);
-        _mem.Margin = new Thickness(8, 0, 10, 0);
-        _mem.VerticalAlignment = VerticalAlignment.Center;
-        m.Children.Add(_mem.At(0, 1));
-        _memBar.VerticalAlignment = VerticalAlignment.Center;
-        m.Children.Add(_memBar.At(0, 2));
-        // auto-clear ala ISLC: buang cache (standby) begitu mencapai 1 GB; mati sampai dinyalakan
-        _acBtn = UI.Btn(_acTxt, () => { if (MemTrim.On) MemTrim.Stop(); else if (!MemTrim.Start()) IslandWindow.Instance?.Alert(L.T("Auto-clear butuh izin admin. Coba lagi dan pilih Ya di jendela Windows."), 8, null, false); Render(); }, UI.Card, 9, new Thickness(8, 2, 8, 2));
-        _acBtn.Margin = new Thickness(8, 0, 0, 0);
-        m.Children.Add(_acBtn.At(0, 3));
-        left.Children.Add(m);
+        // jaringan: dua kolom sama lebar dengan label redup di bawah angka
+        var net = UI.Cols(-1, -1);
+        net.Margin = new Thickness(0, 8, 0, 0);
+        var downCol = new StackPanel();
+        var downTop = new StackPanel { Orientation = Orientation.Horizontal };
+        downTop.Children.Add(UI.Icon("", 12, Blue));
+        _down.Margin = new Thickness(4, 0, 8, 0); _down.VerticalAlignment = VerticalAlignment.Center;
+        downTop.Children.Add(_down);
+        _downSpark.VerticalAlignment = VerticalAlignment.Center;
+        downTop.Children.Add(_downSpark);
+        downCol.Children.Add(downTop);
+        var downSub = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+        downSub.Children.Add(UI.T(L.T("Unduh"), 10, UI.Dim));
+        _netType.Margin = new Thickness(8, 0, 0, 0);
+        downSub.Children.Add(_netType);
+        downCol.Children.Add(downSub);
+        net.Children.Add(downCol.At(0, 0));
 
-        // jaringan: panah biru unduh, panah teal unggah, masing-masing dengan grafik mini
-        var n = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
-        n.Children.Add(UI.Icon("", 13, Blue));
-        _down.Margin = new Thickness(5, 0, 6, 0); _down.MinWidth = 58;
-        n.Children.Add(_down);
-        n.Children.Add(_downSpark);
-        var upIcon = UI.Icon("", 13, Teal);
-        upIcon.Margin = new Thickness(16, 0, 0, 0);
-        n.Children.Add(upIcon);
-        _up.Margin = new Thickness(5, 0, 6, 0); _up.MinWidth = 58;
-        n.Children.Add(_up);
-        n.Children.Add(_upSpark);
-        _netType.Margin = new Thickness(10, 0, 0, 0);
-        _netType.VerticalAlignment = VerticalAlignment.Center;
-        n.Children.Add(_netType);
-        left.Children.Add(n);
+        var upCol = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
+        var upTop = new StackPanel { Orientation = Orientation.Horizontal };
+        upTop.Children.Add(UI.Icon("", 12, Teal));
+        _up.Margin = new Thickness(4, 0, 8, 0); _up.VerticalAlignment = VerticalAlignment.Center;
+        upTop.Children.Add(_up);
+        _upSpark.VerticalAlignment = VerticalAlignment.Center;
+        upTop.Children.Add(_upSpark);
+        upCol.Children.Add(upTop);
+        var upLbl = UI.T(L.T("Unggah"), 10, UI.Dim);
+        upLbl.Margin = new Thickness(0, 4, 0, 0);
+        upCol.Children.Add(upLbl);
+        net.Children.Add(upCol.At(0, 1));
+        left.Children.Add(net);
 
-        // ping: latensi gateway (LAN) & internet (1.1.1.1), diukur hanya saat tab terlihat
-        var p = UI.Cols(-1, -1);
-        p.Margin = new Thickness(0, 5, 0, 0);
+        // ping: sejajar dengan dua kolom jaringan di atasnya
+        var ping = UI.Cols(-1, -1);
+        ping.Margin = new Thickness(0, 8, 0, 0);
         var gwRow = new StackPanel { Orientation = Orientation.Horizontal };
-        gwRow.Children.Add(UI.T("Gateway", 11.5, UI.Dim));
-        _gwPing.Margin = new Thickness(6, 0, 0, 0);
-        _gwMeta.Margin = new Thickness(5, 0, 0, 0);
+        var gwLbl = UI.T("Gateway", 10, UI.Dim); gwLbl.VerticalAlignment = VerticalAlignment.Center;
+        gwRow.Children.Add(gwLbl);
+        _gwPing.Margin = new Thickness(8, 0, 0, 0); _gwPing.VerticalAlignment = VerticalAlignment.Center;
+        _gwMeta.Margin = new Thickness(4, 0, 0, 0); _gwMeta.VerticalAlignment = VerticalAlignment.Center;
         gwRow.Children.Add(_gwPing);
         gwRow.Children.Add(_gwMeta);
-        p.Children.Add(gwRow.At(0, 0));
+        ping.Children.Add(gwRow.At(0, 0));
 
-        var netRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
-        netRow.Children.Add(UI.T("Internet", 11.5, UI.Dim));
-        _netPing.Margin = new Thickness(6, 0, 0, 0);
-        _netMeta.Margin = new Thickness(5, 0, 0, 0);
+        var netRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 0, 0) };
+        var netLbl = UI.T("Internet", 10, UI.Dim); netLbl.VerticalAlignment = VerticalAlignment.Center;
+        netRow.Children.Add(netLbl);
+        _netPing.Margin = new Thickness(8, 0, 0, 0); _netPing.VerticalAlignment = VerticalAlignment.Center;
+        _netMeta.Margin = new Thickness(4, 0, 0, 0); _netMeta.VerticalAlignment = VerticalAlignment.Center;
         netRow.Children.Add(_netPing);
         netRow.Children.Add(_netMeta);
-        p.Children.Add(netRow.At(0, 1));
-        left.Children.Add(p);
+        ping.Children.Add(netRow.At(0, 1));
+        left.Children.Add(ping);
 
-        // baterai: ikon berpetir + persen + sisa waktu
-        var b = UI.Cols(0, -1);
-        b.Margin = new Thickness(0, 7, 0, 0);
-        b.Children.Add(_batHost);
-        b.Children.Add(_bat.At(0, 1));
-        left.Children.Add(b);
+        // baris bawah: baterai di kiri, Auto-clear di kanan
+        var bottom = UI.Cols(-1, 0);
+        bottom.Margin = new Thickness(0, 8, 0, 0);
+        var batRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        batRow.Children.Add(_batHost);
+        _bat.VerticalAlignment = VerticalAlignment.Center;
+        batRow.Children.Add(_bat);
+        bottom.Children.Add(batRow.At(0, 0));
+        // auto-clear ala ISLC: buang cache (standby) begitu mencapai 1 GB; mati sampai dinyalakan
+        _acBtn = UI.Btn(_acTxt, () => { if (MemTrim.On) MemTrim.Stop(); else if (!MemTrim.Start()) IslandWindow.Instance?.Alert(L.T("Auto-clear butuh izin admin. Coba lagi dan pilih Ya di jendela Windows."), 8, null, false); Render(); }, UI.Card, 8, new Thickness(8, 4, 8, 4));
+        bottom.Children.Add(_acBtn.At(0, 1));
+        left.Children.Add(bottom);
 
         var g = UI.Cols(-1, 1, 232);
         g.Children.Add(left);
-        g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(14, 2, 14, 2) }.At(0, 1));
-        var right = new StackPanel { Margin = new Thickness(14, 0, 0, 0) };
+        g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(12, 4, 12, 4) }.At(0, 1));
+        var right = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
         var head = UI.Cols(-1, 0);   // judul + tombol on/off overlay performa
+        _rightTitle.VerticalAlignment = VerticalAlignment.Center;
         head.Children.Add(_rightTitle);
-        _ovBtn = UI.Btn(_ovTxt, () => { var s = Settings.Cur; if (PerfOverlay.IsOn && FpsSource.NeedsAsk) { FpsSource.Ask(); Render(); return; } bool turnOn = !PerfOverlay.IsOn; s.PerfShow = turnOn ? "on" : "off"; Settings.Apply(); Render(); if (turnOn) PerfOverlay.AskAccess(); }, UI.Card, 9, new Thickness(9, 2, 9, 2));
+        _ovBtn = UI.Btn(_ovTxt, () => { var s = Settings.Cur; if (PerfOverlay.IsOn && FpsSource.NeedsAsk) { FpsSource.Ask(); Render(); return; } bool turnOn = !PerfOverlay.IsOn; s.PerfShow = turnOn ? "on" : "off"; Settings.Apply(); Render(); if (turnOn) PerfOverlay.AskAccess(); }, UI.Card, 8, new Thickness(8, 4, 8, 4));
         head.Children.Add(_ovBtn.At(0, 1));
         right.Children.Add(head);
-        _top.Margin = new Thickness(0, 6, 0, 0);
+        _top.Margin = new Thickness(0, 8, 0, 0);
         right.Children.Add(_top);
         _usageTxt.TextTrimming = TextTrimming.CharacterEllipsis;
         _usageTxt.Margin = new Thickness(0, 4, 0, 0);
@@ -149,6 +168,17 @@ public sealed class MonitorView : TabView
             _s.Sample(); Render(); await _s.SampleSlowAsync();
             if (_visible) await PingAsync();
         };
+    }
+
+    static StackPanel MakeUnit(TextBlock val, Bar bar, TextBlock lbl, double leftMargin)
+    {
+        var p = new StackPanel { Margin = new Thickness(leftMargin, 0, 0, 0) };
+        p.Children.Add(val);
+        bar.Margin = new Thickness(0, 4, 0, 4);
+        p.Children.Add(bar);
+        lbl.TextTrimming = TextTrimming.CharacterEllipsis;
+        p.Children.Add(lbl);
+        return p;
     }
 
     // Pemanasan saat aplikasi mulai: sampel pertama (dasar selisih CPU/jaringan), GPU, dan daftar proses sudah siap sebelum tab dibuka.
@@ -169,11 +199,43 @@ public sealed class MonitorView : TabView
     public override void OnShow()
     {
         _visible = true;
+        if (_preview) return;
         if (_warm) Render();
         _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync(); _ = PingAsync();
     }
     bool _visible;   // Warm() menggambar saat tab belum terbuka: probe sensor tidak boleh ikut menyala
     public override void OnHide() { _visible = false; _t.Stop(); _probe?.Dispose(); _probe = null; }
+
+    internal static MonitorView Preview()
+    {
+        var v = new MonitorView { _preview = true };
+        var s = v._s;
+        s.Cpu = 0.37;
+        s.CpuTemp = 54;
+        s.Cores = new[] { 0.22, 0.45, 0.31, 0.68, 0.19, 0.41, 0.35, 0.52 };
+        s.MemUsedGb = 14.2;
+        s.MemTotalGb = 15.7;
+        s.MemPct = 14.2 / 15.7;
+        s.GpuUtil = 0.62;
+        s.GpuTemp = 61;
+        s.NetDownKb = 340;
+        s.NetUpKb = 1.2 * 1024;
+        s.BatPct = 0.84;
+        s.BatLeft = "2j 15m";
+        s.Top = new List<(string, long, string)>
+        {
+            ("Code", 2_576_980_378L, ""),
+            ("chrome", 941_621_248L, ""),
+            ("dotnet", 412_090_368L, ""),
+            ("explorer", 184_549_376L, ""),
+        };
+        s.GwPing.Push(4);
+        s.NetPing.Push(18);
+        foreach (var d in new double[] { 120, 260, 190, 410, 340 }) v._downSpark.Push(d);
+        foreach (var u in new double[] { 400, 950, 720, 1450, 1228 }) v._upSpark.Push(u);
+        v.Render();
+        return v;
+    }
 
     async Task PingAsync()
     {
@@ -186,7 +248,7 @@ public sealed class MonitorView : TabView
 
     void RenderPerf(Settings st)
     {
-        bool want = st.PerfInIsland && _visible;
+        bool want = st.PerfInIsland && _visible && !_preview;
         if (want && _probe == null) _probe = new PerfProbe(PerfFormat.Items(st.PerfItems));
         else if (!want && _probe != null) { _probe.Dispose(); _probe = null; }
         bool perf = _probe != null;
@@ -212,7 +274,7 @@ public sealed class MonitorView : TabView
         foreach (var m in rows.Skip(page * PerfRows).Take(PerfRows))
         {
             var row = UI.Cols(-1, 0);
-            row.Margin = new Thickness(0, 1, 0, 1);
+            row.Margin = new Thickness(0, 0, 0, 4);
             row.Children.Add(UI.T(L.T(m.Label), 11.5, UI.Dim).At(0, 0));
             var vt = UI.T(System.Text.RegularExpressions.Regex.Replace(v[m.Key], @"^(inti|mem|bus|kipas|batas:)\s+", ""), 11.5);   // label baris sudah menjelaskan
             vt.Margin = new Thickness(8, 0, 0, 0);
@@ -224,66 +286,69 @@ public sealed class MonitorView : TabView
     const int PerfRows = 10;
     int _perfTick;
 
-    static Brush Level(double f) => f > .85 ? UI.Bad : f > .6 ? UI.Warn : Blue;
+    static Brush Level(double f) => f > .85 ? UI.Bad : f > .6 ? UI.Warn : UI.Good;
+
+    static string FormatMem(long bytes) => bytes >= 1L << 30 ? $"{bytes / 1073741824.0:0.0} GB" : $"{bytes >> 20} MB";
 
     void Render()
     {
         var st = Settings.Cur;
         _gpuBox.Visibility = st.MonGpu ? Visibility.Visible : Visibility.Collapsed;
+        _gpuCol.Width = st.MonGpu ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         _coreBox.Visibility = st.MonCores ? Visibility.Visible : Visibility.Collapsed;
         RenderPerf(st);
 
-        _rC.Set(_s.Cpu, Level(_s.Cpu));
         _cpu.Text = $"{Math.Round(_s.Cpu * 100)}%";
-        _cpuSpark.Push(_s.Cpu);
-        if (_s.CpuTemp is { } c) { _temp.Text = $"  {Math.Round(c)}°C"; _temp.Visibility = Visibility.Visible; }
-        else { _temp.Text = ""; _temp.Visibility = Visibility.Collapsed; }
+        _cpuBar.Set(_s.Cpu, Level(_s.Cpu));
+        _cpuLbl.Text = _s.CpuTemp is { } c ? $"CPU · {Math.Round(c)}°C" : "CPU";
+
+        _memPct.Text = $"{Math.Round(_s.MemPct * 100)}%";
+        _memBar.Set(_s.MemPct, Level(_s.MemPct));
+        _memLbl.Text = $"RAM · {_s.MemUsedGb:0.0}/{_s.MemTotalGb:0.0} GB";
 
         double gu = _s.GpuUtil ?? 0;
-        _rG.Set(gu, _s.GpuUtil == null ? UI.Faint : Level(gu));
-        _gpu.Text = _s.GpuUtil == null ? "—" : $"{Math.Round(gu * 100)}%" + (_s.GpuTemp is { } gt ? $"  {Math.Round(gt)}°C" : "");
+        _gpu.Text = _s.GpuUtil == null ? "—" : $"{Math.Round(gu * 100)}%";
+        _gpuBar.Set(gu, _s.GpuUtil == null ? UI.Faint : Level(gu));
+        _gpuLbl.Text = _s.GpuTemp is { } gt ? $"GPU · {Math.Round(gt)}°C" : "GPU";
 
         while (_coreBars.Count < _s.Cores.Length)
         {
-            var bar = new Border { Width = 11, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Bottom, CornerRadius = new CornerRadius(3), Background = Blue };
+            var bar = new Border { Width = 12, VerticalAlignment = VerticalAlignment.Bottom, CornerRadius = new CornerRadius(3), Background = UI.Good };
             _coreBars.Add(bar);
-            _coreBox.Children.Add(new Border { Width = 11, Margin = new Thickness(0, 0, 4, 0), Background = UI.Track, CornerRadius = new CornerRadius(3), Child = bar });
+            _coreBox.Children.Add(new Border { Width = 12, Margin = new Thickness(0, 0, 4, 0), Background = UI.Track, CornerRadius = new CornerRadius(3), Child = bar });
         }
         for (int i = 0; i < _s.Cores.Length && i < _coreBars.Count; i++)
         {
-            _coreBars[i].Height = Math.Max(3, 24 * _s.Cores[i]);
+            _coreBars[i].Height = Math.Max(4, 20 * _s.Cores[i]);
             _coreBars[i].Background = Level(_s.Cores[i]);
         }
 
-        _rM.Set(_s.MemPct, Level(_s.MemPct));
-        _memBar.Set(_s.MemPct, Level(_s.MemPct));
-        _mem.Inlines.Clear();
-        _mem.Inlines.Add(new System.Windows.Documents.Run($"{_s.MemUsedGb:0.0}") { FontWeight = FontWeights.SemiBold });
-        _mem.Inlines.Add(new System.Windows.Documents.Run($" / {_s.MemTotalGb:0.0} GB") { Foreground = UI.Dim, FontSize = 11.5 });
-
-        _down.Text = Rate(_s.NetDownKb); _downSpark.Push(_s.NetDownKb);
-        _up.Text = Rate(_s.NetUpKb); _upSpark.Push(_s.NetUpKb);
-        _netType.Text = _s.ConnectionType == "none" ? L.T("Tidak tersambung") : _s.ConnectionType;
+        _down.Text = Rate(_s.NetDownKb);
+        _up.Text = Rate(_s.NetUpKb);
+        if (!_preview) { _downSpark.Push(_s.NetDownKb); _upSpark.Push(_s.NetUpKb); }
+        _netType.Text = _preview && _s.ConnectionType == "none"
+            ? "Wi-Fi"
+            : (_s.ConnectionType == "none" ? L.T("Tidak tersambung") : _s.ConnectionType);
         RenderPing();
 
         if (_s.BatPct < 0) { _batHost.Child = null; _bat.Text = ""; }
         else
         {
             _batHost.Child = Icons.Battery(_s.BatPct, _s.Charging);
-            _bat.Text = $"{Math.Round(_s.BatPct * 100)}%" + (_s.BatLeft.Length > 0 ? $"  ·  {_s.BatLeft}" : "");
+            _bat.Text = $"{Math.Round(_s.BatPct * 100)}%" + (_s.BatLeft.Length > 0 ? $" · {_s.BatLeft}" : "");
         }
 
         _top.Children.Clear();
         foreach (var (name, bytes, path) in _s.Top)
         {
             var (title, icon) = AppInfo.Get(name, path);
-            var row = UI.Cols(26, -1, 0);
-            row.Margin = new Thickness(0, 2, 0, 2);
+            var row = UI.Cols(24, -1, 0);
+            row.Margin = new Thickness(0, 0, 0, 4);
             if (icon != null)
-                row.Children.Add(new Image { Source = icon, Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Left });
+                row.Children.Add(new Image { Source = icon, Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left });
             else
             {
-                var dot = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Background = UI.Card, HorizontalAlignment = HorizontalAlignment.Left, Child = UI.T(name.Length > 0 ? name[..1].ToUpper() : "?", 10, UI.Dim) };
+                var dot = new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(8), Background = UI.Card, HorizontalAlignment = HorizontalAlignment.Left, Child = UI.T(name.Length > 0 ? name[..1].ToUpper() : "?", 10, UI.Dim) };
                 ((TextBlock)dot.Child).HorizontalAlignment = HorizontalAlignment.Center;
                 row.Children.Add(dot);
             }
@@ -301,7 +366,7 @@ public sealed class MonitorView : TabView
                     Render();
                 };
             }
-            row.Children.Add(UI.T(bytes >= 1L << 30 ? $"{bytes / 1073741824.0:0.0}G" : $"{bytes >> 20}M", 12.5, UI.Dim).At(0, 2));
+            row.Children.Add(UI.T(FormatMem(bytes), 12.5, UI.Dim).At(0, 2));
             _top.Children.Add(row);
         }
         RenderUsage(st);
@@ -320,12 +385,12 @@ public sealed class MonitorView : TabView
         _usageTxt.Visibility = Visibility.Visible;
     }
 
-    static Brush PingBrush(int tier) => tier switch { 0 => UI.Fg, 1 => UI.Warn, 2 => UI.Bad, _ => UI.Dim };
+    static Brush PingBrush(int tier) => tier switch { 0 => UI.Good, 1 => UI.Warn, 2 => UI.Bad, _ => UI.Dim };
 
     void RenderPing()
     {
-        RenderTarget(_s.NetUp && _s.HasGateway, _s.GwPing, _gwPing, _gwMeta);
-        RenderTarget(_s.NetUp, _s.NetPing, _netPing, _netMeta);
+        RenderTarget(_preview || (_s.NetUp && _s.HasGateway), _s.GwPing, _gwPing, _gwMeta);
+        RenderTarget(_preview || _s.NetUp, _s.NetPing, _netPing, _netMeta);
     }
 
     static void RenderTarget(bool active, PerfFormat.PingRing ring, TextBlock val, TextBlock meta)
