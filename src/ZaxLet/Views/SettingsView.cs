@@ -511,7 +511,6 @@ public sealed class SettingsView : TabView
                 yield return ("~Peringatan merah di", Num(50, 100, 5, "%", () => s.CritAt, v => s.CritAt = v));
                 yield return ("§Monitor", null);
                 yield return ("Tampilkan GPU", Toggle(() => s.MonGpu, v => s.MonGpu = v));
-                yield return ("Bar per core CPU", Toggle(() => s.MonCores, v => s.MonCores = v));
                 yield return ("Daftar proses teratas", Toggle(() => s.MonTop, v => s.MonTop = v));
                 yield return ("Waktu layar per aplikasi\nMencatat nama aplikasi dan durasi pemakaian per hari secara lokal (appusage.json), tanpa judul jendela", Toggle(() => s.AppUsageOn, v => s.AppUsageOn = v));
                 yield return ("§Overlay performa saat main", null);

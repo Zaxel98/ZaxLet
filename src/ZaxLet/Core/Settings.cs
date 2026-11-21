@@ -165,7 +165,6 @@ public sealed class Settings
     // monitor
     public bool MonGpu { get; set; } = true;
     public bool MonTop { get; set; } = true;
-    public bool MonCores { get; set; } = true;
     public bool AppUsageOn { get; set; }                       // catat waktu layar per aplikasi secara lokal (opt-in)
 
     // kalender

@@ -19,7 +19,6 @@ namespace ZaxLet;
 public sealed class SysMon
 {
     public double Cpu;
-    public double[] Cores = Array.Empty<double>();
     public double MemUsedGb, MemTotalGb, MemPct;
     public double NetDownKb, NetUpKb;
     public double BatPct = -1; public bool Charging; public string BatLeft = "";
@@ -66,16 +65,13 @@ public sealed class SysMon
             for (int i = 0; i < n; i++) cur[i] = Marshal.PtrToStructure<Native.ProcPerf>(buf + i * sz);
             if (_prev != null)
             {
-                var cores = new double[n];
                 double busy = 0, all = 0;
                 for (int i = 0; i < n; i++)
                 {
                     double idle = cur[i].Idle - _prev[i].Idle;
                     double total = (cur[i].Kernel + cur[i].User) - (_prev[i].Kernel + _prev[i].User); // Kernel sudah termasuk Idle
-                    cores[i] = total > 0 ? Math.Clamp(1 - idle / total, 0, 1) : 0;
                     busy += total - idle; all += total;
                 }
-                Cores = cores;
                 Cpu = all > 0 ? Math.Clamp(busy / all, 0, 1) : 0;
             }
             _prev = cur;

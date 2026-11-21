@@ -132,7 +132,7 @@ public static class Strings
 
         // pengaturan: usage, monitor, kalender, sholat
         ["Interval baca kuota"] = "Quota refresh interval", ["Tampilkan perkiraan biaya"] = "Show estimated cost", ["Kolom Code (data Ponytail)"] = "Code column (Ponytail data)",
-        ["Peringatan kuning di"] = "Yellow warning at", ["Peringatan merah di"] = "Red warning at", ["Tampilkan GPU"] = "Show GPU", ["Bar per core CPU"] = "Per-core CPU bars", ["Daftar proses teratas"] = "Top processes list",
+        ["Peringatan kuning di"] = "Yellow warning at", ["Peringatan merah di"] = "Red warning at", ["Tampilkan GPU"] = "Show GPU", ["Daftar proses teratas"] = "Top processes list",
         ["Minggu dimulai"] = "Week starts on", ["Tampilkan hari libur"] = "Show holidays", ["Sumber lokasi"] = "Location source", ["Otomatis (IP)"] = "Automatic (IP)", ["Perangkat (izin)"] = "Device (permission)",
         ["Cari kota"] = "Search city", ["Kota"] = "City", ["Status lokasi"] = "Location status", ["Deteksi ulang"] = "Detect again", ["Deteksi sekarang"] = "Detect now", ["Metode hitung"] = "Calculation method",
         ["Mazhab Asar"] = "Asr school", ["Syafi'i"] = "Shafi'i", ["Ihtiyat"] = "Safety margin", [" mnt"] = " min", ["Notifikasi waktu sholat"] = "Prayer time alerts", ["Jeda musik saat sholat"] = "Pause music at prayer time",
@@ -387,7 +387,6 @@ public static class Strings
         ["Izinkan"] = "Allow", ["Aktif"] = "Active", ["FPS: izin permanen tanpa UAC"] = "FPS: permanent permission without UAC", ["Salin perintah, jalankan di CMD sebagai administrator, lalu sign out dan masuk lagi ke Windows sekali"] = "Copy the command, run it in an administrator CMD, then sign out and back in to Windows once", ["Salin perintah"] = "Copy command",
         ["Performa"] = "Performance", ["Overlay nyala"] = "Overlay on", ["Overlay mati"] = "Overlay off",
         ["Kepekatan latar overlay"] = "Overlay background opacity", ["0% = hanya teks tanpa kotak. Overlay selalu tembus klik"] = "0% = text only, no box. The overlay is always click-through",
-        ["Auto-clear butuh izin admin. Coba lagi dan pilih Ya di jendela Windows."] = "Auto-clear needs admin permission. Try again and choose Yes in the Windows prompt.",
         ["Pojok layar"] = "Screen corner", ["Kiri atas"] = "Top left", ["Kanan atas"] = "Top right", ["Kiri bawah"] = "Bottom left", ["Kanan bawah"] = "Bottom right",
         ["Beban CPU"] = "CPU load", ["Clock CPU"] = "CPU clock", ["Suhu CPU"] = "CPU temperature", ["RAM terpakai"] = "RAM in use", ["Beban GPU"] = "GPU load", ["Clock GPU"] = "GPU clock",
         ["Clock memori GPU"] = "GPU memory clock", ["Suhu GPU"] = "GPU temperature", ["Daya GPU"] = "GPU power", ["VRAM terpakai"] = "VRAM in use", ["Belum ada metrik dipilih"] = "No metrics selected",

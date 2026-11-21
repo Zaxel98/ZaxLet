@@ -29,9 +29,6 @@ public sealed class MonitorView : TabView
     readonly ColumnDefinition _gpuCol = new() { Width = new GridLength(1, GridUnitType.Star) };
     readonly StackPanel _gpuBox = new();
 
-    readonly StackPanel _coreBox = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0), Height = 20 };
-    readonly List<Border> _coreBars = new();
-
     readonly TextBlock _down = UI.T("", 12.5), _up = UI.T("", 12.5), _netType = UI.T("", 10, UI.Dim);
     readonly Spark _downSpark = new(48, 16, Blue), _upSpark = new(48, 16, Teal);
     readonly TextBlock _gwPing = UI.T("—", 12.5, UI.Dim, true), _gwMeta = UI.T("", 10, UI.Dim);
@@ -39,8 +36,6 @@ public sealed class MonitorView : TabView
 
     readonly Border _batHost = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
     readonly TextBlock _bat = UI.T("", 12.5);
-    readonly TextBlock _acTxt = UI.T("Auto-clear", 11.5, UI.Dim, true);
-    Border _acBtn;
 
     readonly StackPanel _top = new();
     string _kill; DateTime _killUntil;
@@ -71,11 +66,9 @@ public sealed class MonitorView : TabView
         units.Children.Add(_gpuBox.At(0, 2));
         left.Children.Add(units);
 
-        left.Children.Add(_coreBox);
-
         // jaringan: dua kolom sama lebar dengan label redup di bawah angka
         var net = UI.Cols(-1, -1);
-        net.Margin = new Thickness(0, 8, 0, 0);
+        net.Margin = new Thickness(0, 12, 0, 0);
         var downCol = new StackPanel();
         var downTop = new StackPanel { Orientation = Orientation.Horizontal };
         downTop.Children.Add(UI.Icon("", 12, Blue));
@@ -107,7 +100,7 @@ public sealed class MonitorView : TabView
 
         // ping: sejajar dengan dua kolom jaringan di atasnya
         var ping = UI.Cols(-1, -1);
-        ping.Margin = new Thickness(0, 8, 0, 0);
+        ping.Margin = new Thickness(0, 12, 0, 0);
         var gwRow = new StackPanel { Orientation = Orientation.Horizontal };
         var gwLbl = UI.T("Gateway", 10, UI.Dim); gwLbl.VerticalAlignment = VerticalAlignment.Center;
         gwRow.Children.Add(gwLbl);
@@ -127,18 +120,12 @@ public sealed class MonitorView : TabView
         ping.Children.Add(netRow.At(0, 1));
         left.Children.Add(ping);
 
-        // baris bawah: baterai di kiri, Auto-clear di kanan
-        var bottom = UI.Cols(-1, 0);
-        bottom.Margin = new Thickness(0, 8, 0, 0);
-        var batRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        // baris bawah: baterai
+        var batRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
         batRow.Children.Add(_batHost);
         _bat.VerticalAlignment = VerticalAlignment.Center;
         batRow.Children.Add(_bat);
-        bottom.Children.Add(batRow.At(0, 0));
-        // auto-clear ala ISLC: buang cache (standby) begitu mencapai 1 GB; mati sampai dinyalakan
-        _acBtn = UI.Btn(_acTxt, () => { if (MemTrim.On) MemTrim.Stop(); else if (!MemTrim.Start()) IslandWindow.Instance?.Alert(L.T("Auto-clear butuh izin admin. Coba lagi dan pilih Ya di jendela Windows."), 8, null, false); Render(); }, UI.Card, 8, new Thickness(8, 4, 8, 4));
-        bottom.Children.Add(_acBtn.At(0, 1));
-        left.Children.Add(bottom);
+        left.Children.Add(batRow);
 
         var g = UI.Cols(-1, 1, 232);
         g.Children.Add(left);
@@ -212,7 +199,6 @@ public sealed class MonitorView : TabView
         var s = v._s;
         s.Cpu = 0.37;
         s.CpuTemp = 54;
-        s.Cores = new[] { 0.22, 0.45, 0.31, 0.68, 0.19, 0.41, 0.35, 0.52 };
         s.MemUsedGb = 14.2;
         s.MemTotalGb = 15.7;
         s.MemPct = 14.2 / 15.7;
@@ -260,8 +246,6 @@ public sealed class MonitorView : TabView
         _ovBtn.Background = on ? UI.AccentBg : UI.Card;
         _ovTxt.Text = L.T(on ? FpsSource.NeedsAsk ? "Izinkan FPS" : "Overlay nyala" : "Overlay mati");
         _ovTxt.Foreground = on ? UI.Fg : UI.Dim;
-        _acBtn.Background = MemTrim.On ? UI.AccentBg : UI.Card;
-        _acTxt.Foreground = MemTrim.On ? UI.Fg : UI.Dim;
         if (!perf) return;
         var items = PerfFormat.Items(st.PerfItems);
         var v = _probe.Read();
@@ -295,7 +279,6 @@ public sealed class MonitorView : TabView
         var st = Settings.Cur;
         _gpuBox.Visibility = st.MonGpu ? Visibility.Visible : Visibility.Collapsed;
         _gpuCol.Width = st.MonGpu ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        _coreBox.Visibility = st.MonCores ? Visibility.Visible : Visibility.Collapsed;
         RenderPerf(st);
 
         _cpu.Text = $"{Math.Round(_s.Cpu * 100)}%";
@@ -310,18 +293,6 @@ public sealed class MonitorView : TabView
         _gpu.Text = _s.GpuUtil == null ? "—" : $"{Math.Round(gu * 100)}%";
         _gpuBar.Set(gu, _s.GpuUtil == null ? UI.Faint : Level(gu));
         _gpuLbl.Text = _s.GpuTemp is { } gt ? $"GPU · {Math.Round(gt)}°C" : "GPU";
-
-        while (_coreBars.Count < _s.Cores.Length)
-        {
-            var bar = new Border { Width = 12, VerticalAlignment = VerticalAlignment.Bottom, CornerRadius = new CornerRadius(3), Background = UI.Good };
-            _coreBars.Add(bar);
-            _coreBox.Children.Add(new Border { Width = 12, Margin = new Thickness(0, 0, 4, 0), Background = UI.Track, CornerRadius = new CornerRadius(3), Child = bar });
-        }
-        for (int i = 0; i < _s.Cores.Length && i < _coreBars.Count; i++)
-        {
-            _coreBars[i].Height = Math.Max(4, 20 * _s.Cores[i]);
-            _coreBars[i].Background = Level(_s.Cores[i]);
-        }
 
         _down.Text = Rate(_s.NetDownKb);
         _up.Text = Rate(_s.NetUpKb);

@@ -21,7 +21,6 @@ public partial class App : Application
     {
         // pembantu FPS (admin): tanpa jendela, tanpa mutex instans tunggal, hanya mengirim angka ke ZaxLet yang meminta
         if (e.Args.Length == 2 && e.Args[0] == "--fps-helper") { FpsHelper.Run(e.Args[1]); Environment.Exit(0); return; }
-        if (e.Args.Length == 3 && e.Args[0] == "--ram-helper") { MemTrim.Helper(e.Args[1], e.Args[2]); Environment.Exit(0); return; }
         // ZAXLET_NO_SINGLE=1: izinkan instans kedua (uji di PC yang sudah menjalankan ZaxLet; dipakai bersama ZAXLET_DATA_DIR)
         bool isSendPhone = e.Args.Contains("--send-phone");
         if (Environment.GetEnvironmentVariable("ZAXLET_NO_SINGLE") != "1")
