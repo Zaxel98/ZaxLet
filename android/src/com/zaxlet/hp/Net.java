@@ -119,7 +119,7 @@ final class Net {
     /** Soket TLS ke PC: host yang terakhir berhasil, gateway hotspot laptop, LAN, laptop di hotspot HP (pindai), lalu Tailscale. */
     static SSLSocket connect() throws Exception {
         String gw = gateway();
-        String[] order = { active, gw, get("lan"), "*tether*", get("ts") };
+        String[] order = { active, "127.0.0.1", gw, get("lan"), "*tether*", get("ts") };   // 127.0.0.1 = terowongan USB (adb reverse), bebas jitter Wi-Fi; gagal seketika bila tidak ada
         StringBuilder why = new StringBuilder();   // semua alamat yang gagal, bukan hanya yang terakhir
         SSLSocketFactory f = factory();
         java.util.LinkedList<String> hosts = new java.util.LinkedList<>(java.util.Arrays.asList(order));
@@ -131,7 +131,7 @@ final class Net {
                 Socket raw = new Socket();
                 raw.setKeepAlive(true);
                 raw.setTcpNoDelay(true);   // tanpa ini Nagle + delayed ACK menahan paket kecil (audio/kamera) puluhan ms
-                raw.connect(new InetSocketAddress(h, port()), h.equals(gw) ? 600 : 2500);   // gateway biasanya router: jangan menunggu lama bila bukan laptop
+                raw.connect(new InetSocketAddress(h, port()), h.equals(gw) || h.equals("127.0.0.1") ? 600 : 2500);   // gateway biasanya router: jangan menunggu lama bila bukan laptop
                 SSLSocket s = (SSLSocket) f.createSocket(raw, h, port(), true);
                 s.setSoTimeout(0);
                 s.startHandshake();
