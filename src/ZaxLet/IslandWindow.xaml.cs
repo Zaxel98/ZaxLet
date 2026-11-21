@@ -58,7 +58,7 @@ public partial class IslandWindow : Window
     bool _ghost;   // Alt ditahan di atas pill: pill menghilang sementara supaya yang di belakangnya bisa diklik
     readonly DispatcherTimer _trimOpenT = new() { Interval = TimeSpan.FromSeconds(4) };
     TabView _cur;
-    bool _open, _waveOn, _fs, _peek;
+    bool _open, _waveOn, _fs, _peek, _capturing;
     string _alert, _idleKey = "";
     DateTime _alertUntil, _quotaAt = DateTime.MinValue;
     (double W, double H) _idle = (200, IdleH);
@@ -247,6 +247,7 @@ public partial class IslandWindow : Window
     // Jendela tampil kecuali: fullscreen atau disembunyikan pengguna (keduanya tanpa intipan kursor); notifikasi yang sedang tampil memaksanya muncul.
     void SyncVisible()
     {
+        if (_capturing) return;
         bool fsMusic = FsMusicOn;
         bool want = PillVisibility.Want(_fs, _snooze, _snoozePeek, _peek, MiniActive, _ghost,
             Settings.Cur.NotifFullscreen && _rows.Count > 0, fsMusic, Settings.Cur.ShowMode == "activity" && !HasActivity());
@@ -404,7 +405,7 @@ public partial class IslandWindow : Window
 
     void Open()
     {
-        if (_open || _fs || _snooze) return;   // saat fullscreen pill hanya menampilkan jam dan baterai
+        if (_capturing || _open || _fs || _snooze) return;   // saat fullscreen pill hanya menampilkan jam dan baterai
         _open = true;
         OpenLayer.Visibility = Visibility.Visible;
         Fade(IdleLayer, 0, 90, () => { if (_open) IdleLayer.Visibility = Visibility.Collapsed; });
@@ -903,20 +904,32 @@ public partial class IslandWindow : Window
     public void KeepOpen(bool on) { Dragging = on; if (!on && _open) _closeT.Start(); }
 
     // dipakai ToolsView: sembunyikan pill sebelum menangkap layar
-    public void HideForCapture(Action capture, int delayMs = 350)
+    public void HideForCapture(Action capture, int delayMs = 120)
     {
+        if (_capturing) return;
+        _capturing = true;
         _closeT.Stop();
         Close_();
-        Hide(); // Windows mengaktifkan jendela di bawahnya, jadi mode "Jendela" menangkap aplikasi terakhir
+        OpenLayer.BeginAnimation(OpacityProperty, null);
+        OpenLayer.Visibility = Visibility.Collapsed;
+        IdleLayer.BeginAnimation(OpacityProperty, null);
+        Pill.BeginAnimation(OpacityProperty, null);
+        _pillScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        _pillScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        _pillMove.BeginAnimation(TranslateTransform.YProperty, null);
         _shown = false;
-        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMs) };
-        t.Tick += (_, _) =>
+        Hide(); // Windows mengaktifkan jendela di bawahnya, jadi mode "Jendela" menangkap aplikasi terakhir
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, () =>
         {
-            t.Stop();
-            try { capture(); }
-            catch (Exception ex) { App.Log(ex); }
-            finally { SyncVisible(); }
-        };
-        t.Start();
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMs) };
+            t.Tick += (_, _) =>
+            {
+                t.Stop();
+                try { capture(); }
+                catch (Exception ex) { App.Log(ex); }
+                finally { _capturing = false; SyncVisible(); }
+            };
+            t.Start();
+        });
     }
 }

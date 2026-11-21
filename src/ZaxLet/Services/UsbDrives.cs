@@ -11,6 +11,7 @@ namespace ZaxLet;
 public static class UsbDrives
 {
     static readonly object _lock = new();
+    static readonly HashSet<char> _seen = new();
     static char? _lastArrival;
 
     /// <summary>Ubah bitmask unitmask dari DEV_BROADCAST_VOLUME menjadi daftar huruf drive ('A'..'Z').</summary>
@@ -41,9 +42,34 @@ public static class UsbDrives
         return $"{Math.Max(1, bytes / 1024)} KB";
     }
 
-    public static void NoteArrival(char letter)
+    public static bool NoteArrival(char letter)
     {
-        lock (_lock) _lastArrival = char.ToUpperInvariant(letter);
+        var c = char.ToUpperInvariant(letter);
+        lock (_lock)
+        {
+            _lastArrival = c;
+            return _seen.Add(c);
+        }
+    }
+
+    public static void NoteRemoval(char letter)
+    {
+        var c = char.ToUpperInvariant(letter);
+        lock (_lock)
+        {
+            _seen.Remove(c);
+            if (_lastArrival == c) _lastArrival = null;
+        }
+    }
+
+    public static void PruneRemoved(IEnumerable<char> present)
+    {
+        var set = new HashSet<char>(present.Select(char.ToUpperInvariant));
+        lock (_lock)
+        {
+            _seen.RemoveWhere(c => !set.Contains(c));
+            if (_lastArrival is { } c && !set.Contains(c)) _lastArrival = null;
+        }
     }
 
     public static char? NewestRemovableDrive()
@@ -53,7 +79,7 @@ public static class UsbDrives
         if (last is { } c && IsRemovable(c)) return c;
         try
         {
-            var drives = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Removable && d.Name.Length > 0).ToList();
+            var drives = DriveInfo.GetDrives().Where(d => d.Name.Length > 0 && IsRemovable(d.Name[0])).ToList();
             if (drives.Count > 0) return char.ToUpperInvariant(drives[^1].Name[0]);
         }
         catch { }
@@ -66,7 +92,11 @@ public static class UsbDrives
         {
             var c = char.ToUpperInvariant(letter);
             if (c < 'C' || c > 'Z') return false;   // abaikan floppy A:/B:
-            return new DriveInfo(c + ":\\").DriveType == DriveType.Removable;
+            var dt = new DriveInfo(c + ":\\").DriveType;
+            if (dt is DriveType.CDRom or DriveType.Network or DriveType.Ram or DriveType.Unknown or DriveType.NoRootDirectory)
+                return false;
+            if (dt == DriveType.Removable) return true;
+            return dt == DriveType.Fixed && IsUsbBus($@"\\.\{c}:");
         }
         catch { return false; }
     }
@@ -111,12 +141,17 @@ public static class UsbDrives
     const int CR_REMOVE_VETOED = 0x00000017;
     const uint FILE_SHARE_READ = 1, FILE_SHARE_WRITE = 2, OPEN_EXISTING = 3;
     const uint IOCTL_STORAGE_GET_DEVICE_NUMBER = 0x002D1080;
+    const uint IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400;
+    const int BusTypeUsb = 7;
     const uint DIGCF_PRESENT = 0x02, DIGCF_DEVICEINTERFACE = 0x10;
     static readonly IntPtr INVALID_HANDLE_VALUE = new(-1);
     static readonly Guid GUID_DEVINTERFACE_DISK = new("53F56307-B6BF-11D0-94F2-00A0C91EFB8B");
 
     [StructLayout(LayoutKind.Sequential)]
     struct STORAGE_DEVICE_NUMBER { public uint DeviceType, DeviceNumber, PartitionNumber; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct STORAGE_PROPERTY_QUERY { public uint PropertyId, QueryType, AdditionalParameters; }
 
     [StructLayout(LayoutKind.Sequential)]
     struct SP_DEVICE_INTERFACE_DATA { public int cbSize; public Guid InterfaceClassGuid; public int Flags; public IntPtr Reserved; }
@@ -132,6 +167,9 @@ public static class UsbDrives
 
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool DeviceIoControl(IntPtr hDevice, uint dwIoControlCode, IntPtr lpInBuffer, int nInBufferSize, out STORAGE_DEVICE_NUMBER lpOutBuffer, int nOutBufferSize, out int lpBytesReturned, IntPtr lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool DeviceIoControl(IntPtr hDevice, uint dwIoControlCode, ref STORAGE_PROPERTY_QUERY lpInBuffer, int nInBufferSize, [Out] byte[] lpOutBuffer, int nOutBufferSize, out int lpBytesReturned, IntPtr lpOverlapped);
 
     [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr SetupDiGetClassDevsW(ref Guid classGuid, string enumerator, IntPtr hwndParent, uint flags);
@@ -150,6 +188,21 @@ public static class UsbDrives
 
     [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
     static extern int CM_Request_Device_EjectW(uint dnDevInst, out uint pVetoType, [Out] char[] pszVetoName, int ulNameLength, uint ulFlags);
+
+    static bool IsUsbBus(string path)
+    {
+        var h = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+        if (h == INVALID_HANDLE_VALUE) return false;
+        try
+        {
+            var q = new STORAGE_PROPERTY_QUERY();
+            var buf = new byte[64];
+            if (!DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, ref q, Marshal.SizeOf<STORAGE_PROPERTY_QUERY>(), buf, buf.Length, out int ret, IntPtr.Zero) || ret < 32)
+                return false;
+            return BitConverter.ToInt32(buf, 28) == BusTypeUsb;
+        }
+        finally { CloseHandle(h); }
+    }
 
     static bool TryGetStorageDeviceNumber(string path, out uint deviceType, out uint deviceNumber)
     {

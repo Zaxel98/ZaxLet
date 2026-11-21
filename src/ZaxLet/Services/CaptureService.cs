@@ -58,11 +58,13 @@ public static class CaptureService
     internal static void HideAndCapture(Action capture)
     {
         PinWindow.SetAllVisible(false);
-        IslandWindow.Instance.HideForCapture(() =>
+        void Run()
         {
             try { capture(); }
             finally { PinWindow.SetAllVisible(true); }
-        });
+        }
+        if (IslandWindow.Instance is { } isl) isl.HideForCapture(Run);
+        else Run();
     }
 
     public static void PickArea(Action<SD.Bitmap> onPicked) => HideAndCapture(() =>
@@ -142,7 +144,7 @@ public static class CaptureService
     public static void ToggleRecord()
     {
         if (Recording) { StopRecord(); return; }
-        StartRecord(null);
+        HideAndCapture(() => StartRecord(null));
     }
 
     public static void ToggleRecordArea()
