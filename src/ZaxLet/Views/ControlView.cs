@@ -159,7 +159,28 @@ public sealed class ControlView : TabView
         foreach (var d in devs)
         {
             Grid inner;
-            var label = UI.T(d.Name, 11.5, d.IsDefault ? UI.Fg : UI.Dim, d.IsDefault);
+            FrameworkElement label;
+            int paren = d.Name.IndexOf('(');
+            if (paren > 0)
+            {
+                var main = d.Name[..paren].Trim();
+                var sub = d.Name[paren..].Trim();
+                if (sub.StartsWith('(') && sub.EndsWith(')') && sub.Length > 2) sub = sub[1..^1].Trim();
+                var sp = new StackPanel();
+                var l1 = UI.T(main, 11.5, d.IsDefault ? UI.Fg : UI.Dim, d.IsDefault);
+                l1.TextTrimming = TextTrimming.CharacterEllipsis;
+                var l2 = UI.T(sub, 10, d.IsDefault ? UI.Dim : UI.Faint);
+                l2.TextTrimming = TextTrimming.CharacterEllipsis;
+                sp.Children.Add(l1);
+                sp.Children.Add(l2);
+                label = sp;
+            }
+            else
+            {
+                var tb = UI.T(d.Name, 11.5, d.IsDefault ? UI.Fg : UI.Dim, d.IsDefault);
+                tb.TextWrapping = TextWrapping.Wrap;
+                label = tb;
+            }
             if (d.IsDefault)
             {
                 inner = UI.Cols(0, -1);
