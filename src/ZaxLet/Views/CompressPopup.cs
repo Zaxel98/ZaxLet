@@ -137,7 +137,7 @@ public sealed class CompressPopup : Window
 
         // Honest limits
         var limitText = _isPdf
-            ? "Batas PDF: teks menjadi gambar (tidak bisa diseleksi/dicari). PDF berpassword ditolak. File asli tidak diubah."
+            ? "Gambar di dalam PDF dikompres ulang; teks dan vektor tetap tajam. Jika target tak tercapai, halaman diubah menjadi gambar (teks tidak bisa diseleksi). PDF berpassword ditolak. File asli tidak diubah."
             : "Keluaran selalu JPEG (transparansi diisi putih). File asli tidak diubah.";
         var limitLabel = UI.T(limitText, 11, UI.Dim);
         limitLabel.TextWrapping = TextWrapping.Wrap;
@@ -316,10 +316,11 @@ public sealed class CompressPopup : Window
 
         try
         {
+            bool usedRaster = false;
             string outPath = await Task.Run(() =>
             {
                 return _isPdf
-                    ? FileCompress.PdfToTarget(_src, targetBytes, token, msg => Dispatcher.BeginInvoke(() => { if (_running) ShowProgress(msg); }))
+                    ? FileCompress.PdfToTarget(_src, targetBytes, token, msg => Dispatcher.BeginInvoke(() => { if (_running) ShowProgress(msg); }), out usedRaster)
                     : FileCompress.ImageToTarget(_src, targetBytes, token);
             }, token);
 
@@ -331,7 +332,10 @@ public sealed class CompressPopup : Window
 
             long outBytes = new FileInfo(outPath).Length;
             Shelf.Add(outPath);
-            IslandWindow.Instance?.Alert(L.F("Dikompres: {0} -> {1}", FileCompress.FmtSize(_srcBytes), FileCompress.FmtSize(outBytes)), 6);
+            string modeNote = _isPdf ? (usedRaster ? " · Teks jadi gambar" : " · Teks tetap tajam") : "";
+            string resultMsg = L.F("Dikompres: {0} -> {1}", FileCompress.FmtSize(_srcBytes), FileCompress.FmtSize(outBytes)) + modeNote;
+            ShowProgress(resultMsg);
+            IslandWindow.Instance?.Alert(resultMsg, 6);
             _running = false;
             Close();
         }

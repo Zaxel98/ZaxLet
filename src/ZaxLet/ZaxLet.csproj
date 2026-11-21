@@ -25,6 +25,7 @@
     <!-- tanpa batas, budget gen-0 mengikuti cache CPU dan GC menahan puluhan MB kosong -->
     <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
   </ItemGroup>
 
   <!-- ekstensi browser untuk Wishlist ikut ke dist\extension (dan ke installer); dimuat dari sana lewat "Muat yang belum dipaket" -->

@@ -2,12 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
+using PdfSharp.Pdf.IO;
+using PdfSharp.Pdf.Security;
 using Windows.Data.Pdf;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -90,25 +95,375 @@ public static class FileCompress
         return outPath;
     }
 
-    /// <summary>Kompres PDF dengan merender tiap halaman ke JPEG dan menulis PDF minimal. Tidak mendukung PDF berpassword.</summary>
-    public static string PdfToTarget(string src, long targetBytes, CancellationToken ct) =>
-        PdfToTarget(src, targetBytes, ct, null);
+    static readonly (int Quality, int MaxLongSide)[] PdfImageLadder =
+    {
+        (90, 0),
+        (85, 3000),
+        (80, 2400),
+        (75, 2000),
+        (70, 1800),
+        (65, 1600),
+        (60, 1400),
+        (55, 1200),
+        (50, 1000),
+        (45, 900),
+        (40, 800),
+    };
 
-    public static string PdfToTarget(string src, long targetBytes, CancellationToken ct, Action<string> onProgress)
+    /// <summary>Kompres PDF dengan mengompres ulang gambar di dalam PDF (teks &amp; vektor tetap tajam); fallback ke raster halaman bila target tidak tercapai.</summary>
+    public static string PdfToTarget(string src, long targetBytes, CancellationToken ct) =>
+        PdfToTarget(src, targetBytes, ct, null, out _);
+
+    public static string PdfToTarget(string src, long targetBytes, CancellationToken ct, Action<string> onProgress) =>
+        PdfToTarget(src, targetBytes, ct, onProgress, out _);
+
+    public static string PdfToTarget(string src, long targetBytes, CancellationToken ct, Action<string> onProgress, out bool usedRasterFallback)
     {
         ValidateSource(src, ref targetBytes);
         ct.ThrowIfCancellationRequested();
-        return Task.Run(() => PdfToTargetAsync(src, targetBytes, ct, onProgress), ct).GetAwaiter().GetResult();
+
+        long smallestImagePdf = long.MaxValue;
+        int pageCount = 0;
+        byte[] recompressed = null;
+        try
+        {
+            recompressed = SearchPdfImageRecompression(src, targetBytes, ct, onProgress, out pageCount, out smallestImagePdf);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (InvalidOperationException) { throw; }
+        catch
+        {
+            // Bila PDFsharp gagal mem-parsing struktur PDF (bukan password), lanjutkan ke fallback raster
+        }
+
+        if (recompressed != null)
+        {
+            usedRasterFallback = false;
+            return Task.Run(() => WriteAndValidatePdfAsync(src, recompressed, pageCount, ct), ct).GetAwaiter().GetResult();
+        }
+
+        usedRasterFallback = true;
+        return PdfRasterToTarget(src, targetBytes, ct, onProgress, smallestImagePdf);
     }
 
-    static async Task<string> PdfToTargetAsync(string src, long targetBytes, CancellationToken ct, Action<string> onProgress)
+    static byte[] SearchPdfImageRecompression(
+        string src, long targetBytes, CancellationToken ct, Action<string> onProgress,
+        out int pageCount, out long smallestBytes)
+    {
+        smallestBytes = long.MaxValue;
+        using (var probe = OpenPdfForModify(src))
+        {
+            pageCount = probe.PageCount;
+            if (pageCount <= 0)
+                throw new InvalidOperationException(L.T("PDF tidak memiliki halaman."));
+        }
+
+        int maxProbes = (int)Math.Ceiling(Math.Log2(PdfImageLadder.Length + 1));
+        int probeIdx = 0;
+        int lo = 0, hi = PdfImageLadder.Length - 1;
+        byte[] best = null;
+
+        while (lo <= hi)
+        {
+            ct.ThrowIfCancellationRequested();
+            int mid = lo + (hi - lo) / 2;
+            probeIdx++;
+            onProgress?.Invoke(L.F("Mencoba kualitas {0}/{1}", probeIdx, maxProbes));
+
+            var (quality, maxLongSide) = PdfImageLadder[mid];
+            byte[] cur = RecompressPdfImagesOnce(src, quality, maxLongSide, ct);
+            if (cur.Length < smallestBytes) smallestBytes = cur.Length;
+
+            if (cur.Length <= targetBytes)
+            {
+                best = cur;
+                hi = mid - 1;
+            }
+            else
+            {
+                lo = mid + 1;
+            }
+        }
+
+        return best;
+    }
+
+    static PdfSharp.Pdf.PdfDocument OpenPdfForModify(string src)
+    {
+        PdfSharp.Pdf.PdfDocument doc;
+        try
+        {
+            doc = PdfReader.Open(src, PdfDocumentOpenMode.Modify);
+        }
+        catch (PdfReaderException ex) when (
+            ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("protected", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("encrypt", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(L.T("PDF dilindungi password dan tidak dapat dikompres."), ex);
+        }
+
+        if (doc.SecuritySettings.IsEncrypted)
+        {
+            doc.Dispose();
+            throw new InvalidOperationException(L.T("PDF dilindungi password dan tidak dapat dikompres."));
+        }
+        return doc;
+    }
+
+    static byte[] RecompressPdfImagesOnce(string src, int quality, int maxLongSide, CancellationToken ct)
+    {
+        using var doc = OpenPdfForModify(src);
+        doc.Options.CompressContentStreams = true;
+        doc.Options.FlateEncodeMode = PdfFlateEncodeMode.BestCompression;
+
+        var allObjs = doc.Internals.GetAllObjects();
+        var maskDicts = new HashSet<PdfDictionary>();
+        var images = new List<PdfDictionary>();
+
+        foreach (var obj in allObjs)
+        {
+            if (obj is not PdfDictionary dict || dict.Stream == null) continue;
+            if (!string.Equals(dict.Elements.GetName("/Subtype"), "/Image", StringComparison.Ordinal)) continue;
+            images.Add(dict);
+
+            if (dict.Elements.GetDictionary("/SMask") is PdfDictionary smask)
+                maskDicts.Add(smask);
+            if (dict.Elements.GetDictionary("/Mask") is PdfDictionary mask)
+                maskDicts.Add(mask);
+        }
+
+        foreach (var dict in images)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (maskDicts.Contains(dict)) continue;
+            TryRecompressImageDict(dict, quality, maxLongSide);
+        }
+
+        using var ms = new MemoryStream();
+        doc.Save(ms, false);
+        return ms.ToArray();
+    }
+
+    static void TryRecompressImageDict(PdfDictionary dict, int quality, int maxLongSide)
+    {
+        if (dict.Elements.GetBoolean("/ImageMask")) return;
+        if (dict.Elements.GetInteger("/BitsPerComponent") != 8) return;
+
+        int width = dict.Elements.GetInteger("/Width");
+        int height = dict.Elements.GetInteger("/Height");
+        if (width < 100 || height < 100) return;
+
+        byte[] origStream = dict.Stream.Value;
+        if (origStream == null || origStream.Length < 20 * 1024) return;
+
+        // Lewati jika menggunakan /Mask array (color-key masking tidak cocok dengan JPEG lossy) atau /Decode terbalik
+        if (dict.Elements.GetObject("/Mask") is PdfArray) return;
+        if (HasInvertedDecode(dict)) return;
+
+        string filter = GetSingleFilterName(dict);
+        if (filter != "/DCTDecode" && filter != "/FlateDecode") return;
+
+        if (!TryGetColorChannels(dict, out int channels)) return;
+        bool isGray = channels == 1;
+
+        BitmapSource decoded = null;
+        try
+        {
+            decoded = filter == "/DCTDecode"
+                ? DecodeDctImage(origStream, isGray)
+                : DecodeFlateImage(dict, origStream, width, height, channels);
+        }
+        catch
+        {
+            decoded = null;
+        }
+        if (decoded == null) return;
+
+        BitmapSource scaled = maxLongSide > 0 ? ScaleToLongSide(decoded, maxLongSide) : decoded;
+        if (isGray && scaled.Format != PixelFormats.Gray8)
+        {
+            var gray = new FormatConvertedBitmap(scaled, PixelFormats.Gray8, null, 0);
+            gray.Freeze();
+            scaled = gray;
+        }
+        else if (!isGray && scaled.Format == PixelFormats.Cmyk32)
+        {
+            return;
+        }
+
+        byte[] newJpeg = EncodeJpeg(scaled, quality);
+        if (newJpeg.Length >= origStream.Length) return;
+
+        dict.Stream.Value = newJpeg;
+        dict.Elements.SetName("/Filter", "/DCTDecode");
+        dict.Elements.SetInteger("/Width", scaled.PixelWidth);
+        dict.Elements.SetInteger("/Height", scaled.PixelHeight);
+        dict.Elements.SetName("/ColorSpace", isGray ? "/DeviceGray" : "/DeviceRGB");
+        dict.Elements.SetInteger("/BitsPerComponent", 8);
+        dict.Elements.SetInteger("/Length", newJpeg.Length);
+        dict.Elements.Remove("/DecodeParms");
+    }
+
+    static bool HasInvertedDecode(PdfDictionary dict)
+    {
+        if (dict.Elements.GetObject("/Decode") is not PdfArray arr) return false;
+        for (int i = 0; i + 1 < arr.Elements.Count; i += 2)
+        {
+            double dMin = arr.Elements.GetReal(i);
+            double dMax = arr.Elements.GetReal(i + 1);
+            if (Math.Abs(dMin) > 1e-6 || Math.Abs(dMax - 1.0) > 1e-6)
+                return true;
+        }
+        return false;
+    }
+
+    static string GetSingleFilterName(PdfDictionary dict)
+    {
+        var item = dict.Elements.GetValue("/Filter");
+        if (item is PdfName name) return name.Value;
+        if (item is PdfArray arr && arr.Elements.Count == 1 && arr.Elements[0] is PdfName first)
+            return first.Value;
+        return null;
+    }
+
+    static bool TryGetColorChannels(PdfDictionary dict, out int channels)
+    {
+        channels = 0;
+        var cs = dict.Elements.GetValue("/ColorSpace");
+        if (cs is PdfName name)
+        {
+            if (name.Value == "/DeviceRGB") { channels = 3; return true; }
+            if (name.Value == "/DeviceGray") { channels = 1; return true; }
+            return false;
+        }
+        if (cs is PdfArray arr && arr.Elements.Count >= 2 && arr.Elements[0] is PdfName csType && csType.Value == "/ICCBased")
+        {
+            if (arr.Elements.GetObject(1) is PdfDictionary icc)
+            {
+                int n = icc.Elements.GetInteger("/N");
+                if (n == 1 || n == 3) { channels = n; return true; }
+            }
+        }
+        return false;
+    }
+
+    static BitmapSource DecodeDctImage(byte[] jpegBytes, bool isGray)
+    {
+        using var ms = new MemoryStream(jpegBytes, writable: false);
+        var dec = new JpegBitmapDecoder(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        if (dec.Frames.Count == 0) return null;
+        BitmapSource frame = dec.Frames[0];
+        if (frame.Format == PixelFormats.Cmyk32) return null;
+
+        var targetFmt = isGray ? PixelFormats.Gray8 : PixelFormats.Bgr24;
+        if (frame.Format != targetFmt && (isGray || (frame.Format != PixelFormats.Bgr32 && frame.Format != PixelFormats.Rgb24)))
+        {
+            var conv = new FormatConvertedBitmap(frame, targetFmt, null, 0);
+            conv.Freeze();
+            return conv;
+        }
+        if (!frame.IsFrozen) frame.Freeze();
+        return frame;
+    }
+
+    static BitmapSource DecodeFlateImage(PdfDictionary dict, byte[] compressed, int width, int height, int channels)
+    {
+        byte[] raw;
+        using (var inMs = new MemoryStream(compressed, writable: false))
+        using (var zlib = new ZLibStream(inMs, CompressionMode.Decompress))
+        using (var outMs = new MemoryStream())
+        {
+            zlib.CopyTo(outMs);
+            raw = outMs.ToArray();
+        }
+
+        int predictor = 1;
+        var dpObj = dict.Elements.GetObject("/DecodeParms");
+        PdfDictionary dp = dpObj as PdfDictionary ?? (dpObj is PdfArray dpArr && dpArr.Elements.Count > 0 ? dpArr.Elements.GetObject(0) as PdfDictionary : null);
+        if (dp != null)
+        {
+            int p = dp.Elements.GetInteger("/Predictor");
+            if (p > 0) predictor = p;
+            int cols = dp.Elements.GetInteger("/Columns");
+            if (cols > 0 && cols != width) return null;
+            int dpColors = dp.Elements.GetInteger("/Colors");
+            if (dpColors > 0 && dpColors != channels) return null;
+        }
+
+        int stride = checked(width * channels);
+        byte[] pixels;
+        if (predictor == 1)
+        {
+            if (raw.Length < height * stride) return null;
+            pixels = raw;
+        }
+        else if (predictor >= 10)
+        {
+            int rowLen = stride + 1;
+            if (raw.Length < height * rowLen) return null;
+            pixels = new byte[height * stride];
+            for (int y = 0; y < height; y++)
+            {
+                int srcRow = y * rowLen;
+                byte filter = raw[srcRow];
+                int dstRow = y * stride;
+                int prevRow = (y - 1) * stride;
+                for (int x = 0; x < stride; x++)
+                {
+                    byte val = raw[srcRow + 1 + x];
+                    byte left = x >= channels ? pixels[dstRow + x - channels] : (byte)0;
+                    byte up = y > 0 ? pixels[prevRow + x] : (byte)0;
+                    byte upLeft = (y > 0 && x >= channels) ? pixels[prevRow + x - channels] : (byte)0;
+                    pixels[dstRow + x] = filter switch
+                    {
+                        0 => val,
+                        1 => (byte)(val + left),
+                        2 => (byte)(val + up),
+                        3 => (byte)(val + ((left + up) >> 1)),
+                        4 => (byte)(val + PaethPredictor(left, up, upLeft)),
+                        _ => throw new InvalidDataException()
+                    };
+                }
+            }
+        }
+        else
+        {
+            return null;
+        }
+
+        var fmt = channels == 1 ? PixelFormats.Gray8 : PixelFormats.Rgb24;
+        var bmp = BitmapSource.Create(width, height, 96, 96, fmt, null, pixels, stride);
+        bmp.Freeze();
+        return bmp;
+    }
+
+    static byte PaethPredictor(int a, int b, int c)
+    {
+        int p = a + b - c;
+        int pa = Math.Abs(p - a);
+        int pb = Math.Abs(p - b);
+        int pc = Math.Abs(p - c);
+        if (pa <= pb && pa <= pc) return (byte)a;
+        if (pb <= pc) return (byte)b;
+        return (byte)c;
+    }
+
+    public static string PdfRasterToTarget(string src, long targetBytes, CancellationToken ct, Action<string> onProgress, long minKnownBytes = long.MaxValue)
+    {
+        ValidateSource(src, ref targetBytes);
+        ct.ThrowIfCancellationRequested();
+        return Task.Run(() => PdfRasterToTargetAsync(src, targetBytes, ct, onProgress, minKnownBytes), ct).GetAwaiter().GetResult();
+    }
+
+    static async Task<string> PdfRasterToTargetAsync(string src, long targetBytes, CancellationToken ct, Action<string> onProgress, long minKnownBytes = long.MaxValue)
     {
         StorageFile file;
-        PdfDocument doc;
+        Windows.Data.Pdf.PdfDocument doc;
         try
         {
             file = await StorageFile.GetFileFromPathAsync(src);
-            doc = await PdfDocument.LoadFromFileAsync(file);
+            doc = await Windows.Data.Pdf.PdfDocument.LoadFromFileAsync(file);
         }
         catch (Exception ex) when (IsPasswordError(ex))
         {
@@ -123,7 +478,7 @@ public static class FileCompress
             throw new InvalidOperationException(L.T("PDF tidak memiliki halaman."));
 
         double dpi = StartPdfDpi;
-        long smallest = long.MaxValue;
+        long smallest = minKnownBytes;
         byte[] bestPdf = null;
 
         while (true)
@@ -156,15 +511,20 @@ public static class FileCompress
         if (bestPdf == null)
             throw new InvalidOperationException(L.F("Target tidak tercapai. Ukuran terkecil: {0}.", FmtSize(smallest)));
 
-        var outPath = UniqueOutputPath(src, bestPdf.Length, ".pdf");
-        await File.WriteAllBytesAsync(outPath, bestPdf, ct);
+        return await WriteAndValidatePdfAsync(src, bestPdf, pageCount, ct);
+    }
+
+    static async Task<string> WriteAndValidatePdfAsync(string src, byte[] pdfBytes, int expectedPageCount, CancellationToken ct)
+    {
+        var outPath = UniqueOutputPath(src, pdfBytes.Length, ".pdf");
+        await File.WriteAllBytesAsync(outPath, pdfBytes, ct);
 
         // Validasi dengan membuka ulang PDF keluaran dan memastikan jumlah halaman sama
         try
         {
             var outFile = await StorageFile.GetFileFromPathAsync(outPath);
-            var check = await PdfDocument.LoadFromFileAsync(outFile);
-            if ((int)check.PageCount != pageCount)
+            var check = await Windows.Data.Pdf.PdfDocument.LoadFromFileAsync(outFile);
+            if ((int)check.PageCount != expectedPageCount)
             {
                 try { File.Delete(outPath); } catch { }
                 throw new InvalidOperationException(L.T("PDF hasil gagal divalidasi (jumlah halaman tidak cocok)."));
@@ -188,7 +548,7 @@ public static class FileCompress
                ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase);
     }
 
-    static async Task<BitmapSource> RenderPdfPageAsync(PdfPage page, uint destWidth)
+    static async Task<BitmapSource> RenderPdfPageAsync(Windows.Data.Pdf.PdfPage page, uint destWidth)
     {
         using var ras = new InMemoryRandomAccessStream();
         var opts = new PdfPageRenderOptions

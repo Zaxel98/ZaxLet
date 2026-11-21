@@ -5,6 +5,7 @@ ZaxLet is built on the components below. Each keeps its own license.
 | Component | Used for | License | Source |
 |---|---|---|---|
 | QRCoder 1.6.0 (Raffael Herrmann) | QR codes for phone pairing | MIT | https://github.com/codebude/QRCoder |
+| PDFsharp 6.2.4 (empira Software GmbH) | PDF image recompression | MIT | https://github.com/empira/PDFsharp |
 | softcam 1.8.1 (tshino) | Virtual camera (DirectShow), compiled from source into `softcam.dll` | MIT, text in [docs/licenses/softcam-MIT.txt](docs/licenses/softcam-MIT.txt) | https://github.com/tshino/softcam |
 | pinyin-data 0.16.0 (mozillazg) | Character to pinyin table, downloaded with the optional Latin script pack (first reading of each CJK character, stored as `pinyin.gz`) | MIT, text in [docs/licenses/pinyin-data-MIT.txt](docs/licenses/pinyin-data-MIT.txt) | https://github.com/mozillazg/pinyin-data |
 | ZXing core 3.5.3 (ZXing authors) | QR scanning for phone pairing in the Android app, bundled as `android/lib/core-3.5.3.jar` | Apache-2.0 | https://github.com/zxing/zxing |
