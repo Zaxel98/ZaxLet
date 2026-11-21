@@ -40,7 +40,7 @@ public sealed class Settings
     public int CloseDelayMs { get; set; } = 500;
     public bool AutoHideFullscreen { get; set; } = true;
     public string Accent { get; set; } = "teal";
-    public string ClockStyle { get; set; } = "dot";           // dot (17.52) | colon (17:52) | 12h
+    public string ClockStyle { get; set; } = "colon";         // dot (17.52) | colon (17:52) | 12h
     public bool ClockSeconds { get; set; }
     public List<string> HiddenTabs { get; set; } = new();
     public string LastTab { get; set; } = "music";
