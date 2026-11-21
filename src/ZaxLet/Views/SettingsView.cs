@@ -39,18 +39,21 @@ public sealed class SettingsView : TabView
         _ => p
     };
 
+    static readonly Brush CardBg = UI.B("#FF1F1F24"), Sep = UI.B("#FF2C2C33"),
+        Fg = UI.B("#FFE6E6EA"), Dim = UI.B("#FFB4B4BC");
+
     const double FontLabel = 13.5, FontCaption = 12, FontCat = 13.5, FontSearch = 13, FontCtl = 13, FontSection = 14;
 
     bool _confirmReset;
-    readonly TextBox _search = new() { FontSize = FontSearch, Foreground = Brushes.White, CaretBrush = Brushes.White, Background = UI.Card, BorderThickness = new Thickness(0), Padding = new Thickness(9, 6, 9, 6), VerticalContentAlignment = VerticalAlignment.Center };
+    readonly TextBox _search = new() { FontSize = FontSearch, Foreground = Fg, CaretBrush = Fg, Background = CardBg, BorderThickness = new Thickness(0), Padding = new Thickness(9, 6, 9, 6), VerticalContentAlignment = VerticalAlignment.Center };
     string _query = "";
 
     public SettingsView()
     {
         // kotak cari (Ctrl+F): mencari di semua halaman sekaligus; tetap di atas daftar halaman dan tidak ikut dibangun ulang supaya fokusnya tidak hilang
-        var searchHost = new Border { CornerRadius = new CornerRadius(10), Background = UI.Card, Margin = new Thickness(0, 0, 8, 8), ClipToBounds = true };
+        var searchHost = new Border { CornerRadius = new CornerRadius(10), Background = CardBg, Margin = new Thickness(0, 0, 8, 8), ClipToBounds = true };
         var searchGrid = new Grid();
-        var ph = new TextBlock { Text = L.T("Cari pengaturan (Ctrl+F)"), Foreground = UI.Dim, FontSize = FontSearch, IsHitTestVisible = false, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var ph = new TextBlock { Text = L.T("Cari pengaturan (Ctrl+F)"), Foreground = Dim, FontSize = FontSearch, IsHitTestVisible = false, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         searchGrid.Children.Add(_search); searchGrid.Children.Add(ph);
         searchHost.Child = searchGrid;
         _search.TextChanged += (_, _) => { ph.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; _query = _search.Text; _scroll?.ScrollToTop(); Render(); };
@@ -60,12 +63,18 @@ public sealed class SettingsView : TabView
             else if (e.Key == System.Windows.Input.Key.Escape && _search.IsKeyboardFocused && _search.Text.Length > 0) { _search.Clear(); e.Handled = true; }
         };
         _cats.Children.Add(searchHost);
-        var g = UI.Cols(194, 1, -1);
+        var g = UI.Cols(200, 1, -1);
         g.Children.Add(_cats);
-        g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(0, 2, 12, 2) }.At(0, 1));
+        g.Children.Add(new Border { Width = 1, Background = Sep, Margin = new Thickness(0, 2, 12, 2) }.At(0, 1));
         _scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _rows, Margin = new Thickness(0, 0, 0, 0) };
         g.Children.Add(_scroll.At(0, 2));
         Children.Add(g);
+    }
+
+    public void SetCentered(bool centered)
+    {
+        _rows.MaxWidth = centered ? 820 : double.PositiveInfinity;
+        _rows.HorizontalAlignment = centered ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
     }
 
     void OnUpdate() => Dispatcher.BeginInvoke(() => { if (_page == "general") Render(); });
@@ -84,10 +93,10 @@ public sealed class SettingsView : TabView
             bool on = key == _page && !searching;
             var item = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             item.Children.Add(new Border { Width = 3, Height = 16, CornerRadius = new CornerRadius(1.5), Background = on ? UI.Accent : Brushes.Transparent, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center });
-            var ic = UI.Icon(glyph, 15, on ? UI.Accent : UI.Dim);
+            var ic = UI.Icon(glyph, 15, on ? UI.Accent : Dim);
             ic.Width = 20;
             item.Children.Add(ic);
-            var tx = UI.T(label, FontCat, on ? UI.Fg : UI.Dim, on);
+            var tx = UI.T(label, FontCat, on ? Fg : Dim, on);
             tx.Margin = new Thickness(6, 0, 0, 0);
             item.Children.Add(tx);
             var b = UI.Btn(item, () => { _page = k; _search.Clear(); _scroll.ScrollToTop(); Render(); },
@@ -100,7 +109,7 @@ public sealed class SettingsView : TabView
         if (searching) { RenderSearch(_query.Trim()); return; }
         if (PageHints.TryGetValue(_page, out var hint))
         {
-            var h = UI.T(hint, FontCaption, UI.Dim);
+            var h = UI.T(hint, FontCaption, Dim);
             h.TextWrapping = TextWrapping.Wrap; h.Margin = new Thickness(2, 0, 0, 10);
             _rows.Children.Add(h);
         }
@@ -117,7 +126,7 @@ public sealed class SettingsView : TabView
             if (group == null)
             {
                 group = new StackPanel();
-                _rows.Children.Add(new Border { Background = UI.Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 0, 4), Child = group });
+                _rows.Children.Add(new Border { Background = CardBg, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 0, 4), Child = group });
             }
             group.Children.Add(row);
         }
@@ -158,11 +167,11 @@ public sealed class SettingsView : TabView
             var group = new StackPanel();
             foreach (var (raw, ctl) in hits) group.Children.Add(Row(raw.TrimStart('~', '¶'), ctl));
             if (group.Children.Count > 0 && group.Children[^1] is Border last) last.BorderThickness = new Thickness(0);
-            _rows.Children.Add(new Border { Background = UI.Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 0, 4), Child = group });
+            _rows.Children.Add(new Border { Background = CardBg, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 0, 4), Child = group });
         }
         if (!any)
         {
-            var e = UI.T("Tidak ada pengaturan yang cocok", FontCtl, UI.Dim);
+            var e = UI.T("Tidak ada pengaturan yang cocok", FontCtl, Dim);
             e.Margin = new Thickness(0, 14, 0, 0);
             _rows.Children.Add(e);
         }
@@ -190,10 +199,10 @@ public sealed class SettingsView : TabView
     {
         var sp = new StackPanel { MaxWidth = 300, Tag = "wide" };
         var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
-        var st = UI.T(string.IsNullOrEmpty(UpdateService.Status) ? "ZaxLet " + UpdateService.Current : UpdateService.Status, 12.5, UpdateService.Available != null ? UI.Fg : UI.Dim);
+        var st = UI.T(string.IsNullOrEmpty(UpdateService.Status) ? "ZaxLet " + UpdateService.Current : UpdateService.Status, 12.5, UpdateService.Available != null ? Fg : Dim);
         st.TextWrapping = TextWrapping.Wrap; st.MaxWidth = 170; st.VerticalAlignment = VerticalAlignment.Center;
         line.Children.Add(st);
-        var b = UI.Btn(UI.T(UpdateService.Available != null ? L.F("Perbarui ke {0}", UpdateService.Available.Version) : "Periksa", 12.5, UI.Fg, true),
+        var b = UI.Btn(UI.T(UpdateService.Available != null ? L.F("Perbarui ke {0}", UpdateService.Available.Version) : "Periksa", 12.5, Fg, true),
             () => { if (UpdateService.Available != null) _ = UpdateService.ApplyAsync(); else _ = UpdateService.CheckAsync(); },
             UpdateService.Available != null ? UI.AccentBg : UI.Card, 10, new Thickness(10, 4, 10, 4));
         b.Margin = new Thickness(8, 0, 0, 0);
@@ -210,7 +219,7 @@ public sealed class SettingsView : TabView
         var r = (FrameworkElement)Act("Pulihkan…", DoRestore, UI.Fg); r.Margin = new Thickness(6, 0, 0, 0);
         line.Children.Add(r);
         sp.Children.Add(line);
-        if (_backupMsg.Length > 0) { var m = UI.T(_backupMsg, FontCaption, UI.Dim); m.TextWrapping = TextWrapping.Wrap; m.HorizontalAlignment = HorizontalAlignment.Right; m.Margin = new Thickness(0, 4, 0, 0); sp.Children.Add(m); }
+        if (_backupMsg.Length > 0) { var m = UI.T(_backupMsg, FontCaption, Dim); m.TextWrapping = TextWrapping.Wrap; m.HorizontalAlignment = HorizontalAlignment.Left; m.Margin = new Thickness(0, 4, 0, 0); sp.Children.Add(m); }
         return sp;
     }
 
@@ -255,14 +264,14 @@ public sealed class SettingsView : TabView
         var n = NetInfo.Current();
         var txt = n == null ? L.T("tidak terdeteksi") : $"{n.Name} · {L.T(n.Kind)}";
         var sp = new StackPanel { MaxWidth = 300, Tag = "wide" };
-        var t = UI.T(txt, 12.5, n is { Category: 0 } && !NetInfo.FirewallOpenToPublic() ? UI.Warn : UI.Fg);
+        var t = UI.T(txt, 12.5, n is { Category: 0 } && !NetInfo.FirewallOpenToPublic() ? UI.Warn : Fg);
         t.TextWrapping = TextWrapping.Wrap; t.HorizontalAlignment = HorizontalAlignment.Left;
         sp.Children.Add(t);
         if (n is { Category: 0 })
         {
             var h = UI.T(NetInfo.FirewallOpenToPublic()
                 ? "Jaringan Publik: aturan firewall ZaxLet HP tetap mengizinkan. Wi-Fi tamu sering memblokir antar perangkat; pakai Tailscale bila HP tidak bisa masuk."
-                : "Jaringan Publik dan aturan firewall ZaxLet HP belum mencakupnya: HP tidak bisa masuk. Nyalakan ulang server HP atau jadikan jaringan Private.", FontCaption, UI.Dim);
+                : "Jaringan Publik dan aturan firewall ZaxLet HP belum mencakupnya: HP tidak bisa masuk. Nyalakan ulang server HP atau jadikan jaringan Private.", FontCaption, Dim);
             h.TextWrapping = TextWrapping.Wrap; h.Margin = new Thickness(0, 3, 0, 0);
             sp.Children.Add(h);
         }
@@ -509,7 +518,7 @@ public sealed class SettingsView : TabView
                     () => { if (s.LocMode != "manual") _ = LocationService.RefreshAsync(true).ContinueWith(_ => Dispatcher.BeginInvoke(Render)); }));
                 yield return ("Kota\n" + (string.IsNullOrEmpty(LocationService.Status) ? "" : LocationService.Status), s.LocMode == "manual"
                     ? Txt(() => s.City, v => { if (!string.IsNullOrWhiteSpace(v) && v.Trim() != s.City) _ = LocationService.SearchAsync(v.Trim()).ContinueWith(_ => Dispatcher.BeginInvoke(Render)); })
-                    : UI.T(s.City, FontCtl, UI.Fg, true));
+                    : UI.T(s.City, FontCtl, Fg, true));
                 if (s.LocMode != "manual")
                     yield return ("~Deteksi ulang", Act("Deteksi sekarang", () => { _ = LocationService.RefreshAsync(true).ContinueWith(_ => Dispatcher.BeginInvoke(Render)); }, UI.Fg));
                 yield return ("Metode hitung", Choice(PrayerAlerts.Methods.Select(m => (m.Key, m.Label)).ToArray(), () => s.PrayerMethod, v => s.PrayerMethod = v));
@@ -614,13 +623,13 @@ public sealed class SettingsView : TabView
         var sp = new StackPanel { MaxWidth = 360, Tag = "wide" };
         var top = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
         string status = a.Busy ? (string.IsNullOrEmpty(a.Progress()) ? "Menunggu…" : a.Progress()) : a.Error.Length > 0 ? a.Error : on ? "Terpasang" : "Belum diunduh";
-        var st = UI.T(status, 12.5, a.Error.Length > 0 && !a.Busy ? UI.Bad : on && !a.Busy ? UI.Fg : UI.Dim);
+        var st = UI.T(status, 12.5, a.Error.Length > 0 && !a.Busy ? UI.Bad : on && !a.Busy ? Fg : Dim);
         st.VerticalAlignment = VerticalAlignment.Center; st.TextWrapping = TextWrapping.Wrap; st.MaxWidth = 170;
         top.Children.Add(st);
         bool removable = on && (a.Detail == null || a.Detail().Length == 0);   // terdeteksi di PATH = bukan milik kita, tidak dihapus
         if (!a.Busy && (!on || removable))
         {
-            var b = UI.Btn(UI.T(on ? "Hapus" : "Unduh", 12.5, on ? UI.Dim : UI.Fg, true), () =>
+            var b = UI.Btn(UI.T(on ? "Hapus" : "Unduh", 12.5, on ? Dim : Fg, true), () =>
             {
                 if (on) { a.Remove(); a.Error = ""; Render(); return; }
                 a.Error = ""; a.Busy = true; Render();
@@ -635,7 +644,7 @@ public sealed class SettingsView : TabView
             top.Children.Add(b);
         }
         sp.Children.Add(top);
-        var d = UI.T(a.Desc + (a.Detail?.Invoke() is { Length: > 0 } det ? " (" + det + ")" : ""), FontCaption, UI.Dim);
+        var d = UI.T(a.Desc + (a.Detail?.Invoke() is { Length: > 0 } det ? " (" + det + ")" : ""), FontCaption, Dim);
         d.TextWrapping = TextWrapping.Wrap; d.Margin = new Thickness(0, 3, 0, 0);
         sp.Children.Add(d);
         return sp;
@@ -647,18 +656,18 @@ public sealed class SettingsView : TabView
     {
         var list = new StackPanel { MinWidth = 280, Tag = "wide" };
         var devs = ShareServer.I.DevicesSnapshot().OrderByDescending(d => d.LastSeen).ToList();
-        if (devs.Count == 0) list.Children.Add(UI.T("Belum ada HP yang tersambung", FontCaption, UI.Dim));
+        if (devs.Count == 0) list.Children.Add(UI.T("Belum ada HP yang tersambung", FontCaption, Dim));
         foreach (var d in devs)
         {
             var row = UI.Cols(14, -1, 0, 0);
             row.Margin = new Thickness(0, 2, 0, 2);
-            row.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = d.Blocked ? UI.Bad : d.Online ? UI.B("#FF22D35A") : UI.Dim, VerticalAlignment = VerticalAlignment.Center });
-            var name = UI.T($"{d.Name}  ·  {d.Ip}" + (ShareServer.I.HasApp(d.Id) ? "  · app" : "") + (d.Blocked ? "  " + L.T("(diblokir)") : d.Online ? "" : "  · " + d.LastSeen.ToString("dd/MM HH.mm")), 12.5, d.Online ? UI.Fg : UI.Dim);
+            row.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = d.Blocked ? UI.Bad : d.Online ? UI.B("#FF22D35A") : Dim, VerticalAlignment = VerticalAlignment.Center });
+            var name = UI.T($"{d.Name}  ·  {d.Ip}" + (ShareServer.I.HasApp(d.Id) ? "  · app" : "") + (d.Blocked ? "  " + L.T("(diblokir)") : d.Online ? "" : "  · " + d.LastSeen.ToString("dd/MM HH.mm")), 12.5, d.Online ? Fg : Dim);
             name.TextTrimming = TextTrimming.CharacterEllipsis; name.MaxWidth = 175; name.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(name.At(0, 1));
             var dd = d;
-            var b1 = UI.Btn(UI.T(d.Blocked ? "Buka blokir" : "Blokir", FontCaption, UI.Dim), () => { if (dd.Blocked) ShareServer.I.Unblock(dd); else ShareServer.I.Forget(dd, true); Render(); }, UI.Card, 8, new Thickness(7, 3, 7, 3));
-            var b2 = UI.Btn(UI.T("Lupakan", FontCaption, UI.Dim), () => { ShareServer.I.Forget(dd, false); Render(); }, UI.Card, 8, new Thickness(7, 3, 7, 3));
+            var b1 = UI.Btn(UI.T(d.Blocked ? "Buka blokir" : "Blokir", FontCaption, Dim), () => { if (dd.Blocked) ShareServer.I.Unblock(dd); else ShareServer.I.Forget(dd, true); Render(); }, UI.Card, 8, new Thickness(7, 3, 7, 3));
+            var b2 = UI.Btn(UI.T("Lupakan", FontCaption, Dim), () => { ShareServer.I.Forget(dd, false); Render(); }, UI.Card, 8, new Thickness(7, 3, 7, 3));
             b1.Margin = new Thickness(6, 0, 0, 0); b2.Margin = new Thickness(4, 0, 0, 0);
             row.Children.Add(b1.At(0, 2)); row.Children.Add(b2.At(0, 3));
             list.Children.Add(row);
@@ -677,28 +686,31 @@ public sealed class SettingsView : TabView
         var g = UI.Cols(-1, 0);
         g.ColumnDefinitions[0].MinWidth = 145;
         var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-        var t = UI.T(label, FontLabel);
+        var t = UI.T(label, FontLabel, Fg);
         t.TextWrapping = TextWrapping.Wrap; t.TextTrimming = TextTrimming.None;
         left.Children.Add(t);
         if (!string.IsNullOrWhiteSpace(cap))
         {
-            var c = UI.T(cap, FontCaption, UI.Dim);
+            var c = UI.T(cap, FontCaption, Dim);
             c.TextWrapping = TextWrapping.Wrap; c.TextTrimming = TextTrimming.None; c.Margin = new Thickness(0, 3, 0, 0);
             left.Children.Add(c);
         }
-        if (ctl is FrameworkElement { Tag: "wide" } wide)
+        bool isWide = ctl is TextBox
+            || ctl is FrameworkElement { Tag: "wide" }
+            || (!string.IsNullOrWhiteSpace(cap) && L.T(cap).Length > 60);
+        if (isWide)
         {
-            // kontrol lebar (status, add-on, daftar HP) di bawah label: kolom kanan yang auto-lebar terpotong pada jendela ukuran bawaan
+            // kontrol lebar (pilihan panjang, kotak teks, keterangan panjang, add-on, daftar HP) di bawah label
             left.Margin = new Thickness(0);
-            wide.HorizontalAlignment = HorizontalAlignment.Left; wide.Margin = new Thickness(0, 6, 0, 0);
+            if (ctl is FrameworkElement fe) { fe.HorizontalAlignment = HorizontalAlignment.Left; fe.Margin = new Thickness(0, 8, 0, 0); }
             var col = new StackPanel();
-            col.Children.Add(left); col.Children.Add(wide);
-            return new Border { BorderBrush = UI.Track, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 9, 0, 10), MinHeight = 38, Child = col };
+            col.Children.Add(left); col.Children.Add(ctl);
+            return new Border { BorderBrush = Sep, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 9, 0, 10), MinHeight = 38, Child = col };
         }
         g.Children.Add(left);
         ctl.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         g.Children.Add(ctl.At(0, 1));
-        return new Border { BorderBrush = UI.Track, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 9, 0, 9), MinHeight = 38, Child = g };
+        return new Border { BorderBrush = Sep, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 9, 0, 9), MinHeight = 38, Child = g };
     }
 
     bool _moreOpen;
@@ -742,11 +754,11 @@ public sealed class SettingsView : TabView
     /// <summary>Pilihan 4 opsi atau lebih: daftar turun. Kurang dari itu: pemilih "‹ nilai ›" yang berputar.</summary>
     static UIElement Dropdown((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra)
     {
-        var txt = UI.T("", FontCtl, UI.Fg, true);
-        txt.MinWidth = 84; txt.MaxWidth = 175; txt.TextAlignment = TextAlignment.Center;
+        var txt = UI.T("", FontCtl, Fg, true);
+        txt.MinWidth = 84; txt.TextWrapping = TextWrapping.Wrap; txt.TextTrimming = TextTrimming.None; txt.TextAlignment = TextAlignment.Center;
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(txt);
-        var chev = UI.Icon("", 9, UI.Dim); chev.Margin = new Thickness(8, 1, 0, 0);
+        var chev = UI.Icon("", 9, Dim); chev.Margin = new Thickness(8, 1, 0, 0);
         row.Children.Add(chev);
         var list = new StackPanel();
         var pop = new System.Windows.Controls.Primitives.Popup
@@ -754,7 +766,7 @@ public sealed class SettingsView : TabView
             StaysOpen = false, AllowsTransparency = true, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
             Child = new Border
             {
-                Background = UI.B("#FF1C1C20"), BorderBrush = UI.Track, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Margin = new Thickness(0, 4, 0, 8),
+                Background = CardBg, BorderBrush = Sep, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Margin = new Thickness(0, 4, 0, 8),
                 Child = new ScrollViewer { MaxHeight = 260, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = list }
             }
         };
@@ -765,13 +777,14 @@ public sealed class SettingsView : TabView
             foreach (var o in opts)
             {
                 var key = o.Key;
-                var item = UI.Btn(UI.T(o.Label, FontCtl, UI.Fg, key == get()), () => { pop.IsOpen = false; set(key); Chg(extra); Paint(); },
+                var item = UI.Btn(UI.T(o.Label, FontCtl, Fg, key == get()), () => { pop.IsOpen = false; set(key); Chg(extra); Paint(); },
                     key == get() ? UI.CardOn : Brushes.Transparent, 8, new Thickness(12, 6, 12, 6));
                 item.MinWidth = 120;
                 list.Children.Add(item);
             }
             pop.IsOpen = !pop.IsOpen;
         }, UI.Card, 10, new Thickness(12, 5, 12, 5));
+        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";
         pop.PlacementTarget = b;
         Paint();
         return b;
@@ -780,13 +793,14 @@ public sealed class SettingsView : TabView
     static UIElement Choice((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra = null)
     {
         if (opts.Length >= 4) return Dropdown(opts, get, set, extra);
-        var txt = UI.T("", FontCtl, UI.Fg, true);
-        txt.MinWidth = 96; txt.MaxWidth = 175; txt.TextTrimming = TextTrimming.CharacterEllipsis; txt.TextAlignment = TextAlignment.Center;   // pilihan panjang (mis. bahasa) dipotong dengan "…" bukan terpotong di tepi
+        var txt = UI.T("", FontCtl, Fg, true);
+        txt.MinWidth = 96; txt.TextWrapping = TextWrapping.Wrap; txt.TextTrimming = TextTrimming.None; txt.TextAlignment = TextAlignment.Center;
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(UI.Icon("", 9, UI.Dim));
+        row.Children.Add(UI.Icon("", 9, Dim));
         row.Children.Add(txt);
-        row.Children.Add(UI.Icon("", 9, UI.Dim));
+        row.Children.Add(UI.Icon("", 9, Dim));
         var b = new Border { Child = row, Background = UI.Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5), Cursor = Cursors.Hand };
+        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";
         void Paint() { txt.Text = L.T(Array.Find(opts, o => o.Key == get()).Label ?? get()); txt.ToolTip = txt.Text; }
         b.MouseLeftButtonUp += (_, e) =>
         {
@@ -803,14 +817,14 @@ public sealed class SettingsView : TabView
 
     static UIElement Num(int min, int max, int step, string suffix, Func<int> get, Action<int> set, Action extra = null)
     {
-        var val = UI.T("", FontCtl, UI.Fg, true);
+        var val = UI.T("", FontCtl, Fg, true);
         val.MinWidth = 70; val.TextAlignment = TextAlignment.Center;
         void Paint() => val.Text = get() + L.T(suffix);
         void Bump(int d) { set(Math.Clamp(get() + d, min, max)); Chg(extra); Paint(); }
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(UI.Btn(UI.T("−", 14.5), () => Bump(-step), UI.Card, 999, new Thickness(9, 0, 9, 2)));
+        row.Children.Add(UI.Btn(UI.T("−", 14.5, Fg), () => Bump(-step), UI.Card, 999, new Thickness(9, 0, 9, 2)));
         row.Children.Add(val);
-        row.Children.Add(UI.Btn(UI.T("+", 14.5), () => Bump(step), UI.Card, 999, new Thickness(8, 0, 8, 2)));
+        row.Children.Add(UI.Btn(UI.T("+", 14.5, Fg), () => Bump(step), UI.Card, 999, new Thickness(8, 0, 8, 2)));
         Paint();
         return row;
     }
@@ -838,5 +852,5 @@ public sealed class SettingsView : TabView
     }
 
     static UIElement Act(string label, Action click, Brush fg) =>
-        UI.Btn(UI.T(label, FontCtl, fg, true), click, UI.Card, 10, new Thickness(12, 5, 12, 5));
+        UI.Btn(UI.T(label, FontCtl, fg == UI.Fg ? Fg : fg, true), click, UI.Card, 10, new Thickness(12, 5, 12, 5));
 }
