@@ -507,6 +507,7 @@ public sealed class ShareServer
         long lastStatTick = Environment.TickCount64, pktCount = 0, pktBytes = 0;
         PhoneAudio.Diag("HP tersambung (audio opus)");
         PhoneAudio.Diag("PhoneAudio: codec=opus avgPkt=0B");
+        StallWatch.Start();
         try
         {
             await WsIn(ns, key, data =>
@@ -530,7 +531,7 @@ public sealed class ShareServer
             });
         }
         catch (Exception ex) { PhoneAudio.Diag("aliran berhenti karena galat: " + ex.GetType().Name + " " + ex.Message); }
-        finally { PhoneAudio.Stop(); PhoneAudio.Diag($"HP terputus setelah {(DateTime.Now - t0).TotalSeconds:0} dtk"); }
+        finally { StallWatch.Stop(); PhoneAudio.Stop(); PhoneAudio.Diag($"HP terputus setelah {(DateTime.Now - t0).TotalSeconds:0} dtk"); }
     }
 
     // layar HP -> PC (JPEG/info/err) dan PC -> HP (kontrol sentuh/tombol/teks)
