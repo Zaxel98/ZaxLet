@@ -17,7 +17,7 @@ import javax.net.ssl.*;
 final class Net {
     static SharedPreferences sp;
     static Context app;
-    static String active;   // host yang terakhir berhasil (LAN diutamakan, lalu Tailscale)
+    static volatile String active;   // host yang terakhir berhasil (LAN diutamakan, lalu Tailscale)
 
     static void init(Context c) {
         app = c.getApplicationContext();
@@ -147,13 +147,16 @@ final class Net {
 
     /** Koneksi HTTPS satu permintaan (unggah/unduh) lewat host yang aktif. */
     static HttpsURLConnection http(String path, String method) throws Exception {
-        if (active == null) connect().close();
+        String host = active;
+        if (host == null) { connect().close(); host = active; }
+        if (host == null) throw new IOException("tidak ada alamat");
         String sep = path.contains("?") ? "&" : "?";
-        URL url = new URL("https://" + active + ":" + port() + path + sep + "t=" + get("t") + "&d=" + id() + "&dn=" + java.net.URLEncoder.encode(name(), "UTF-8"));
+        URL url = new URL("https://" + host + ":" + port() + path + sep + "t=" + get("t") + "&d=" + id() + "&dn=" + java.net.URLEncoder.encode(name(), "UTF-8"));
         HttpsURLConnection c = (HttpsURLConnection) url.openConnection();
         c.setSSLSocketFactory(factory());
         c.setHostnameVerifier((h, s) -> true);   // identitas dipastikan oleh sidik jari, bukan nama host
         c.setConnectTimeout(4000);
+        c.setReadTimeout(30000);
         c.setRequestMethod(method);
         return c;
     }

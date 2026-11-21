@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
         r2.addView(msg, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
         LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(-2, -2);
         kp.leftMargin = Ui.dp(this, 8);
-        r2.addView(small(Ui.button(this, "Kirim", true, v -> { if (sendText(msg.getText().toString())) msg.setText(""); })), kp);
+        r2.addView(small(Ui.button(this, "Kirim", true, v -> sendText(msg.getText().toString(), () -> msg.setText("")))), kp);
         ac.addView(r2, Ui.gap(this, 8));
         ac.addView(Ui.button(this, "Notifikasi ke PC", false, v -> startActivity(new Intent(this, AppsActivity.class))), Ui.gap(this, 8));
         audBtn = Ui.button(this, "", false, v -> toggleAudio());
@@ -206,7 +206,7 @@ public class MainActivity extends Activity {
         else if (Intent.ACTION_SEND.equals(a)) {
             Uri u = i.getParcelableExtra(Intent.EXTRA_STREAM);
             if (u != null) { ArrayList<Uri> l = new ArrayList<>(); l.add(u); upload(l); }
-            else { CharSequence t = i.getCharSequenceExtra(Intent.EXTRA_TEXT); if (t != null) sendText(t.toString()); }   // Bagikan teks dari aplikasi lain
+            else { CharSequence t = i.getCharSequenceExtra(Intent.EXTRA_TEXT); if (t != null) sendText(t.toString(), null); }   // Bagikan teks dari aplikasi lain
         } else if (Intent.ACTION_SEND_MULTIPLE.equals(a)) {
             ArrayList<Uri> l = i.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
             if (l != null) upload(l);
@@ -214,18 +214,27 @@ public class MainActivity extends Activity {
     }
 
     /** Teks ke clipboard PC lewat kanal kontrol. Bingkai di PC dibatasi 64 KB, jadi JSON-nya dijaga di bawah itu. */
-    private boolean sendText(String s) {
-        if (s == null || s.trim().isEmpty()) { toast("Teks kosong"); return false; }
-        if (!ConnService.connected()) { toast("Belum tersambung ke PC: aktifkan layanan latar belakang"); return false; }
+    private void sendText(String s, Runnable onSent) {
+        if (s == null || s.trim().isEmpty()) { toast("Teks kosong"); return; }
+        if (!ConnService.connected()) { toast("Belum tersambung ke PC: aktifkan layanan latar belakang"); return; }
+        final String j;
         try {
             org.json.JSONObject o = new org.json.JSONObject();
             o.put("t", "x"); o.put("text", s);
-            String j = o.toString();
-            if (j.getBytes("UTF-8").length > 60000) { toast("Teks terlalu panjang (maksimal sekitar 60 KB)"); return false; }
-            if (ConnService.send(j)) { toast("Teks terkirim ke PC"); return true; }
-        } catch (Exception e) { }
-        toast("Gagal mengirim, cek sambungan ke PC");
-        return false;
+            j = o.toString();
+            if (j.getBytes("UTF-8").length > 60000) { toast("Teks terlalu panjang (maksimal sekitar 60 KB)"); return; }
+        } catch (Exception e) { toast("Gagal mengirim, cek sambungan ke PC"); return; }
+        new Thread(() -> {
+            boolean ok = ConnService.send(j);
+            ui.post(() -> {
+                if (ok) {
+                    if (onSent != null) onSent.run();
+                    toast("Teks terkirim ke PC");
+                } else {
+                    toast("Gagal mengirim, cek sambungan ke PC");
+                }
+            });
+        }, "zaxlet-text").start();
     }
 
     /** Buka Google Lens untuk memindai QR dari ZaxLet PC; ketuk hasilnya (zaxlet://pair) dan aplikasi ini terbuka sendiri. Cadangan: aplikasi kamera. */
@@ -319,14 +328,18 @@ public class MainActivity extends Activity {
                         }
                     }
                     HttpsURLConnection c = Net.http("/u?n=" + Uri.encode(name), "POST");
-                    c.setDoOutput(true);
-                    if (size >= 0) c.setFixedLengthStreamingMode(size); else c.setChunkedStreamingMode(65536);
-                    try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = c.getOutputStream()) {
-                        byte[] buf = new byte[65536]; int n;
-                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                    try {
+                        c.setDoOutput(true);
+                        if (size >= 0) c.setFixedLengthStreamingMode(size); else c.setChunkedStreamingMode(65536);
+                        try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = c.getOutputStream()) {
+                            if (in == null) throw new IOException("Gagal membuka berkas");
+                            byte[] buf = new byte[65536]; int n;
+                            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                        }
+                        if (c.getResponseCode() == 200) ok++;
+                    } finally {
+                        c.disconnect();
                     }
-                    if (c.getResponseCode() == 200) ok++;
-                    c.disconnect();
                 } catch (Exception e) { Net.active = null; }
             }
             final int done = ok;
@@ -337,18 +350,24 @@ public class MainActivity extends Activity {
     private void shelf() {
         if (!Net.paired()) { toast("Pasangkan dulu dengan ZaxLet di PC"); return; }
         new Thread(() -> {
+            HttpsURLConnection c = null;
             try {
-                HttpsURLConnection c = Net.http("/shelf.json", "GET");
-                String body = readAll(c.getInputStream());
+                c = Net.http("/shelf.json", "GET");
+                int code = c.getResponseCode();
+                if (code < 200 || code >= 300) throw new IOException("HTTP " + code);
+                String body;
+                try (InputStream in = c.getInputStream()) { body = readAll(in); }
                 org.json.JSONArray a = new org.json.JSONArray(body);
                 final String[] names = new String[a.length()];
                 final int[] idx = new int[a.length()];
                 for (int i = 0; i < a.length(); i++) { names[i] = a.getJSONObject(i).getString("name"); idx[i] = a.getJSONObject(i).getInt("i"); }
                 ui.post(() -> {
+                    if (isFinishing() || isDestroyed()) return;
                     if (names.length == 0) { toast("Shelf di PC kosong"); return; }
                     new AlertDialog.Builder(this).setTitle("Shelf PC").setItems(names, (d, w) -> download(idx[w], names[w])).show();
                 });
             } catch (Exception e) { Net.active = null; ui.post(() -> toast("Gagal membaca Shelf: " + e.getMessage())); }
+            finally { if (c != null) c.disconnect(); }
         }).start();
     }
 

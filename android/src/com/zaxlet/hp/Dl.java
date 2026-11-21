@@ -42,32 +42,46 @@ final class Dl {
         try {
             int code = c.getResponseCode();
             if (code < 200 || code >= 300) throw new IOException("HTTP " + code);
-            Uri uri;
+            Uri uri = null;
+            File legacyFile = null;
             String where;
-            OutputStream out;
-            if (Build.VERSION.SDK_INT >= 29) {
-                ContentValues v = new ContentValues();
-                v.put(MediaStore.Downloads.DISPLAY_NAME, name);
-                v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ZaxLet");
-                uri = ctx.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
-                if (uri == null) throw new IOException("Gagal membuat berkas di MediaStore");
-                out = ctx.getContentResolver().openOutputStream(uri);
-                if (out == null) throw new IOException("Gagal membuka berkas tujuan");
-                where = "Download/ZaxLet";
-            } else {
-                File dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-                if (dir != null) dir.mkdirs();
-                File f = new File(dir, name);
-                out = new FileOutputStream(f);
-                uri = Uri.fromFile(f);
-                where = f.getParent();
+            OutputStream out = null;
+            boolean ok = false;
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME, name);
+                    v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ZaxLet");
+                    uri = ctx.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) throw new IOException("Gagal membuat berkas di MediaStore");
+                    out = ctx.getContentResolver().openOutputStream(uri);
+                    if (out == null) throw new IOException("Gagal membuka berkas tujuan");
+                    where = "Download/ZaxLet";
+                } else {
+                    File dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                    if (dir != null) dir.mkdirs();
+                    legacyFile = new File(dir, name);
+                    out = new FileOutputStream(legacyFile);
+                    uri = Uri.fromFile(legacyFile);
+                    where = legacyFile.getParent();
+                }
+                try (InputStream in = c.getInputStream()) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                ok = true;
+                return new Result(uri, where, name);
+            } finally {
+                if (out != null) try { out.close(); } catch (Exception ignored) { }
+                if (!ok) {
+                    if (Build.VERSION.SDK_INT >= 29 && uri != null) {
+                        try { ctx.getContentResolver().delete(uri, null, null); } catch (Exception ignored) { }
+                    } else if (legacyFile != null) {
+                        legacyFile.delete();
+                    }
+                }
             }
-            try (InputStream in = c.getInputStream(); OutputStream o = out) {
-                byte[] buf = new byte[65536];
-                int n;
-                while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
-            }
-            return new Result(uri, where, name);
         } finally {
             c.disconnect();
         }
