@@ -14,7 +14,6 @@ public static class Presets
         bool quiet = name == "tenang", full = name == "lengkap";
         s.OsdOn = !quiet;                 // popup volume, kecerahan, Caps Lock, Bluetooth, mikrofon
         s.DownloadAlert = !quiet;
-        s.WishSuggest = !quiet;
         s.PrivacyOn = full;               // "mikrofon/kamera dipakai" hanya di Lengkap
         s.NotifNewDefault = !quiet;       // aplikasi HP baru: Tenang menunggu dipilih dulu
         s.NotifOngoing = full;            // notifikasi berjalan (Gojek, dll) yang berubah terus
@@ -24,7 +23,7 @@ public static class Presets
         s.IdleLyrics = !quiet;
     }
 
-    static string Key(Settings s) => string.Concat(new[] { s.OsdOn, s.DownloadAlert, s.WishSuggest, s.PrivacyOn, s.NotifNewDefault, s.NotifOngoing, s.IdleUsage, s.IdleSpeed, s.IdleWave, s.IdleLyrics }.Select(b => b ? '1' : '0'));
+    static string Key(Settings s) => string.Concat(new[] { s.OsdOn, s.DownloadAlert, s.PrivacyOn, s.NotifNewDefault, s.NotifOngoing, s.IdleUsage, s.IdleSpeed, s.IdleWave, s.IdleLyrics }.Select(b => b ? '1' : '0'));
 
     /// <summary>"tenang", "seimbang", "lengkap", atau "custom" bila sakelarnya tidak cocok dengan salah satunya.</summary>
     public static string Detect(Settings s)

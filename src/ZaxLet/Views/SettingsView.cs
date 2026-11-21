@@ -598,26 +598,6 @@ public sealed class SettingsView : TabView
                 yield return ("~FPS rekam layar", Choice(new[] { ("15", "15"), ("30", "30"), ("60", "60") }, () => s.RecFps.ToString(), v => s.RecFps = int.Parse(v)));
                 yield return ("§Clipboard", null);
                 yield return ("Riwayat clipboard (hanya di memori)", Toggle(() => s.ClipboardOn, v => s.ClipboardOn = v));
-                yield return ("§Wishlist otomatis (ekstensi browser)", null);
-                yield return ("Panduan pemasangan\n" + (WishBridge.Connected ? L.T("Ekstensi tersambung") : L.T("Belum tersambung: Wishlist tetap bisa diisi manual")), Act("Buka panduan", () => WishGuide.Show(true), UI.Fg));
-                yield return ("Terima info produk dari ekstensi\nHanya dari browsermu ke ZaxLet di PC ini (127.0.0.1); tidak ada yang dikirim ke internet", Toggle(() => s.WishBridgeOn, v => s.WishBridgeOn = v));
-                yield return ("Sarankan simpan ke Wishlist\nSaat link produk yang baru dikenali disalin, pill menawarkannya sekali", Toggle(() => s.WishSuggest, v => s.WishSuggest = v));
-                yield return ("~Token ekstensi", Act("Salin", () => { try { Clipboard.SetText(WishBridge.Token); } catch { } }, UI.Fg));
-                yield return ("~Webhook lokal\nSkrip atau alat di PC ini bisa menampilkan pesan di pill; salin contoh perintahnya", Act("Salin contoh", () =>
-                {
-                    try { Clipboard.SetText("curl -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"Build selesai\\\",\\\"seconds\\\":6}\""); } catch { }
-                }, UI.Fg));
-                yield return ("~Hook Claude Code\nPill memberi tahu saat Claude selesai atau menunggu izin. Salin, lalu tempel ke \"hooks\" di ~/.claude/settings.json (ZaxLet tidak menulis ke sana)", Act("Salin hook", () =>
-                {
-                    string Cmd(string msg) => "curl -s -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"" + msg + "\\\",\\\"seconds\\\":6}\"";
-                    object Hook(string msg) => new[] { new { hooks = new[] { new { type = "command", command = Cmd(msg) } } } };
-                    try { Clipboard.SetText(System.Text.Json.JsonSerializer.Serialize(new { hooks = new { Stop = Hook("Claude selesai"), Notification = Hook("Claude menunggu izin") } }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })); } catch { }
-                }, UI.Fg));
-                yield return ("§Mode rapat", null);
-                yield return ("Deteksi rapat\nZoom, Meet, Teams, Webex, Skype, Slack, dan telepon WhatsApp dikenali dari pemakaian mikrofon", Toggle(() => s.MeetOn, v => s.MeetOn = v));
-                yield return ("Tombol mikrofon di pill", Toggle(() => s.MeetMic, v => s.MeetMic = v));
-                yield return ("Jeda musik selama rapat", Toggle(() => s.MeetPause, v => s.MeetPause = v));
-                yield return ("Tahan notifikasi HP selama rapat", Toggle(() => s.MeetHold, v => s.MeetHold = v));
                 yield return ("§Discord dan Meet", null);
                 yield return ("Panduan Discord\n" + (DiscordRpc.I.Connected ? L.T("Tersambung") + (DiscordRpc.I.InVoice ? " · voice: " + DiscordRpc.I.Channel : "") : DiscordRpc.Configured ? DiscordRpc.I.Status : L.T("Cara cepat siap; cara lengkap belum disambungkan")), Act("Buka panduan", () => DiscordGuide.Show(true), UI.Fg));
                 yield return ("~Atur ulang sambungan Discord", Act("Atur ulang", () => { s.DiscordClientId = s.DiscordSecret = ""; s.DiscordSetupAsked = false; DiscordRpc.I.ResetToken(); Render(); }, UI.Warn));

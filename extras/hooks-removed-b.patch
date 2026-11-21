@@ -1,0 +1,547 @@
+﻿diff --git a/src/ZaxLet/App.xaml.cs b/src/ZaxLet/App.xaml.cs
+index 7007d86..aa700b3 100644
+--- a/src/ZaxLet/App.xaml.cs
++++ b/src/ZaxLet/App.xaml.cs
+@@ -64,20 +64,6 @@ public partial class App : Application
+         {
+             if (a.StartsWith("--tab=")) { Settings.Cur.LastTab = a[6..]; w.OpenNow(); w.KeepOpen(true); }
+             else if (a == "--shot") CaptureService.Full();
+-            else if (a.StartsWith("--wish-probe="))   // uji ambil info produk satu link -> %ZAXLET_UI_OUT%\wish-probe.txt (tanpa mengubah wishlist)
+-            {
+-                var rep = System.Threading.Tasks.Task.Run(() => Wishlist.Probe(a[13..])).GetAwaiter().GetResult();
+-                var o = Environment.GetEnvironmentVariable("ZAXLET_UI_OUT") is { Length: > 0 } d ? d : Settings.Dir;
+-                System.IO.Directory.CreateDirectory(o);
+-                System.IO.File.WriteAllText(System.IO.Path.Combine(o, "wish-probe.txt"), rep);
+-            }
+-            else if (a.StartsWith("--wish-add="))   // uji: tambah link ke Wishlist 6 dtk setelah mulai (memberi waktu ekstensi/uji mengirim info halaman)
+-            {
+-                var u = a[11..];
+-                var wt = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+-                wt.Tick += (_, _) => { wt.Stop(); Wishlist.Add(u); };
+-                wt.Start();
+-            }
+             else if (a == "--fps-test")   // uji FPS: mencoba sesi langsung, bila ditolak meminta UAC; 15 dtk membaca FPS -> fps-test.txt
+             {
+                 System.Threading.Tasks.Task.Run(() =>
+@@ -232,8 +218,6 @@ public partial class App : Application
+         void Safe(Action act) { try { act(); } catch (Exception ex) { Log(ex); } }
+         Safe(() => _ = MediaService.I.StartAsync());
+         Safe(() => PrayerAlerts.Start());
+-        Safe(() => WishBridge.Apply());
+-        Settings.Applied += WishBridge.Apply;
+         Safe(() => WeatherService.I.Apply());
+         Settings.Applied += WeatherService.I.Apply;   // nyala/mati dari Pengaturan berlaku langsung
+         Safe(() => HydrationService.I.Start());
+diff --git a/src/ZaxLet/Core/Presets.cs b/src/ZaxLet/Core/Presets.cs
+index 738480d..fb1d422 100644
+--- a/src/ZaxLet/Core/Presets.cs
++++ b/src/ZaxLet/Core/Presets.cs
+@@ -14,7 +14,6 @@ public static class Presets
+         bool quiet = name == "tenang", full = name == "lengkap";
+         s.OsdOn = !quiet;                 // popup volume, kecerahan, Caps Lock, Bluetooth, mikrofon
+         s.DownloadAlert = !quiet;
+-        s.WishSuggest = !quiet;
+         s.PrivacyOn = full;               // "mikrofon/kamera dipakai" hanya di Lengkap
+         s.NotifNewDefault = !quiet;       // aplikasi HP baru: Tenang menunggu dipilih dulu
+         s.NotifOngoing = full;            // notifikasi berjalan (Gojek, dll) yang berubah terus
+@@ -24,7 +23,7 @@ public static class Presets
+         s.IdleLyrics = !quiet;
+     }
+ 
+-    static string Key(Settings s) => string.Concat(new[] { s.OsdOn, s.DownloadAlert, s.WishSuggest, s.PrivacyOn, s.NotifNewDefault, s.NotifOngoing, s.IdleUsage, s.IdleSpeed, s.IdleWave, s.IdleLyrics }.Select(b => b ? '1' : '0'));
++    static string Key(Settings s) => string.Concat(new[] { s.OsdOn, s.DownloadAlert, s.PrivacyOn, s.NotifNewDefault, s.NotifOngoing, s.IdleUsage, s.IdleSpeed, s.IdleWave, s.IdleLyrics }.Select(b => b ? '1' : '0'));
+ 
+     /// <summary>"tenang", "seimbang", "lengkap", atau "custom" bila sakelarnya tidak cocok dengan salah satunya.</summary>
+     public static string Detect(Settings s)
+diff --git a/src/ZaxLet/Core/QuickCmd.cs b/src/ZaxLet/Core/QuickCmd.cs
+index 1afd031..aa95263 100644
+--- a/src/ZaxLet/Core/QuickCmd.cs
++++ b/src/ZaxLet/Core/QuickCmd.cs
+@@ -4,15 +4,15 @@ namespace ZaxLet;
+ 
+ /// <summary>
+ /// Perintah singkat untuk kotak Aksi cepat (pintasan keyboard, gaya rofi/Spotlight): satu baris teks jadi satu aksi, tanpa membuka tab.
+-/// Murni (tanpa WPF), jadi bisa dites. Contoh: "t 10m", "fokus 25", "catat beli susu", "w https://...", "minum 250", "tema neon", "sembunyi".
++/// Murni (tanpa WPF), jadi bisa dites. Contoh: "t 10m", "fokus 25", "catat beli susu", "minum 250", "tema neon", "sembunyi".
+ /// </summary>
+ public static class QuickCmd
+ {
+-    public enum Kind { None, Timer, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
++    public enum Kind { None, Timer, Note, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
+ 
+     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
+ 
+-    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
++    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
+ 
+     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
+ 
+@@ -34,8 +34,6 @@ public static class QuickCmd
+                 return DurText.Parse(arg, 60, out var sec) && sec >= 1 ? new Cmd(Kind.Timer, arg, sec) : new Cmd(Kind.Unknown, "t 10m = timer 10 menit");   // angka tanpa satuan = menit
+             case "catat": case "todo": case "note":
+                 return arg.Length > 0 ? new Cmd(Kind.Note, arg.Length > 200 ? arg[..200] : arg) : new Cmd(Kind.Unknown, "catat <teks>");
+-            case "w": case "wish": case "wishlist":
+-                return Uri.TryCreate(arg, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) ? new Cmd(Kind.Wish, arg) : new Cmd(Kind.Unknown, "w <link produk>");
+             case "minum": case "air": case "drink":
+                 if (arg.Length == 0) return new Cmd(Kind.Water, "", 0);   // 0 = ukuran gelas bawaan
+                 return int.TryParse(arg, out var ml) && ml is >= 10 and <= 2000 ? new Cmd(Kind.Water, arg, ml) : new Cmd(Kind.Unknown, "minum 250 = 250 ml (10-2000)");
+diff --git a/src/ZaxLet/Core/Settings.cs b/src/ZaxLet/Core/Settings.cs
+index 9747b12..081e907 100644
+--- a/src/ZaxLet/Core/Settings.cs
++++ b/src/ZaxLet/Core/Settings.cs
+@@ -204,13 +204,6 @@ public sealed class Settings
+     public string CapDir { get; set; } = "";
+     public bool CapClipboard { get; set; } = true;
+     public int RecFps { get; set; } = 30;
+-    public bool WishBridgeOn { get; set; } = true;             // terima info halaman produk dari ekstensi browser (hanya 127.0.0.1)
+-    public bool WishSuggest { get; set; } = true;              // link produk yang dikenali ekstensi ditawarkan ke Wishlist saat disalin
+-    [JsonConverter(typeof(SecretConverter))] public string WishToken { get; set; } = "";              // rahasia ekstensi browser; dibuat sekali, tidak ikut cadangan
+-    public bool MeetOn { get; set; } = true;                  // deteksi rapat (Zoom, Meet, Teams, ...) lewat pemakaian mikrofon
+-    public bool MeetMic { get; set; } = true;                  // tombol mikrofon di pill selama rapat
+-    public bool MeetPause { get; set; } = true;                // musik dijeda selama rapat
+-    public bool MeetHold { get; set; } = true;                 // notifikasi HP ditahan selama rapat
+ 
+     // minum: pengingat lembut, hanya saat jam aktif, dan (mode pintar) hanya bila asupan tertinggal dari jadwal
+     public bool WaterOn { get; set; } = true;
+diff --git a/src/ZaxLet/IslandWindow.Features.cs b/src/ZaxLet/IslandWindow.Features.cs
+index 7c967bc..17ec7d6 100644
+--- a/src/ZaxLet/IslandWindow.Features.cs
++++ b/src/ZaxLet/IslandWindow.Features.cs
+@@ -28,7 +28,7 @@ public partial class IslandWindow
+ 
+     static readonly Guid GUID_DEVINTERFACE_VOLUME = new("53f5630d-b6bf-11d0-94f2-00a0c91efb8b");
+ 
+-    static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["wish"] = ("", "Wishlist");TabMeta["clip"] = ("", "Clipboard"); }
++    static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["clip"] = ("", "Clipboard"); }
+ 
+     // ---------- tema, mode tampil, musik di layar penuh ----------
+     static readonly Dictionary<string, Brush> ThemeBrushes = BuildThemes();
+@@ -73,7 +73,7 @@ public partial class IslandWindow
+ 
+     /// <summary>Ada yang sedang terjadi di island (musik, notifikasi, timer, rapat, fokus, rekaman): dipakai mode "hanya saat ada aktivitas".</summary>
+     bool HasActivity() => _open || MediaService.I.Playing || _rows.Count > 0 || _alert != null && DateTime.Now < _alertUntil
+-        || TimerService.I.Running || MeetingService.I.Active || CaptureService.Recording;
++        || TimerService.I.Running || CaptureService.Recording;
+ 
+     bool FsMusicOn => _fsApp && Settings.Cur.FsMusic && MediaService.I.Playing;
+ 
+@@ -252,7 +252,7 @@ public partial class IslandWindow
+         else if (_altT.IsEnabled) { _altT.Stop(); AltCheck(); }   // AltCheck terakhir melepas pill yang sedang "hantu"
+         if (s.OsdOn || s.YieldOn) _osdT.Start(); else _osdT.Stop();   // YieldOn: poll yang sama mengisi persegi pill untuk YieldService
+         _yield.Enable(s.YieldOn);
+-        bool slow = s.OsdOn || s.PrivacyOn || s.MeetOn || ShareServer.I.On || MeetingService.I.Active;
++        bool slow = s.OsdOn || s.PrivacyOn || ShareServer.I.On;
+         if (slow != _slowOn && _slowT != null) { _slowOn = slow; _slowT.Change(slow ? 4000 : Timeout.Infinite, slow ? 2000 : Timeout.Infinite); }
+     }
+ 
+@@ -299,7 +299,7 @@ public partial class IslandWindow
+     /// <summary>Dipanggil dari hook jendela: pesan Windows yang dipakai fitur tambahan.</summary>
+     void HookFeatures(int msg, IntPtr wp, IntPtr lp, ref bool handled)
+     {
+-        if (msg == 0x031D) { ClipboardHistory.Capture(); WishBridge.OnClipboard(); handled = true; }   // WM_CLIPBOARDUPDATE
++        if (msg == 0x031D) { ClipboardHistory.Capture(); handled = true; }   // WM_CLIPBOARDUPDATE
+         else if (msg == 0x0219)   // WM_DEVICECHANGE
+         {
+             long ev = wp.ToInt64();
+@@ -516,7 +516,6 @@ public partial class IslandWindow
+                     Alert(L.F(n.StartsWith("mic:") ? "Mikrofon dipakai: {0}" : "Kamera dipakai: {0}", n[4..]), 4, null, sound: false);
+                 _lastPrivacy = now;
+             }
+-            MeetingService.I.Poll();
+             if (ShareServer.I.On && !_netWarned)
+             {
+                 var net = NetInfo.Current();
+diff --git a/src/ZaxLet/IslandWindow.xaml.cs b/src/ZaxLet/IslandWindow.xaml.cs
+index ee62523..6c0d550 100644
+--- a/src/ZaxLet/IslandWindow.xaml.cs
++++ b/src/ZaxLet/IslandWindow.xaml.cs
+@@ -28,7 +28,7 @@ public partial class IslandWindow : Window
+         ["settings"] = ("", "Atur"),
+         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
+     };
+-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "settings" };
++    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "clip", "tools", "timer", "settings" };
+     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
+     public static string[] TabOrder
+     {
+@@ -73,10 +73,6 @@ public partial class IslandWindow : Window
+     readonly Canvas _batIcon = new() { Width = 27, Height = 14, VerticalAlignment = VerticalAlignment.Center };
+     readonly System.Windows.Shapes.Ellipse _phoneDot = new() { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+     readonly System.Windows.Shapes.Ellipse _voiceDot = new() { Width = 9, Height = 9, Fill = UI.B("#FF22D35A"), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed, ToolTip = L.T("Sedang di voice channel Discord") };
+-    // tombol mikrofon saat rapat: hijau = mikrofon hidup, merah bercoret = bisu (mikrofon utama Windows, berlaku di semua aplikasi)
+-    readonly TextBlock _micGlyph = new() { FontFamily = new FontFamily("Segoe MDL2 Assets, Segoe Fluent Icons"), Text = "\uE720", FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+-    readonly System.Windows.Shapes.Line _micSlash = new() { X1 = 1, Y1 = 1, X2 = 15, Y2 = 15, StrokeThickness = 1.6, Stroke = UI.B("#FFFF453A"), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+-    readonly Border _micBtn = new() { Width = 24, Height = 22, CornerRadius = new CornerRadius(11), Background = UI.B("#22FFFFFF"), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+     readonly Marquee Row2 = new() { Foreground = UI.B("#A6FFFFFF") };
+     // notifikasi HP yang sedang tampil di pill: satu baris per notifikasi (key unik), terbaru di atas
+     sealed class NotifRow { public PhoneNotif N; public DateTime Until; public int Count = 1; }   // Count: notifikasi berbeda dari aplikasi yang sama berturut-turut
+@@ -114,7 +110,6 @@ public partial class IslandWindow : Window
+         _make["apps"] = () => new AppsView();
+         _make["ctrl"] = () => new ControlView();
+         _make["clip"] = () => new ClipboardView();
+-        _make["wish"] = () => new WishlistView();
+         BuildTabBar();
+         BuildIdleWidgets();
+         _closeT.Interval = TimeSpan.FromMilliseconds(Math.Clamp(Settings.Cur.CloseDelayMs, 50, 600000));
+@@ -644,7 +639,6 @@ public partial class IslandWindow : Window
+         _usageBox.Visibility = c || x || a ? Visibility.Visible : Visibility.Collapsed;
+         _voiceDot.Visibility = full && DiscordRpc.I.InVoice ? Visibility.Visible : Visibility.Collapsed;   // titik hijau: sedang di voice channel
+         UpdatePhoneDot(full);
+-        UpdateMicBtn(full);
+         bool sp = full && s.IdleSpeed;
+         if (sp) { NetMeter.Sample(); SetSpeed(NetMeter.Fmt(NetMeter.DownKb), s.IdleSpeedStyle == "both" ? NetMeter.Fmt(NetMeter.UpKb) : null); }
+         _speed.Visibility = sp ? Visibility.Visible : Visibility.Collapsed;
+@@ -681,7 +675,7 @@ public partial class IslandWindow : Window
+         if (Row2.Text != (text ?? "")) Row2.Text = text ?? "";
+         Row2.Foreground = br;
+ 
+-        var key = $"{clock.Length}|{c}|{x}|{a}|{sp}|{_chipC.Key}|{_chipX.Key}|{_chipA.Key}|{_speed.Tag}|{_batText.Text}|{_batText.Visibility}|{_waveOn}|{text != null}|{shownRows}|{_phoneDot.Visibility}|{_voiceDot.Visibility}|{_micBtn.Visibility}|{MeetingService.I.MicMuted}|{mini}|{clock}";
++        var key = $"{clock.Length}|{c}|{x}|{a}|{sp}|{_chipC.Key}|{_chipX.Key}|{_chipA.Key}|{_speed.Tag}|{_batText.Text}|{_batText.Visibility}|{_waveOn}|{text != null}|{shownRows}|{_phoneDot.Visibility}|{_voiceDot.Visibility}|{mini}|{clock}";
+         if (key != _idleKey)
+         {
+             _idleKey = key;
+@@ -759,18 +753,6 @@ public partial class IslandWindow : Window
+         return ex + (exact ? Math.Max(120, c + 2 * Math.Max(l, r) + 28) : Math.Max(120, l + c + r + 28));   // jarak antar komponen tetap: Settings.IdleGap
+     }
+ 
+-    void UpdateMicBtn(bool full)
+-    {
+-        var s = Settings.Cur;
+-        bool on = full && s.MeetOn && s.MeetMic && MeetingService.I.Active;
+-        _micBtn.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+-        if (!on) return;
+-        bool muted = MeetingService.I.MicMuted;
+-        _micGlyph.Foreground = muted ? UI.B("#FFFF453A") : UI.B("#FF30D158");
+-        _micSlash.Visibility = muted ? Visibility.Visible : Visibility.Collapsed;
+-        _micBtn.ToolTip = L.F(muted ? "Rapat {0}: mikrofon bisu, klik untuk menyalakan" : "Rapat {0}: klik untuk membisukan mikrofon", MeetingService.I.App);
+-    }
+-
+     // titik status HP, dua keadaan saja: menyala (terisi) = HP tersambung; kosong (hanya cincin) = tidak tersambung, apa pun sebabnya
+     void UpdatePhoneDot(bool full)
+     {
+@@ -805,14 +787,14 @@ public partial class IslandWindow : Window
+         var s = Settings.Cur;
+         ZoneL.Children.Clear(); ZoneC.Children.Clear(); ZoneR.Children.Clear();
+         void Put(string pos, UIElement e) => (pos switch { "left" => ZoneL, "right" => ZoneR, _ => ZoneC }).Children.Add(e);
+-        Put(s.PosWave, _wave); Put(s.PosUsage, _usageBox); Put(s.PosSpeed, _speed); Put(s.PosClock, TimeText); Put(s.PosBattery, _batBox); Put(s.PosVoice, _voiceDot); Put(s.PosPhone, _phoneDot); Put("right", _micBtn);
++        Put(s.PosWave, _wave); Put(s.PosUsage, _usageBox); Put(s.PosSpeed, _speed); Put(s.PosClock, TimeText); Put(s.PosBattery, _batBox); Put(s.PosVoice, _voiceDot); Put(s.PosPhone, _phoneDot);
+     }
+ 
+     // Semua komponen punya margin sama: jarak antar dua komponen = IdleGap, tidak ada ruang kosong tambahan.
+     void ApplyGap()
+     {
+         var m = new Thickness(Settings.Cur.IdleGap / 2.0, 0, Settings.Cur.IdleGap / 2.0, 0);
+-        TimeText.Margin = _batBox.Margin = _speed.Margin = _wave.Margin = _chipC.Margin = _chipX.Margin = _chipA.Margin = _voiceDot.Margin = _phoneDot.Margin = _micBtn.Margin = m;
++        TimeText.Margin = _batBox.Margin = _speed.Margin = _wave.Margin = _chipC.Margin = _chipX.Margin = _chipA.Margin = _voiceDot.Margin = _phoneDot.Margin = m;
+         _usageBox.Margin = new Thickness(0);
+     }
+ 
+@@ -840,15 +822,9 @@ public partial class IslandWindow : Window
+         Grid.SetColumn(Row2, 1);
+         Row2Host.Children.Add(Row2);
+         DiscordRpc.I.Changed += () => { _idleKey = ""; RefreshIdle(); };
+-        var micHost = new Grid { Width = 16, Height = 16, IsHitTestVisible = false };
+-        micHost.Children.Add(_micGlyph); micHost.Children.Add(_micSlash);
+-        _micBtn.Child = micHost;
+-        _micBtn.MouseLeftButtonUp += (_, e) => { e.Handled = true; MeetingService.I.ToggleMic(); };
+-        MeetingService.I.Changed += () => { _idleKey = ""; RefreshIdle(); };
+         ShareServer.I.DevicesChanged += () => { _idleKey = ""; RefreshIdle(); };
+         PhoneNotifs.Posted += n =>
+         {
+-            if (Settings.Cur.MeetHold && MeetingService.I.Active && Otp.Find(n.Title, n.Text) == null) return;   // Mode rapat: ditahan, OTP tetap lewat
+             // idle hanya satu baris: notifikasi terbaru menggantikan yang lama (percakapan lengkap ada di tab Komunikasi)
+             // notifikasi lain dari aplikasi yang sama saat yang lama masih tampil digabung: satu baris dengan penanda "(+n)", bukan baris yang terus berganti
+             int count = _rows.Count > 0 && _rows[0].N.Pkg == n.Pkg && _rows[0].N.Key != n.Key && DateTime.Now < _rows[0].Until ? _rows[0].Count + 1 : _rows.Count > 0 && _rows[0].N.Key == n.Key ? _rows[0].Count : 1;
+diff --git a/src/ZaxLet/Services/SettingsBackup.cs b/src/ZaxLet/Services/SettingsBackup.cs
+index e3b78fb..38f704d 100644
+--- a/src/ZaxLet/Services/SettingsBackup.cs
++++ b/src/ZaxLet/Services/SettingsBackup.cs
+@@ -14,7 +14,7 @@ namespace ZaxLet;
+ public static class SettingsBackup
+ {
+     public const int Format = 1;
+-    public static readonly string[] Secrets = { "ShareToken", "WishToken", "DiscordSecret", "DiscordClientId", "SongIdToken" };
++    public static readonly string[] Secrets = { "ShareToken", "DiscordSecret", "DiscordClientId", "SongIdToken" };
+ 
+     public static string Export(string settingsJson)
+     {
+diff --git a/src/ZaxLet/Views/Guides.cs b/src/ZaxLet/Views/Guides.cs
+index 71f43fa..c3edefd 100644
+--- a/src/ZaxLet/Views/Guides.cs
++++ b/src/ZaxLet/Views/Guides.cs
+@@ -328,69 +328,3 @@ public static class DiscordGuide
+     }
+ }
+ 
+-/// <summary>Panduan Wishlist otomatis: memasang ekstensi browser, menyambungkannya dengan token, lalu cara memakainya.</summary>
+-public static class WishGuide
+-{
+-    public static void Show(bool force = true) => GuideWindow.Show("wish", Steps(), force);
+-
+-    static string Folder => System.IO.Path.Combine(AppContext.BaseDirectory, "extension");
+-
+-    internal static List<GuideStep> Steps()
+-    {
+-        TextBlock link = null, seen = null;
+-        return new List<GuideStep>
+-        {
+-            new()
+-            {
+-                Title = "Pasang di Firefox",
+-                Body = "Ekstensi kecil di browsermu membaca halaman produk yang kamu buka (browsermu sendiri, jadi toko yang menolak program lain tetap terbaca) dan mengirimnya ke ZaxLet di PC ini saja. Firefox rilis hanya memasang ekstensi yang ditandatangani Mozilla. Untuk mencoba sekarang: buka about:debugging, klik Muat Add-on Sementara, lalu pilih manifest.json di folder yang dibuka tombol di bawah (hilang saat Firefox ditutup). Untuk permanen: kirim zaxlet-wishlist.xpi (ada di folder yang sama) ke addons.mozilla.org lewat Developer Hub > Submit a New Add-on > On your own (gratis, ditandatangani dalam beberapa menit), lalu pasang berkas bertanda tangan itu.",
+-                Build = () =>
+-                {
+-                    var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+-                    sp.Children.Add(UI.Btn(UI.T("Buka folder ekstensi", 12.5, UI.Fg, true), () =>
+-                    {
+-                        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "\"" + Folder + "\"") { UseShellExecute = true }); } catch (Exception ex) { App.Log(ex); }
+-                    }, UI.AccentBg, 10, new Thickness(14, 6, 14, 6)));
+-                    var copy = UI.Btn(UI.T("Salin about:debugging", 12.5, UI.Fg, true), () => { try { Clipboard.SetText("about:debugging#/runtime/this-firefox"); } catch { } }, UI.Card, 10, new Thickness(14, 6, 14, 6));
+-                    copy.Margin = new Thickness(8, 0, 0, 0);
+-                    sp.Children.Add(copy);
+-                    return sp;
+-                },
+-            },
+-            new()
+-            {
+-                Title = "Atau pasang di Chrome, Edge, Brave",
+-                Body = "Buka halaman ekstensi, nyalakan Mode pengembang, klik Muat yang belum dipaket, lalu pilih folder ekstensi (tombol di langkah sebelumnya membukanya). Tidak perlu tanda tangan. Langkah ini dan langkah Firefox boleh dipilih salah satu.",
+-                Build = () =>
+-                {
+-                    var b = UI.Btn(UI.T("Salin chrome://extensions", 12.5, UI.Fg, true), () => { try { Clipboard.SetText("chrome://extensions"); } catch { } }, UI.Card, 10, new Thickness(14, 6, 14, 6));
+-                    b.Margin = new Thickness(0, 4, 0, 0); b.HorizontalAlignment = HorizontalAlignment.Left;
+-                    return b;
+-                },
+-            },
+-            new()
+-            {
+-                Title = "Hubungkan dengan token",
+-                Body = "Klik ikon ekstensi ZaxLet Wishlist di browser (Firefox: menu puzzle, lalu ZaxLet Wishlist). Halaman pengaturannya terbuka. Di Firefox, klik dulu Izinkan akses ke situs. Lalu tempel token dari tombol di bawah, dan klik Simpan dan tes sambungan.",
+-                Build = () =>
+-                {
+-                    var sp = new StackPanel();
+-                    link = GuideWindow.Status(false, "");
+-                    sp.Children.Add(link);
+-                    var b = UI.Btn(UI.T("Salin token", 12.5, UI.Fg, true), () => { try { Clipboard.SetText(WishBridge.Token); } catch { } }, UI.AccentBg, 10, new Thickness(14, 6, 14, 6));
+-                    b.Margin = new Thickness(0, 8, 0, 0); b.HorizontalAlignment = HorizontalAlignment.Left;
+-                    sp.Children.Add(b);
+-                    return sp;
+-                },
+-                Tick = () => { if (link != null) GuideWindow.SetStatus(link, WishBridge.Connected, WishBridge.Connected ? L.T("Ekstensi tersambung") : WishBridge.Listening ? L.T("Menunggu ekstensi") : L.T("Penerima mati: nyalakan di Pengaturan > Alat")); },
+-            },
+-            new()
+-            {
+-                Title = "Cara memakainya",
+-                Body = "Buka halaman produk di toko seperti biasa dan tunggu sebentar. Salin linknya (Ctrl+L lalu Ctrl+C). Pill menawarkan Produk dikenali: klik untuk menyimpannya. Atau buka tab Wishlist dan klik + Tempel link. Judul, harga, dan gambar terisi sendiri. Bila halaman bukan produk, tidak ada yang dikirim.",
+-                Build = () => { seen = GuideWindow.Status(false, ""); return seen; },
+-                Tick = () => { if (seen != null) GuideWindow.SetStatus(seen, WishBridge.Received > 0, WishBridge.Received > 0 ? L.F("{0} halaman produk diterima", WishBridge.Received) : L.T("Belum ada halaman produk diterima")); },
+-            },
+-        };
+-    }
+-}
+diff --git a/src/ZaxLet/Views/QuickWindow.cs b/src/ZaxLet/Views/QuickWindow.cs
+index b3db589..007affe 100644
+--- a/src/ZaxLet/Views/QuickWindow.cs
++++ b/src/ZaxLet/Views/QuickWindow.cs
+@@ -73,8 +73,6 @@ public sealed class QuickWindow : Window
+                 msg = L.F("Timer {0} berjalan", DurText.Fmt(c.Value)); break;
+             case QuickCmd.Kind.Note:
+                 CalendarService.I.Add(DateOnly.FromDateTime(DateTime.Today), c.Arg); msg = L.T("Dicatat di tugas hari ini"); break;
+-            case QuickCmd.Kind.Wish:
+-                msg = Wishlist.Add(c.Arg) ? L.T("Masuk Wishlist") : L.T("Link tidak valid"); break;
+             case QuickCmd.Kind.Water:
+                 int ml = c.Value > 0 ? (int)c.Value : Settings.Cur.WaterCupMl;
+                 HydrationService.I.Add(ml); msg = L.F("Minum +{0} ml", ml); break;
+diff --git a/src/ZaxLet/Views/SettingsView.cs b/src/ZaxLet/Views/SettingsView.cs
+index 693c344..a46dd24 100644
+--- a/src/ZaxLet/Views/SettingsView.cs
++++ b/src/ZaxLet/Views/SettingsView.cs
+@@ -598,26 +598,6 @@ public sealed class SettingsView : TabView
+                 yield return ("~FPS rekam layar", Choice(new[] { ("15", "15"), ("30", "30"), ("60", "60") }, () => s.RecFps.ToString(), v => s.RecFps = int.Parse(v)));
+                 yield return ("§Clipboard", null);
+                 yield return ("Riwayat clipboard (hanya di memori)", Toggle(() => s.ClipboardOn, v => s.ClipboardOn = v));
+-                yield return ("§Wishlist otomatis (ekstensi browser)", null);
+-                yield return ("Panduan pemasangan\n" + (WishBridge.Connected ? L.T("Ekstensi tersambung") : L.T("Belum tersambung: Wishlist tetap bisa diisi manual")), Act("Buka panduan", () => WishGuide.Show(true), UI.Fg));
+-                yield return ("Terima info produk dari ekstensi\nHanya dari browsermu ke ZaxLet di PC ini (127.0.0.1); tidak ada yang dikirim ke internet", Toggle(() => s.WishBridgeOn, v => s.WishBridgeOn = v));
+-                yield return ("Sarankan simpan ke Wishlist\nSaat link produk yang baru dikenali disalin, pill menawarkannya sekali", Toggle(() => s.WishSuggest, v => s.WishSuggest = v));
+-                yield return ("~Token ekstensi", Act("Salin", () => { try { Clipboard.SetText(WishBridge.Token); } catch { } }, UI.Fg));
+-                yield return ("~Webhook lokal\nSkrip atau alat di PC ini bisa menampilkan pesan di pill; salin contoh perintahnya", Act("Salin contoh", () =>
+-                {
+-                    try { Clipboard.SetText("curl -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"Build selesai\\\",\\\"seconds\\\":6}\""); } catch { }
+-                }, UI.Fg));
+-                yield return ("~Hook Claude Code\nPill memberi tahu saat Claude selesai atau menunggu izin. Salin, lalu tempel ke \"hooks\" di ~/.claude/settings.json (ZaxLet tidak menulis ke sana)", Act("Salin hook", () =>
+-                {
+-                    string Cmd(string msg) => "curl -s -X POST http://127.0.0.1:" + WishBridge.Port + "/notify -H \"X-ZaxLet-Token: " + WishBridge.Token + "\" -d \"{\\\"text\\\":\\\"" + msg + "\\\",\\\"seconds\\\":6}\"";
+-                    object Hook(string msg) => new[] { new { hooks = new[] { new { type = "command", command = Cmd(msg) } } } };
+-                    try { Clipboard.SetText(System.Text.Json.JsonSerializer.Serialize(new { hooks = new { Stop = Hook("Claude selesai"), Notification = Hook("Claude menunggu izin") } }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })); } catch { }
+-                }, UI.Fg));
+-                yield return ("§Mode rapat", null);
+-                yield return ("Deteksi rapat\nZoom, Meet, Teams, Webex, Skype, Slack, dan telepon WhatsApp dikenali dari pemakaian mikrofon", Toggle(() => s.MeetOn, v => s.MeetOn = v));
+-                yield return ("Tombol mikrofon di pill", Toggle(() => s.MeetMic, v => s.MeetMic = v));
+-                yield return ("Jeda musik selama rapat", Toggle(() => s.MeetPause, v => s.MeetPause = v));
+-                yield return ("Tahan notifikasi HP selama rapat", Toggle(() => s.MeetHold, v => s.MeetHold = v));
+                 yield return ("§Discord dan Meet", null);
+                 yield return ("Panduan Discord\n" + (DiscordRpc.I.Connected ? L.T("Tersambung") + (DiscordRpc.I.InVoice ? " · voice: " + DiscordRpc.I.Channel : "") : DiscordRpc.Configured ? DiscordRpc.I.Status : L.T("Cara cepat siap; cara lengkap belum disambungkan")), Act("Buka panduan", () => DiscordGuide.Show(true), UI.Fg));
+                 yield return ("~Atur ulang sambungan Discord", Act("Atur ulang", () => { s.DiscordClientId = s.DiscordSecret = ""; s.DiscordSetupAsked = false; DiscordRpc.I.ResetToken(); Render(); }, UI.Warn));
+diff --git a/src/ZaxLet/Views/UiTest.cs b/src/ZaxLet/Views/UiTest.cs
+index 7e0f4fb..533baf5 100644
+--- a/src/ZaxLet/Views/UiTest.cs
++++ b/src/ZaxLet/Views/UiTest.cs
+@@ -50,13 +50,9 @@ public static class UiTest
+             }
+         }
+ 
+-        // tab-tab yang sering berubah: dirender apa adanya (Wishlist diisi dua item contoh tanpa jaringan)
+-        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: pakai isi wishlist.json di folder data (salinan), bukan contoh
++        // tab-tab yang sering berubah: dirender apa adanya
++        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: pakai isi data di folder data (salinan), bukan contoh
+         {
+-            Wishlist.Items.Clear();
+-            Wishlist.Items.Add(new WishItem { Id = "t1", Url = "https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.1.2", Title = "Fuwa Petit Mascot Akiyama Mizuki", Price = "IDR 149,000", Source = "Shopee", Added = DateTime.Now });
+-            Wishlist.Items.Add(new WishItem { Id = "t2", Url = "https://kyou-hobby.com/p/nendoroid-miku", Title = "nendoroid miku", Source = "Kyou Hobby", Added = DateTime.Now });
+-
+             ClipboardHistory.Items.Clear();
+             ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "git status && dotnet test --no-restore", At = DateTime.Now.AddMinutes(-2), Pinned = true });
+             ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "Ini adalah contoh teks clipboard yang sangat panjang untuk menguji apakah pemotongan baris atau elipsis di tab Clipboard bekerja dengan rapi tanpa menabrak tombol pin dan hapus di sebelah kanan layar.", At = DateTime.Now.AddMinutes(-5) });
+@@ -68,7 +64,7 @@ public static class UiTest
+         Settings.Cur.ClipboardOn = true;
+         foreach (var (name, make) in new (string, Func<TabView>)[]
+         {
+-            ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()),
++            ("timer", () => new TimerView()), ("shelf", () => new ShelfView()),
+             ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()),
+             ("usage", () => new UsageView()), ("monitor", () => MonitorView.Preview()), ("today", () => new CalendarView()),
+             ("prayer", () => new PrayerView()), ("comm", () => new AppsView()), ("clipboard", () => new ClipboardView()),
+@@ -164,7 +160,6 @@ public static class UiTest
+         }
+         Guide("hp", PhoneGuide.Steps());
+         Guide("discord", DiscordGuide.Steps());
+-        Guide("wish", WishGuide.Steps());
+ 
+         lock (L.Misses) File.WriteAllLines(Path.Combine(dir, "missing.txt"), L.Misses);
+         File.WriteAllText(Path.Combine(dir, "ui-test.txt"), log.ToString());
+diff --git a/src/ZaxLet/ZaxLet.csproj b/src/ZaxLet/ZaxLet.csproj
+index 6a5913e..42f7a05 100644
+--- a/src/ZaxLet/ZaxLet.csproj
++++ b/src/ZaxLet/ZaxLet.csproj
+@@ -29,9 +29,4 @@
+     <PackageReference Include="Concentus" Version="2.2.3" />
+   </ItemGroup>
+ 
+-  <!-- ekstensi browser untuk Wishlist ikut ke dist\extension (dan ke installer); dimuat dari sana lewat "Muat yang belum dipaket" -->
+-  <ItemGroup>
+-    <None Include="..\BrowserExtension\*" Link="extension\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+-  </ItemGroup>
+-
+ </Project>
+diff --git a/tests/ZaxLet.Tests/Program.cs b/tests/ZaxLet.Tests/Program.cs
+index d9c2e2c..ffae21a 100644
+--- a/tests/ZaxLet.Tests/Program.cs
++++ b/tests/ZaxLet.Tests/Program.cs
+@@ -207,19 +207,6 @@ langOk = langOk && L.T("Kirim") == "Kirim" && DurText.Fmt(5400) == "1 jam 30 mnt
+ Console.WriteLine(langOk ? "LANG OK" : "LANG GAGAL");
+ if (!langOk) fail++;
+ 
+-// Cek mandiri pembaca halaman produk Wishlist: meta og (urutan atribut bebas), harga gaya Indonesia, cadangan JSON-LD, sumber dari domain, judul dari link
+-var wp = WishParse.Meta("<html><head><title>Cadangan</title><meta content=\"Fuwa &amp; Petit\" property=\"og:title\"><meta property='og:image' content='/img/a.jpg'><meta property=\"product:price:amount\" content=\"149.000\"><meta property=\"product:price:currency\" content=\"idr\"></head></html>");
+-var wj = WishParse.Meta("<title>Plush</title><script type=\"application/ld+json\">{\"priceCurrency\":\"IDR\",\"price\":\"129000.00\"}</script>");
+-bool wishOk = wp.Title == "Fuwa & Petit" && wp.Image == "/img/a.jpg" && wp.Price == "IDR 149,000"
+-              && wj.Title == "Plush" && wj.Price == "IDR 129,000" && WishParse.Meta("").Price == "" && WishParse.Meta("<meta content=\"x\"").Title == ""
+-              && WishParse.Source("https://shopee.co.id/x") == "Shopee" && WishParse.Source("https://www.tokopedia.com/a/b") == "Tokopedia"
+-              && WishParse.Source("https://kyou-hobby.com/p") == "Kyou Hobby" && WishParse.Source("https://toko.example.co.id/p") == "Example" && WishParse.Source("bukan link") == ""
+-              && WishParse.SlugTitle("https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.123.456?sp=1") == "Fuwa Petit Mascot Akiyama Mizuki";
+-wishOk = wishOk && WishParse.PriceFromText("Rp149.000") == "IDR 149,000" && WishParse.PriceFromText("Harga: IDR 1,250,000.") == "IDR 1,250,000"
+-         && WishParse.PriceFromText("149000") == "IDR 149,000" && WishParse.PriceFromText("Rp 75.500,00") == "IDR 75.500,00" && WishParse.PriceFromText("tidak ada harga") == "" && WishParse.PriceFromText(null) == "";
+-Console.WriteLine(wishOk ? "WISH OK" : $"WISH GAGAL {wp} {wj} {WishParse.SlugTitle("https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.123.456?sp=1")}");
+-if (!wishOk) fail++;
+-
+ // Cek mandiri pengenal kode OTP di notifikasi: perlu kata kunci + angka 4-8 digit; harga, tahun-tanpa-kunci, dan teks biasa tidak dianggap kode
+ bool otpOk = Otp.Find("Bank Rey", "Kode OTP kamu 482913. Jangan bagikan.") == "482913"
+              && Otp.Find("Google", "G-123 456 is your verification code") == "123456"
+@@ -230,17 +217,6 @@ bool otpOk = Otp.Find("Bank Rey", "Kode OTP kamu 482913. Jangan bagikan.") == "4
+ Console.WriteLine(otpOk ? "OTP OK" : "OTP GAGAL");
+ if (!otpOk) fail++;
+ 
+-// Cek mandiri pengenal rapat: aplikasi rapat asli cukup dari mikrofon; peramban perlu judul tab rapat; tab biasa dan tanpa mikrofon bukan rapat
+-bool meetOk = MeetingDetect.Classify(new[] { "Zoom" }, new string[0]) == "Zoom"
+-              && MeetingDetect.Classify(new[] { "ms-teams" }, null) == "Teams"
+-              && MeetingDetect.Classify(new[] { "chrome" }, new[] { "Meet - abc-defg-hij - Google Chrome" }) == "Meet"
+-              && MeetingDetect.Classify(new[] { "chrome" }, new[] { "Perekam suara - Google Chrome" }) == null
+-              && MeetingDetect.Classify(new string[0], new[] { "Meet - abc-defg-hij" }) == null
+-              && MeetingDetect.Classify(new[] { "discord" }, new string[0]) == null
+-              && MeetingDetect.Classify(new[] { "WhatsApp.Root" }, null) == "WhatsApp";
+-Console.WriteLine(meetOk ? "MEETING OK" : "MEETING GAGAL");
+-if (!meetOk) fail++;
+-
+ // Cek mandiri jadwal ibadah mingguan dan pembaca cuaca open-meteo
+ var wl = Worship.Parse("min 08:00 Kebaktian; jum,sab 18.30 Latihan koor; tiap 21:00 Doa\nrusak; sen 25:00 salah");
+ var due = new System.Collections.Generic.List<Worship.Item>(Worship.Due(wl, new DateTime(2026, 11, 8, 8, 1, 0)));   // Minggu 08:01
+@@ -254,40 +230,18 @@ bool worshipOk = wl.Count == 1 + 2 + 7                  // Min | Jum+Sab | tiap
+ Console.WriteLine(worshipOk ? "WORSHIP/WEATHER OK" : $"WORSHIP/WEATHER GAGAL {wl.Count} {due.Count} {wr}");
+ if (!worshipOk) fail++;
+ 
+-// Cek mandiri jembatan ekstensi Wishlist: kunci link, asal permintaan, token, dan validasi kiriman halaman (masukan tidak tepercaya)
+-var png = Convert.ToBase64String(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+-var okPage = WishBridgeCore.ParsePage("{\"url\":\"https://shopee.co.id/Sepatu-i.1.2?xptdk=abc\",\"title\":\"Sepatu Bristol | Shopee Indonesia\",\"price\":\"\",\"priceText\":\"Rp149.000\",\"image\":\"data:image/png;base64," + png + "\"}");
+-bool bridgeOk = WishBridgeCore.Key("https://www.Shopee.co.id/Sepatu-i.1.2/?xptdk=zzz&utm_source=a#x") == WishBridgeCore.Key("https://shopee.co.id/Sepatu-i.1.2")
+-                && WishBridgeCore.Key("https://a.com/p?id=1") != WishBridgeCore.Key("https://a.com/p?id=2")
+-                && WishBridgeCore.Key("ftp://a.com/x") == null && WishBridgeCore.Key("bukan link") == null
+-                && WishBridgeCore.OriginAllowed("chrome-extension://abcdef") && !WishBridgeCore.OriginAllowed("https://evil.example") && !WishBridgeCore.OriginAllowed(null)
+-                && WishBridgeCore.TokenOk("abc123", "abc123") && !WishBridgeCore.TokenOk("abc124", "abc123") && !WishBridgeCore.TokenOk("", "") && !WishBridgeCore.TokenOk("abc", "abc123")
+-                && WishBridgeCore.CleanTitle("Jual Ortuseight Sepatu Sneakers Bristol 1.2 - Ash Grey | Shopee Indonesia") == "Ortuseight Sepatu Sneakers Bristol 1.2 - Ash Grey"
+-                && WishBridgeCore.CleanTitle("Jual Aku") == "Jual Aku"
+-                && okPage != null && okPage.Title == "Sepatu Bristol" && okPage.Price == "IDR 149,000" && okPage.Image != null && WishBridgeCore.ImageExt(okPage.Image) == ".png"
+-                && WishBridgeCore.ParsePage("{\"url\":\"javascript:alert(1)\",\"title\":\"x\"}") == null
+-                && WishBridgeCore.ParsePage("{\"url\":\"https://a.com/p\",\"title\":\"\"}") == null
+-                && WishBridgeCore.ParsePage("bukan json") == null
+-                && WishBridgeCore.ParsePage("{\"url\":\"https://a.com/p\",\"title\":\"Ok\",\"image\":\"data:image/png;base64,AAAA\"}").Image == null   // bukan gambar sungguhan: dibuang
+-                && WishBridgeCore.ParsePage("{\"url\":\"https://a.com/p\",\"title\":\"Ok\",\"price\":\"149000\",\"currency\":\"IDR\"}").Price == "IDR 149,000";
+-bridgeOk = bridgeOk && WishBridgeCore.ParseNotify("{\"text\":\"Build selesai\",\"seconds\":6}") is { Text: "Build selesai", Seconds: 6 }
+-           && WishBridgeCore.ParseNotify("{\"text\":\"a\\nb\",\"seconds\":999}") is { Text: "a b", Seconds: 30 }
+-           && WishBridgeCore.ParseNotify("{\"text\":\"x\",\"seconds\":0}") is { Seconds: 2 }
+-           && WishBridgeCore.ParseNotify("{\"text\":\"\"}") == null && WishBridgeCore.ParseNotify("bukan json") == null && WishBridgeCore.ParseNotify("{\"seconds\":5}") == null;
+-Console.WriteLine(bridgeOk ? "BRIDGE OK" : "BRIDGE GAGAL");
+-
+ // Cek mandiri filter sumber musik dan warna aksen Windows
+ bool miscOk = MediaFilter.Ignored("Discord.exe", "discord, zoom") && MediaFilter.Ignored("us.zoom.Zoom", "Zoom") && !MediaFilter.Ignored("Spotify.exe", "discord, zoom")
+               && !MediaFilter.Ignored("Spotify.exe", "") && !MediaFilter.Ignored("Spotify.exe", "s") && !MediaFilter.Ignored(null, "discord")
+               && AccentColor.FromAbgr(unchecked((int)0xFFD77800)) != "0078D7"          // biru Windows (R0 G120 B215) gelap: dicerahkan
+               && AccentColor.FromAbgr(unchecked((int)0xFFFFFF00)) == "00FFFF"          // sudah terang (cyan): tidak berubah
+               && AccentColor.FromAbgr(unchecked((int)0xFF000000)).Length == 6;
+-var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("w https://kyou.id/items/1"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
++var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
+ miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 }
+-          && qc[2] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[3].Kind == QuickCmd.Kind.Wish && qc[4] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[5] is { Kind: QuickCmd.Kind.Water, Value: 250 }
+-          && qc[6] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[7].Kind == QuickCmd.Kind.Hide
++          && qc[2] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[3] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[4] is { Kind: QuickCmd.Kind.Water, Value: 250 }
++          && qc[5] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[6].Kind == QuickCmd.Kind.Hide
+           && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown
+-          && QuickCmd.Parse("w bukan link").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
++          && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
+ // overlay performa: baris nvidia-smi nyata dari RTX 3050 laptop (daya [N/A] di data lain), pilihan metrik, penyusun baris
+ var smi = PerfFormat.ParseSmi("32, 405, 810, 50, 645, 6144, 8.86, 20, P5, [N/A], 0x0000000000000001");
+ var smiNa = PerfFormat.ParseSmi("5, 210, 405, 41, 300, 6144, [N/A]");
+@@ -358,7 +312,6 @@ miscOk = miscOk && ProcGuard.CanKill("notepad++", @"C:\Program Files\Notepad++\n
+           && !ProcGuard.CanKill("zaxlet", @"D:\x\ZaxLet.exe") && !ProcGuard.CanKill("System", null) && !ProcGuard.CanKill("x", "");
+ Console.WriteLine(miscOk ? "MISC OK" : $"MISC GAGAL {AccentColor.FromAbgr(unchecked((int)0xFFD77800))}");
+ if (!miscOk) fail++;
+-if (!bridgeOk) fail++;
+ 
+ // Cek mandiri parser AiTaskParse: worker JSON (BOM/terpotong), status MATI, stage, vonis, dan token
+ {
+diff --git a/tests/ZaxLet.Tests/ZaxLet.Tests.csproj b/tests/ZaxLet.Tests/ZaxLet.Tests.csproj
+index f2937f9..2d50061 100644
+--- a/tests/ZaxLet.Tests/ZaxLet.Tests.csproj
++++ b/tests/ZaxLet.Tests/ZaxLet.Tests.csproj
+@@ -25,11 +25,8 @@
+     <Compile Include="..\..\src\ZaxLet\Services\DownloadWatch.cs" Link="DownloadWatch.cs" />
+     <Compile Include="..\..\src\ZaxLet\Services\UpdateCheck.cs" Link="UpdateCheck.cs" />
+     <Compile Include="..\..\src\ZaxLet\Services\SettingsBackup.cs" Link="SettingsBackup.cs" />
+-    <Compile Include="..\..\src\ZaxLet\Services\WishParse.cs" Link="WishParse.cs" />
+     <Compile Include="..\..\src\ZaxLet\Services\Otp.cs" Link="Otp.cs" />
+-    <Compile Include="..\..\src\ZaxLet\Services\MeetingDetect.cs" Link="MeetingDetect.cs" />
+     <Compile Include="..\..\src\ZaxLet\Services\Worship.cs" Link="Worship.cs" />
+-    <Compile Include="..\..\src\ZaxLet\Services\WishBridgeCore.cs" Link="WishBridgeCore.cs" />
+     <Compile Include="..\..\src\ZaxLet\Services\MediaFilter.cs" Link="MediaFilter.cs" />
+     <Compile Include="..\..\src\ZaxLet\Services\PerfFormat.cs" Link="PerfFormat.cs" />
+     <Compile Include="..\..\src\ZaxLet\Core\AccentColor.cs" Link="AccentColor.cs" />

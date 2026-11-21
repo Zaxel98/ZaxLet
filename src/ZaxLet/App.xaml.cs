@@ -64,20 +64,6 @@ public partial class App : Application
         {
             if (a.StartsWith("--tab=")) { Settings.Cur.LastTab = a[6..]; w.OpenNow(); w.KeepOpen(true); }
             else if (a == "--shot") CaptureService.Full();
-            else if (a.StartsWith("--wish-probe="))   // uji ambil info produk satu link -> %ZAXLET_UI_OUT%\wish-probe.txt (tanpa mengubah wishlist)
-            {
-                var rep = System.Threading.Tasks.Task.Run(() => Wishlist.Probe(a[13..])).GetAwaiter().GetResult();
-                var o = Environment.GetEnvironmentVariable("ZAXLET_UI_OUT") is { Length: > 0 } d ? d : Settings.Dir;
-                System.IO.Directory.CreateDirectory(o);
-                System.IO.File.WriteAllText(System.IO.Path.Combine(o, "wish-probe.txt"), rep);
-            }
-            else if (a.StartsWith("--wish-add="))   // uji: tambah link ke Wishlist 6 dtk setelah mulai (memberi waktu ekstensi/uji mengirim info halaman)
-            {
-                var u = a[11..];
-                var wt = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
-                wt.Tick += (_, _) => { wt.Stop(); Wishlist.Add(u); };
-                wt.Start();
-            }
             else if (a == "--fps-test")   // uji FPS: mencoba sesi langsung, bila ditolak meminta UAC; 15 dtk membaca FPS -> fps-test.txt
             {
                 System.Threading.Tasks.Task.Run(() =>
@@ -232,8 +218,6 @@ public partial class App : Application
         void Safe(Action act) { try { act(); } catch (Exception ex) { Log(ex); } }
         Safe(() => _ = MediaService.I.StartAsync());
         Safe(() => PrayerAlerts.Start());
-        Safe(() => WishBridge.Apply());
-        Settings.Applied += WishBridge.Apply;
         Safe(() => WeatherService.I.Apply());
         Settings.Applied += WeatherService.I.Apply;   // nyala/mati dari Pengaturan berlaku langsung
         Safe(() => HydrationService.I.Start());

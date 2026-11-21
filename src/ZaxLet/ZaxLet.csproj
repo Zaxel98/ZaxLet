@@ -29,9 +29,4 @@
     <PackageReference Include="Concentus" Version="2.2.3" />
   </ItemGroup>
 
-  <!-- ekstensi browser untuk Wishlist ikut ke dist\extension (dan ke installer); dimuat dari sana lewat "Muat yang belum dipaket" -->
-  <ItemGroup>
-    <None Include="..\BrowserExtension\*" Link="extension\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

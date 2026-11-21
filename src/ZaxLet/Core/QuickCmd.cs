@@ -4,15 +4,15 @@ namespace ZaxLet;
 
 /// <summary>
 /// Perintah singkat untuk kotak Aksi cepat (pintasan keyboard, gaya rofi/Spotlight): satu baris teks jadi satu aksi, tanpa membuka tab.
-/// Murni (tanpa WPF), jadi bisa dites. Contoh: "t 10m", "fokus 25", "catat beli susu", "w https://...", "minum 250", "tema neon", "sembunyi".
+/// Murni (tanpa WPF), jadi bisa dites. Contoh: "t 10m", "fokus 25", "catat beli susu", "minum 250", "tema neon", "sembunyi".
 /// </summary>
 public static class QuickCmd
 {
-    public enum Kind { None, Timer, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
+    public enum Kind { None, Timer, Note, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
+    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
@@ -34,8 +34,6 @@ public static class QuickCmd
                 return DurText.Parse(arg, 60, out var sec) && sec >= 1 ? new Cmd(Kind.Timer, arg, sec) : new Cmd(Kind.Unknown, "t 10m = timer 10 menit");   // angka tanpa satuan = menit
             case "catat": case "todo": case "note":
                 return arg.Length > 0 ? new Cmd(Kind.Note, arg.Length > 200 ? arg[..200] : arg) : new Cmd(Kind.Unknown, "catat <teks>");
-            case "w": case "wish": case "wishlist":
-                return Uri.TryCreate(arg, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) ? new Cmd(Kind.Wish, arg) : new Cmd(Kind.Unknown, "w <link produk>");
             case "minum": case "air": case "drink":
                 if (arg.Length == 0) return new Cmd(Kind.Water, "", 0);   // 0 = ukuran gelas bawaan
                 return int.TryParse(arg, out var ml) && ml is >= 10 and <= 2000 ? new Cmd(Kind.Water, arg, ml) : new Cmd(Kind.Unknown, "minum 250 = 250 ml (10-2000)");

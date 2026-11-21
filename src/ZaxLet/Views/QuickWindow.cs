@@ -73,8 +73,6 @@ public sealed class QuickWindow : Window
                 msg = L.F("Timer {0} berjalan", DurText.Fmt(c.Value)); break;
             case QuickCmd.Kind.Note:
                 CalendarService.I.Add(DateOnly.FromDateTime(DateTime.Today), c.Arg); msg = L.T("Dicatat di tugas hari ini"); break;
-            case QuickCmd.Kind.Wish:
-                msg = Wishlist.Add(c.Arg) ? L.T("Masuk Wishlist") : L.T("Link tidak valid"); break;
             case QuickCmd.Kind.Water:
                 int ml = c.Value > 0 ? (int)c.Value : Settings.Cur.WaterCupMl;
                 HydrationService.I.Add(ml); msg = L.F("Minum +{0} ml", ml); break;

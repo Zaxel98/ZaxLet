@@ -50,13 +50,9 @@ public static class UiTest
             }
         }
 
-        // tab-tab yang sering berubah: dirender apa adanya (Wishlist diisi dua item contoh tanpa jaringan)
-        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: pakai isi wishlist.json di folder data (salinan), bukan contoh
+        // tab-tab yang sering berubah: dirender apa adanya
+        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: pakai isi data di folder data (salinan), bukan contoh
         {
-            Wishlist.Items.Clear();
-            Wishlist.Items.Add(new WishItem { Id = "t1", Url = "https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.1.2", Title = "Fuwa Petit Mascot Akiyama Mizuki", Price = "IDR 149,000", Source = "Shopee", Added = DateTime.Now });
-            Wishlist.Items.Add(new WishItem { Id = "t2", Url = "https://kyou-hobby.com/p/nendoroid-miku", Title = "nendoroid miku", Source = "Kyou Hobby", Added = DateTime.Now });
-
             ClipboardHistory.Items.Clear();
             ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "git status && dotnet test --no-restore", At = DateTime.Now.AddMinutes(-2), Pinned = true });
             ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "Ini adalah contoh teks clipboard yang sangat panjang untuk menguji apakah pemotongan baris atau elipsis di tab Clipboard bekerja dengan rapi tanpa menabrak tombol pin dan hapus di sebelah kanan layar.", At = DateTime.Now.AddMinutes(-5) });
@@ -68,7 +64,7 @@ public static class UiTest
         Settings.Cur.ClipboardOn = true;
         foreach (var (name, make) in new (string, Func<TabView>)[]
         {
-            ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()),
+            ("timer", () => new TimerView()), ("shelf", () => new ShelfView()),
             ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()),
             ("usage", () => new UsageView()), ("monitor", () => MonitorView.Preview()), ("today", () => new CalendarView()),
             ("prayer", () => new PrayerView()), ("comm", () => new AppsView()), ("clipboard", () => new ClipboardView()),
@@ -164,7 +160,6 @@ public static class UiTest
         }
         Guide("hp", PhoneGuide.Steps());
         Guide("discord", DiscordGuide.Steps());
-        Guide("wish", WishGuide.Steps());
 
         lock (L.Misses) File.WriteAllLines(Path.Combine(dir, "missing.txt"), L.Misses);
         File.WriteAllText(Path.Combine(dir, "ui-test.txt"), log.ToString());

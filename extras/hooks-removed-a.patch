@@ -1,0 +1,382 @@
+diff --git a/src/ZaxLet/App.xaml.cs b/src/ZaxLet/App.xaml.cs
+index de30623..7007d86 100644
+--- a/src/ZaxLet/App.xaml.cs
++++ b/src/ZaxLet/App.xaml.cs
+@@ -231,7 +231,6 @@ public partial class App : Application
+         BuildTray();
+         void Safe(Action act) { try { act(); } catch (Exception ex) { Log(ex); } }
+         Safe(() => _ = MediaService.I.StartAsync());
+-        Safe(() => EyeService.I.Apply());
+         Safe(() => PrayerAlerts.Start());
+         Safe(() => WishBridge.Apply());
+         Settings.Applied += WishBridge.Apply;
+@@ -274,11 +273,6 @@ public partial class App : Application
+         var menu = new WF.ContextMenuStrip();
+         menu.Items.Add(L.T("Buka"), null, (_, _) => IslandWindow.Instance?.OpenNow());
+         menu.Items.Add(L.T("Sembunyikan / tampilkan pill"), null, (_, _) => IslandWindow.Instance?.ToggleHidden());
+-        var focus = new WF.ToolStripMenuItem(L.T("Mode Fokus"));
+-        focus.Click += (_, _) => { if (FocusService.I.Manual && FocusService.I.Active) FocusService.I.Stop(); else FocusService.I.Start(Settings.Cur.FocusMin); };
+-        menu.Items.Add(focus);
+-        menu.Items.Add(L.T("Jeda notifikasi 1 jam"), null, (_, _) => FocusService.I.Start(60));   // notifikasi HP ditahan seperti Mode Fokus; OTP tetap lewat
+-        menu.Opening += (_, _) => focus.Checked = FocusService.I.Manual && FocusService.I.Active;
+         menu.Items.Add(L.T("Pengaturan"), null, (_, _) => SettingsWindow.ShowIt());
+         menu.Items.Add(L.T("Periksa pembaruan"), null, async (_, _) =>
+         {
+diff --git a/src/ZaxLet/Core/QuickCmd.cs b/src/ZaxLet/Core/QuickCmd.cs
+index a2a5688..1afd031 100644
+--- a/src/ZaxLet/Core/QuickCmd.cs
++++ b/src/ZaxLet/Core/QuickCmd.cs
+@@ -8,11 +8,11 @@ namespace ZaxLet;
+ /// </summary>
+ public static class QuickCmd
+ {
+-    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
++    public enum Kind { None, Timer, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
+ 
+     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
+ 
+-    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
++    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
+ 
+     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
+ 
+@@ -32,9 +32,6 @@ public static class QuickCmd
+         {
+             case "t": case "timer":
+                 return DurText.Parse(arg, 60, out var sec) && sec >= 1 ? new Cmd(Kind.Timer, arg, sec) : new Cmd(Kind.Unknown, "t 10m = timer 10 menit");   // angka tanpa satuan = menit
+-            case "fokus": case "focus":
+-                if (arg.Length == 0) return new Cmd(Kind.Focus, "", 0);   // 0 = lama bawaan dari Pengaturan
+-                return double.TryParse(arg, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var m) && m >= 1 && m <= 240 ? new Cmd(Kind.Focus, arg, m) : new Cmd(Kind.Unknown, "fokus 25 = 25 menit (1-240)");
+             case "catat": case "todo": case "note":
+                 return arg.Length > 0 ? new Cmd(Kind.Note, arg.Length > 200 ? arg[..200] : arg) : new Cmd(Kind.Unknown, "catat <teks>");
+             case "w": case "wish": case "wishlist":
+diff --git a/src/ZaxLet/Core/Settings.cs b/src/ZaxLet/Core/Settings.cs
+index 7168d59..9747b12 100644
+--- a/src/ZaxLet/Core/Settings.cs
++++ b/src/ZaxLet/Core/Settings.cs
+@@ -204,8 +204,6 @@ public sealed class Settings
+     public string CapDir { get; set; } = "";
+     public bool CapClipboard { get; set; } = true;
+     public int RecFps { get; set; } = 30;
+-    public bool EyeOn { get; set; }
+-    public double EyeMinutes { get; set; } = 20;
+     public bool WishBridgeOn { get; set; } = true;             // terima info halaman produk dari ekstensi browser (hanya 127.0.0.1)
+     public bool WishSuggest { get; set; } = true;              // link produk yang dikenali ekstensi ditawarkan ke Wishlist saat disalin
+     [JsonConverter(typeof(SecretConverter))] public string WishToken { get; set; } = "";              // rahasia ekstensi browser; dibuat sekali, tidak ikut cadangan
+@@ -213,13 +211,6 @@ public sealed class Settings
+     public bool MeetMic { get; set; } = true;                  // tombol mikrofon di pill selama rapat
+     public bool MeetPause { get; set; } = true;                // musik dijeda selama rapat
+     public bool MeetHold { get; set; } = true;                 // notifikasi HP ditahan selama rapat
+-    public int FocusMin { get; set; } = 25;                    // lama Mode Fokus manual
+-    public bool FocusPomo { get; set; }                        // fase kerja Pomodoro otomatis jadi Mode Fokus
+-    public bool QuietOn { get; set; }                          // jam tenang terjadwal: tahan notifikasi HP di rentang jam ini
+-    public string QuietFrom { get; set; } = "22:00";
+-    public string QuietTo { get; set; } = "06:00";
+-    public double PomoWork { get; set; } = 25;
+-    public double PomoBreak { get; set; } = 5;
+ 
+     // minum: pengingat lembut, hanya saat jam aktif, dan (mode pintar) hanya bila asupan tertinggal dari jadwal
+     public bool WaterOn { get; set; } = true;
+diff --git a/src/ZaxLet/IslandWindow.Features.cs b/src/ZaxLet/IslandWindow.Features.cs
+index 8275b9c..7c967bc 100644
+--- a/src/ZaxLet/IslandWindow.Features.cs
++++ b/src/ZaxLet/IslandWindow.Features.cs
+@@ -73,7 +73,7 @@ public partial class IslandWindow
+ 
+     /// <summary>Ada yang sedang terjadi di island (musik, notifikasi, timer, rapat, fokus, rekaman): dipakai mode "hanya saat ada aktivitas".</summary>
+     bool HasActivity() => _open || MediaService.I.Playing || _rows.Count > 0 || _alert != null && DateTime.Now < _alertUntil
+-        || TimerService.I.Running || MeetingService.I.Active || FocusService.I.Active || CaptureService.Recording;
++        || TimerService.I.Running || MeetingService.I.Active || CaptureService.Recording;
+ 
+     bool FsMusicOn => _fsApp && Settings.Cur.FsMusic && MediaService.I.Playing;
+ 
+diff --git a/src/ZaxLet/IslandWindow.xaml.cs b/src/ZaxLet/IslandWindow.xaml.cs
+index 1af9e91..ee62523 100644
+--- a/src/ZaxLet/IslandWindow.xaml.cs
++++ b/src/ZaxLet/IslandWindow.xaml.cs
+@@ -24,11 +24,11 @@ public partial class IslandWindow : Window
+     {
+         ["music"] = ("", "Musik"), ["usage"] = ("", "AI"), ["monitor"] = ("", "Monitor"),
+         ["calendar"] = ("", "Hari ini"), ["prayer"] = ("", "Sholat"), ["shelf"] = ("", "Shelf"),
+-        ["tools"] = ("", "Tangkap"), ["timer"] = ("", "Timer"), ["eye"] = ("", "Mata"),
++        ["tools"] = ("", "Tangkap"), ["timer"] = ("", "Timer"),
+         ["settings"] = ("", "Atur"),
+         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
+     };
+-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "eye", "settings" };
++    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "settings" };
+     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
+     public static string[] TabOrder
+     {
+@@ -110,7 +110,6 @@ public partial class IslandWindow : Window
+         _make["shelf"] = () => new ShelfView();
+         _make["tools"] = () => new ToolsView();
+         _make["timer"] = () => new TimerView();
+-        _make["eye"] = () => new EyeView();
+         _make["water"] = () => new WaterView();
+         _make["apps"] = () => new AppsView();
+         _make["ctrl"] = () => new ControlView();
+@@ -668,7 +667,7 @@ public partial class IslandWindow : Window
+         }
+         if (_fs && !FsMusicOn || (text == null && shownRows > 0)) text = null;   // notifikasi menggantikan timer/lirik: idle tetap satu baris
+         else if (text == null && TimerService.I.Running)
+-            text = (TimerService.I.Mode == TMode.Stopwatch ? "Stopwatch " : TimerService.I.PomoBreak ? "Istirahat " : "Timer ") + UI.Clock(TimerService.I.Value);
++            text = (TimerService.I.Mode == TMode.Stopwatch ? "Stopwatch " : "Timer ") + UI.Clock(TimerService.I.Value);
+         if ((!_fs || FsMusicOn) && text == null && shownRows == 0 && s.MusicLyrics && s.IdleLyrics && ms.Playing && ms.Lyrics.Count > 0)   // lirik dimatikan = idle ikut mati
+         {
+             var l = ms.CurrentLine();
+@@ -849,7 +848,7 @@ public partial class IslandWindow : Window
+         ShareServer.I.DevicesChanged += () => { _idleKey = ""; RefreshIdle(); };
+         PhoneNotifs.Posted += n =>
+         {
+-            if (FocusService.I.Hold(n)) return;   // Mode Fokus: ditahan, isinya tetap ada di tab Komunikasi
++            if (Settings.Cur.MeetHold && MeetingService.I.Active && Otp.Find(n.Title, n.Text) == null) return;   // Mode rapat: ditahan, OTP tetap lewat
+             // idle hanya satu baris: notifikasi terbaru menggantikan yang lama (percakapan lengkap ada di tab Komunikasi)
+             // notifikasi lain dari aplikasi yang sama saat yang lama masih tampil digabung: satu baris dengan penanda "(+n)", bukan baris yang terus berganti
+             int count = _rows.Count > 0 && _rows[0].N.Pkg == n.Pkg && _rows[0].N.Key != n.Key && DateTime.Now < _rows[0].Until ? _rows[0].Count + 1 : _rows.Count > 0 && _rows[0].N.Key == n.Key ? _rows[0].Count : 1;
+diff --git a/src/ZaxLet/Services/Timers.cs b/src/ZaxLet/Services/Timers.cs
+index eceda16..beb78dc 100644
+--- a/src/ZaxLet/Services/Timers.cs
++++ b/src/ZaxLet/Services/Timers.cs
+@@ -3,15 +3,15 @@ using System.Windows.Threading;
+ 
+ namespace ZaxLet;
+ 
+-public enum TMode { Timer, Pomodoro, Stopwatch }
++public enum TMode { Timer, Stopwatch }
+ 
+-/// <summary>Timer / Pomodoro / Stopwatch. Hidup di luar tab agar tetap berjalan saat pill tertutup.</summary>
++/// <summary>Timer / Stopwatch. Hidup di luar tab agar tetap berjalan saat pill tertutup.</summary>
+ public sealed class TimerService
+ {
+     public static readonly TimerService I = new();
+     public event Action Tick;
+     public TMode Mode = TMode.Timer;
+-    public bool Running, PomoBreak;
++    public bool Running;
+     public TimeSpan Total = TimeSpan.FromMinutes(25);
+ 
+     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(500) };
+@@ -56,30 +56,18 @@ public sealed class TimerService
+ 
+     public void Reset()
+     {
+-        Running = false; _t.Stop(); PomoBreak = false; _acc = TimeSpan.Zero;
++        Running = false; _t.Stop(); _acc = TimeSpan.Zero;
+         _left = Duration();
+         Tick?.Invoke();
+     }
+ 
+-    TimeSpan Duration() => Mode switch
+-    {
+-        TMode.Pomodoro => TimeSpan.FromMinutes(Math.Max(0.1, PomoBreak ? Settings.Cur.PomoBreak : Settings.Cur.PomoWork)),
+-        _ => Total
+-    };
++    TimeSpan Duration() => Total;
+ 
+     void Step()
+     {
+         if (Mode != TMode.Stopwatch && Value <= TimeSpan.Zero)
+         {
+             Running = false; _t.Stop();
+-            if (Mode == TMode.Pomodoro)
+-            {
+-                PomoBreak = !PomoBreak;
+-                IslandWindow.Instance?.Alert(PomoBreak ? L.F("Pomodoro selesai · istirahat {0} menit", Settings.Cur.PomoBreak) : L.T("Istirahat selesai · fokus lagi"), 10);
+-                _left = Duration();
+-                Start();
+-                return;
+-            }
+             IslandWindow.Instance?.Alert(L.T("Timer selesai"), 10);
+             _left = Duration();
+         }
+@@ -87,33 +75,6 @@ public sealed class TimerService
+     }
+ }
+ 
+-/// <summary>Pengingat istirahat mata: tiap N menit.</summary>
+-public sealed class EyeService
+-{
+-    public static readonly EyeService I = new();
+-    public DateTime Next;
+-    readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
+-
+-    EyeService() { _t.Tick += (_, _) => Check(); }
+-
+-    public void Apply()
+-    {
+-        _t.Stop();
+-        if (!Settings.Cur.EyeOn) return;
+-        Next = DateTime.Now.AddMinutes(Settings.Cur.EyeMinutes);
+-        _t.Start();
+-    }
+-
+-    public void BreakNow() => IslandWindow.Instance?.Alert(L.T("Istirahat mata · lihat jauh 20 detik"), 20);
+-
+-    void Check()
+-    {
+-        if (DateTime.Now < Next) return;
+-        BreakNow();
+-        Next = DateTime.Now.AddMinutes(Settings.Cur.EyeMinutes);
+-    }
+-}
+-
+ /// <summary>Beri tahu di pill saat masuk waktu sholat (tanpa audio adzan).</summary>
+ public static class PrayerAlerts
+ {
+diff --git a/src/ZaxLet/Views/QuickWindow.cs b/src/ZaxLet/Views/QuickWindow.cs
+index 3877ae6..b3db589 100644
+--- a/src/ZaxLet/Views/QuickWindow.cs
++++ b/src/ZaxLet/Views/QuickWindow.cs
+@@ -71,9 +71,6 @@ public sealed class QuickWindow : Window
+             case QuickCmd.Kind.Timer:
+                 TimerService.I.SetMode(TMode.Timer); TimerService.I.SetTotal(TimeSpan.FromSeconds(c.Value)); TimerService.I.Start();
+                 msg = L.F("Timer {0} berjalan", DurText.Fmt(c.Value)); break;
+-            case QuickCmd.Kind.Focus:
+-                int min = c.Value > 0 ? (int)c.Value : Settings.Cur.FocusMin;
+-                FocusService.I.Start(min); msg = L.F("Mode Fokus {0} menit", min); break;
+             case QuickCmd.Kind.Note:
+                 CalendarService.I.Add(DateOnly.FromDateTime(DateTime.Today), c.Arg); msg = L.T("Dicatat di tugas hari ini"); break;
+             case QuickCmd.Kind.Wish:
+diff --git a/src/ZaxLet/Views/SettingsView.cs b/src/ZaxLet/Views/SettingsView.cs
+index 8b19add..693c344 100644
+--- a/src/ZaxLet/Views/SettingsView.cs
++++ b/src/ZaxLet/Views/SettingsView.cs
+@@ -209,7 +209,7 @@ public sealed class SettingsView : TabView
+         ["phone"] = "Sambungkan HP, notifikasi, dan kamera. Mulai dari Panduan sambung HP.",
+         ["system"] = "Kuota Claude dan Codex serta kinerja PC.",
+         ["calendar"] = "Kalender, hari libur, jadwal sholat, dan adzan.",
+-        ["remind"] = "Minum, istirahat mata, dan Pomodoro.",
++        ["remind"] = "Pengingat minum.",
+         ["tools"] = "Tangkap layar, clipboard, Discord, dan Meet.",
+         ["addons"] = "Unduhan tambahan yang hanya diambil bila kamu memintanya.",
+     };
+@@ -267,7 +267,6 @@ public sealed class SettingsView : TabView
+             var json = SettingsBackup.Import(System.IO.File.ReadAllText(dlg.FileName), System.Text.Json.JsonSerializer.Serialize(Settings.Cur));
+             Settings.Cur = System.Text.Json.JsonSerializer.Deserialize<Settings>(json) ?? Settings.Cur;
+             Settings.Apply();
+-            EyeService.I.Apply();
+             _backupMsg = L.T("Pengaturan dipulihkan. Bahasa berlaku setelah ZaxLet dimulai ulang.");
+         }
+         catch (FormatException) { _backupMsg = L.T("File ini bukan cadangan pengaturan ZaxLet."); }
+@@ -336,7 +335,6 @@ public sealed class SettingsView : TabView
+                     if (!_confirmReset) { _confirmReset = true; Render(); return; }
+                     _confirmReset = false;
+                     Settings.Reset();
+-                    EyeService.I.Apply();
+                     Render();
+                 }, UI.Warn));
+                 yield return ("Keluar dari ZaxLet", Act("Keluar", () => Application.Current.Shutdown(), UI.Bad));
+@@ -591,18 +589,6 @@ public sealed class SettingsView : TabView
+                 yield return ("~Jarak antar pengingat", Dur(() => s.WaterEverySec, v => s.WaterEverySec = v, 10, 86400, null, 60));
+                 yield return ("~Lama pengingat tampil", Dur(() => s.WaterShowSec, v => s.WaterShowSec = v, 2, 600));
+                 yield return ("Uji pengingat", Act("Tampilkan sekarang", () => IslandWindow.Instance?.Alert(L.F("Waktunya minum · {0}/{1} ml", HydrationService.I.Today, HydrationService.I.Goal), s.WaterShowSec), UI.Fg));
+-                yield return ("§Istirahat mata", null);
+-                yield return ("Pengingat istirahat mata", Toggle(() => s.EyeOn, v => { s.EyeOn = v; }, true, () => EyeService.I.Apply()));
+-                yield return ("Interval istirahat mata", Dur(() => s.EyeMinutes * 60, v => s.EyeMinutes = v / 60, 10, 86400, () => EyeService.I.Apply(), 60));
+-                yield return ("§Pomodoro", null);
+-                yield return ("Pomodoro: fokus", Dur(() => s.PomoWork * 60, v => s.PomoWork = v / 60, 10, 86400, null, 60));
+-                yield return ("Pomodoro: istirahat", Dur(() => s.PomoBreak * 60, v => s.PomoBreak = v / 60, 10, 86400, null, 60));
+-                yield return ("§Mode Fokus", null);
+-                yield return ("Lama Mode Fokus\nNotifikasi HP ditahan; kode OTP tetap lewat. Tombol ada di tab Timer", Num(5, 240, 5, " mnt", () => s.FocusMin, v => s.FocusMin = v));
+-                yield return ("Fase kerja Pomodoro = Mode Fokus", Toggle(() => s.FocusPomo, v => s.FocusPomo = v));
+-                yield return ("Jam tenang terjadwal\nNotifikasi HP ditahan selama rentang jam ini; kode OTP tetap lewat", Toggle(() => s.QuietOn, v => s.QuietOn = v));
+-                yield return ("Jam tenang mulai", Txt(() => s.QuietFrom, v => { if (QuietHours.TryParseHm(v, out var t)) s.QuietFrom = t.ToString(@"hh\:mm"); }, 100));
+-                yield return ("Jam tenang selesai", Txt(() => s.QuietTo, v => { if (QuietHours.TryParseHm(v, out var t)) s.QuietTo = t.ToString(@"hh\:mm"); }, 100));
+                 break;
+ 
+             case "tools":
+diff --git a/src/ZaxLet/Views/TimerView.cs b/src/ZaxLet/Views/TimerView.cs
+index 2a40f7a..4b8ac4a 100644
+--- a/src/ZaxLet/Views/TimerView.cs
++++ b/src/ZaxLet/Views/TimerView.cs
+@@ -20,14 +20,11 @@ public sealed class TimerView : TabView
+     readonly StackPanel _remList = new();
+     readonly TextBlock _go = UI.Icon("", 20);
+ 
+-    readonly TextBlock _focusT = UI.T("", 12.5);
+-    Border _focus;
+-
+     public TimerView()
+     {
+         var cols = UI.Cols(-1, 200);
+         var root = UI.Rows(0, -1, 0);
+-        foreach (var (m, name) in new[] { (TMode.Timer, "Timer"), (TMode.Pomodoro, "Pomodoro"), (TMode.Stopwatch, "Stopwatch") })
++        foreach (var (m, name) in new[] { (TMode.Timer, "Timer"), (TMode.Stopwatch, "Stopwatch") })
+         {
+             var mode = m;
+             var b = UI.Btn(UI.T(name, 12.5), () => { _t.SetMode(mode); Render(); }, UI.Card, 12, new Thickness(12, 4, 12, 4));
+@@ -35,10 +32,6 @@ public sealed class TimerView : TabView
+             b.Tag = m;
+             _modes.Children.Add(b);
+         }
+-        _focus = UI.Btn(_focusT, () => { var f = FocusService.I; if (f.Manual) f.Stop(); else f.Start(Settings.Cur.FocusMin); }, UI.Card, 12, new Thickness(12, 4, 12, 4));
+-        _focus.Margin = new Thickness(10, 0, 0, 0);
+-        _focus.ToolTip = L.T("Mode Fokus: notifikasi HP ditahan, kode OTP tetap lewat. Lamanya diatur di Pengaturan > Pengingat");
+-        _modes.Children.Add(_focus);
+         root.Children.Add(_modes);
+ 
+         var mid = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+@@ -76,8 +69,8 @@ public sealed class TimerView : TabView
+         }
+     }
+ 
+-    public override void OnShow() { _t.Tick += OnTick; FocusService.I.Changed += OnTick; ReminderService.I.Changed += OnTick; Render(); }
+-    public override void OnHide() { _t.Tick -= OnTick; FocusService.I.Changed -= OnTick; ReminderService.I.Changed -= OnTick; }
++    public override void OnShow() { _t.Tick += OnTick; ReminderService.I.Changed += OnTick; Render(); }
++    public override void OnHide() { _t.Tick -= OnTick; ReminderService.I.Changed -= OnTick; }
+     void OnTick() => Render();
+ 
+     void Render()
+@@ -86,17 +79,11 @@ public sealed class TimerView : TabView
+         _go.Text = _t.Running ? "" : "";
+         _sub.Text = _t.Mode switch
+         {
+-            TMode.Pomodoro => L.T(_t.PomoBreak ? "Istirahat " : "Fokus ") + L.F("· {0}/{1} menit", Settings.Cur.PomoWork, Settings.Cur.PomoBreak),
+             TMode.Timer => L.T("Hitung mundur"),
+             _ => L.T("Hitung maju")
+         };
+         _presets.Visibility = _t.Mode == TMode.Timer ? Visibility.Visible : Visibility.Hidden;
+         foreach (Border b in _modes.Children) if (b.Tag is TMode tm) b.Background = tm == _t.Mode ? UI.CardOn : UI.Card;
+-        var f = FocusService.I;
+-        _focusT.Text = f.Active
+-            ? L.T("Fokus") + " " + UI.Clock(f.Left) + (f.HeldCount > 0 ? " · " + L.F("{0} tertahan", f.HeldCount) : "")
+-            : L.T("Mode Fokus");
+-        _focus.Background = f.Active ? UI.AccentBg : UI.Card;
+         RenderReminders();
+     }
+ 
+diff --git a/src/ZaxLet/Views/UiTest.cs b/src/ZaxLet/Views/UiTest.cs
+index 0e7e698..7e0f4fb 100644
+--- a/src/ZaxLet/Views/UiTest.cs
++++ b/src/ZaxLet/Views/UiTest.cs
+@@ -72,7 +72,7 @@ public static class UiTest
+             ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()),
+             ("usage", () => new UsageView()), ("monitor", () => MonitorView.Preview()), ("today", () => new CalendarView()),
+             ("prayer", () => new PrayerView()), ("comm", () => new AppsView()), ("clipboard", () => new ClipboardView()),
+-            ("capture", () => new ToolsView()), ("eyes", () => new EyeView()),
++            ("capture", () => new ToolsView()),
+         })
+         {
+             try { var v = make(); v.OnShow(); Shot(v, "tab-" + name, 660, 262); v.OnHide(); log.AppendLine("ok tab " + name); }
+diff --git a/tests/ZaxLet.Tests/Program.cs b/tests/ZaxLet.Tests/Program.cs
+index bf8094b..d9c2e2c 100644
+--- a/tests/ZaxLet.Tests/Program.cs
++++ b/tests/ZaxLet.Tests/Program.cs
+@@ -282,11 +282,11 @@ bool miscOk = MediaFilter.Ignored("Discord.exe", "discord, zoom") && MediaFilter
+               && AccentColor.FromAbgr(unchecked((int)0xFFD77800)) != "0078D7"          // biru Windows (R0 G120 B215) gelap: dicerahkan
+               && AccentColor.FromAbgr(unchecked((int)0xFFFFFF00)) == "00FFFF"          // sudah terang (cyan): tidak berubah
+               && AccentColor.FromAbgr(unchecked((int)0xFF000000)).Length == 6;
+-var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("fokus"), QuickCmd.Parse("fokus 25"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("w https://kyou.id/items/1"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
+-miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 } && qc[2] is { Kind: QuickCmd.Kind.Focus, Value: 0 } && qc[3] is { Kind: QuickCmd.Kind.Focus, Value: 25 }
+-          && qc[4] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[5].Kind == QuickCmd.Kind.Wish && qc[6] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[7] is { Kind: QuickCmd.Kind.Water, Value: 250 }
+-          && qc[8] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[9].Kind == QuickCmd.Kind.Hide
+-          && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("fokus 999").Kind == QuickCmd.Kind.Unknown
++var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("w https://kyou.id/items/1"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
++miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 }
++          && qc[2] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[3].Kind == QuickCmd.Kind.Wish && qc[4] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[5] is { Kind: QuickCmd.Kind.Water, Value: 250 }
++          && qc[6] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[7].Kind == QuickCmd.Kind.Hide
++          && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown
+           && QuickCmd.Parse("w bukan link").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
+ // overlay performa: baris nvidia-smi nyata dari RTX 3050 laptop (daya [N/A] di data lain), pilihan metrik, penyusun baris
+ var smi = PerfFormat.ParseSmi("32, 405, 810, 50, 645, 6144, 8.86, 20, P5, [N/A], 0x0000000000000001");

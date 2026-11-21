@@ -13,6 +13,7 @@
 !/tests/
 !/tools/
 !/docs/
+!/extras/
 
 # Build output, local toolchains and generated files.
 **/bin/

@@ -28,7 +28,7 @@ public partial class IslandWindow : Window
         ["settings"] = ("", "Atur"),
         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
     };
-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "settings" };
+    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "clip", "tools", "timer", "settings" };
     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
     public static string[] TabOrder
     {
@@ -73,10 +73,6 @@ public partial class IslandWindow : Window
     readonly Canvas _batIcon = new() { Width = 27, Height = 14, VerticalAlignment = VerticalAlignment.Center };
     readonly System.Windows.Shapes.Ellipse _phoneDot = new() { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     readonly System.Windows.Shapes.Ellipse _voiceDot = new() { Width = 9, Height = 9, Fill = UI.B("#FF22D35A"), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed, ToolTip = L.T("Sedang di voice channel Discord") };
-    // tombol mikrofon saat rapat: hijau = mikrofon hidup, merah bercoret = bisu (mikrofon utama Windows, berlaku di semua aplikasi)
-    readonly TextBlock _micGlyph = new() { FontFamily = new FontFamily("Segoe MDL2 Assets, Segoe Fluent Icons"), Text = "\uE720", FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
-    readonly System.Windows.Shapes.Line _micSlash = new() { X1 = 1, Y1 = 1, X2 = 15, Y2 = 15, StrokeThickness = 1.6, Stroke = UI.B("#FFFF453A"), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
-    readonly Border _micBtn = new() { Width = 24, Height = 22, CornerRadius = new CornerRadius(11), Background = UI.B("#22FFFFFF"), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     readonly Marquee Row2 = new() { Foreground = UI.B("#A6FFFFFF") };
     // notifikasi HP yang sedang tampil di pill: satu baris per notifikasi (key unik), terbaru di atas
     sealed class NotifRow { public PhoneNotif N; public DateTime Until; public int Count = 1; }   // Count: notifikasi berbeda dari aplikasi yang sama berturut-turut
@@ -114,7 +110,6 @@ public partial class IslandWindow : Window
         _make["apps"] = () => new AppsView();
         _make["ctrl"] = () => new ControlView();
         _make["clip"] = () => new ClipboardView();
-        _make["wish"] = () => new WishlistView();
         BuildTabBar();
         BuildIdleWidgets();
         _closeT.Interval = TimeSpan.FromMilliseconds(Math.Clamp(Settings.Cur.CloseDelayMs, 50, 600000));
@@ -644,7 +639,6 @@ public partial class IslandWindow : Window
         _usageBox.Visibility = c || x || a ? Visibility.Visible : Visibility.Collapsed;
         _voiceDot.Visibility = full && DiscordRpc.I.InVoice ? Visibility.Visible : Visibility.Collapsed;   // titik hijau: sedang di voice channel
         UpdatePhoneDot(full);
-        UpdateMicBtn(full);
         bool sp = full && s.IdleSpeed;
         if (sp) { NetMeter.Sample(); SetSpeed(NetMeter.Fmt(NetMeter.DownKb), s.IdleSpeedStyle == "both" ? NetMeter.Fmt(NetMeter.UpKb) : null); }
         _speed.Visibility = sp ? Visibility.Visible : Visibility.Collapsed;
@@ -681,7 +675,7 @@ public partial class IslandWindow : Window
         if (Row2.Text != (text ?? "")) Row2.Text = text ?? "";
         Row2.Foreground = br;
 
-        var key = $"{clock.Length}|{c}|{x}|{a}|{sp}|{_chipC.Key}|{_chipX.Key}|{_chipA.Key}|{_speed.Tag}|{_batText.Text}|{_batText.Visibility}|{_waveOn}|{text != null}|{shownRows}|{_phoneDot.Visibility}|{_voiceDot.Visibility}|{_micBtn.Visibility}|{MeetingService.I.MicMuted}|{mini}|{clock}";
+        var key = $"{clock.Length}|{c}|{x}|{a}|{sp}|{_chipC.Key}|{_chipX.Key}|{_chipA.Key}|{_speed.Tag}|{_batText.Text}|{_batText.Visibility}|{_waveOn}|{text != null}|{shownRows}|{_phoneDot.Visibility}|{_voiceDot.Visibility}|{mini}|{clock}";
         if (key != _idleKey)
         {
             _idleKey = key;
@@ -759,18 +753,6 @@ public partial class IslandWindow : Window
         return ex + (exact ? Math.Max(120, c + 2 * Math.Max(l, r) + 28) : Math.Max(120, l + c + r + 28));   // jarak antar komponen tetap: Settings.IdleGap
     }
 
-    void UpdateMicBtn(bool full)
-    {
-        var s = Settings.Cur;
-        bool on = full && s.MeetOn && s.MeetMic && MeetingService.I.Active;
-        _micBtn.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        if (!on) return;
-        bool muted = MeetingService.I.MicMuted;
-        _micGlyph.Foreground = muted ? UI.B("#FFFF453A") : UI.B("#FF30D158");
-        _micSlash.Visibility = muted ? Visibility.Visible : Visibility.Collapsed;
-        _micBtn.ToolTip = L.F(muted ? "Rapat {0}: mikrofon bisu, klik untuk menyalakan" : "Rapat {0}: klik untuk membisukan mikrofon", MeetingService.I.App);
-    }
-
     // titik status HP, dua keadaan saja: menyala (terisi) = HP tersambung; kosong (hanya cincin) = tidak tersambung, apa pun sebabnya
     void UpdatePhoneDot(bool full)
     {
@@ -805,14 +787,14 @@ public partial class IslandWindow : Window
         var s = Settings.Cur;
         ZoneL.Children.Clear(); ZoneC.Children.Clear(); ZoneR.Children.Clear();
         void Put(string pos, UIElement e) => (pos switch { "left" => ZoneL, "right" => ZoneR, _ => ZoneC }).Children.Add(e);
-        Put(s.PosWave, _wave); Put(s.PosUsage, _usageBox); Put(s.PosSpeed, _speed); Put(s.PosClock, TimeText); Put(s.PosBattery, _batBox); Put(s.PosVoice, _voiceDot); Put(s.PosPhone, _phoneDot); Put("right", _micBtn);
+        Put(s.PosWave, _wave); Put(s.PosUsage, _usageBox); Put(s.PosSpeed, _speed); Put(s.PosClock, TimeText); Put(s.PosBattery, _batBox); Put(s.PosVoice, _voiceDot); Put(s.PosPhone, _phoneDot);
     }
 
     // Semua komponen punya margin sama: jarak antar dua komponen = IdleGap, tidak ada ruang kosong tambahan.
     void ApplyGap()
     {
         var m = new Thickness(Settings.Cur.IdleGap / 2.0, 0, Settings.Cur.IdleGap / 2.0, 0);
-        TimeText.Margin = _batBox.Margin = _speed.Margin = _wave.Margin = _chipC.Margin = _chipX.Margin = _chipA.Margin = _voiceDot.Margin = _phoneDot.Margin = _micBtn.Margin = m;
+        TimeText.Margin = _batBox.Margin = _speed.Margin = _wave.Margin = _chipC.Margin = _chipX.Margin = _chipA.Margin = _voiceDot.Margin = _phoneDot.Margin = m;
         _usageBox.Margin = new Thickness(0);
     }
 
@@ -840,15 +822,9 @@ public partial class IslandWindow : Window
         Grid.SetColumn(Row2, 1);
         Row2Host.Children.Add(Row2);
         DiscordRpc.I.Changed += () => { _idleKey = ""; RefreshIdle(); };
-        var micHost = new Grid { Width = 16, Height = 16, IsHitTestVisible = false };
-        micHost.Children.Add(_micGlyph); micHost.Children.Add(_micSlash);
-        _micBtn.Child = micHost;
-        _micBtn.MouseLeftButtonUp += (_, e) => { e.Handled = true; MeetingService.I.ToggleMic(); };
-        MeetingService.I.Changed += () => { _idleKey = ""; RefreshIdle(); };
         ShareServer.I.DevicesChanged += () => { _idleKey = ""; RefreshIdle(); };
         PhoneNotifs.Posted += n =>
         {
-            if (Settings.Cur.MeetHold && MeetingService.I.Active && Otp.Find(n.Title, n.Text) == null) return;   // Mode rapat: ditahan, OTP tetap lewat
             // idle hanya satu baris: notifikasi terbaru menggantikan yang lama (percakapan lengkap ada di tab Komunikasi)
             // notifikasi lain dari aplikasi yang sama saat yang lama masih tampil digabung: satu baris dengan penanda "(+n)", bukan baris yang terus berganti
             int count = _rows.Count > 0 && _rows[0].N.Pkg == n.Pkg && _rows[0].N.Key != n.Key && DateTime.Now < _rows[0].Until ? _rows[0].Count + 1 : _rows.Count > 0 && _rows[0].N.Key == n.Key ? _rows[0].Count : 1;

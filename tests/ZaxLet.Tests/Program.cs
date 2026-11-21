@@ -207,19 +207,6 @@ langOk = langOk && L.T("Kirim") == "Kirim" && DurText.Fmt(5400) == "1 jam 30 mnt
 Console.WriteLine(langOk ? "LANG OK" : "LANG GAGAL");
 if (!langOk) fail++;
 
-// Cek mandiri pembaca halaman produk Wishlist: meta og (urutan atribut bebas), harga gaya Indonesia, cadangan JSON-LD, sumber dari domain, judul dari link
-var wp = WishParse.Meta("<html><head><title>Cadangan</title><meta content=\"Fuwa &amp; Petit\" property=\"og:title\"><meta property='og:image' content='/img/a.jpg'><meta property=\"product:price:amount\" content=\"149.000\"><meta property=\"product:price:currency\" content=\"idr\"></head></html>");
-var wj = WishParse.Meta("<title>Plush</title><script type=\"application/ld+json\">{\"priceCurrency\":\"IDR\",\"price\":\"129000.00\"}</script>");
-bool wishOk = wp.Title == "Fuwa & Petit" && wp.Image == "/img/a.jpg" && wp.Price == "IDR 149,000"
-              && wj.Title == "Plush" && wj.Price == "IDR 129,000" && WishParse.Meta("").Price == "" && WishParse.Meta("<meta content=\"x\"").Title == ""
-              && WishParse.Source("https://shopee.co.id/x") == "Shopee" && WishParse.Source("https://www.tokopedia.com/a/b") == "Tokopedia"
-              && WishParse.Source("https://kyou-hobby.com/p") == "Kyou Hobby" && WishParse.Source("https://toko.example.co.id/p") == "Example" && WishParse.Source("bukan link") == ""
-              && WishParse.SlugTitle("https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.123.456?sp=1") == "Fuwa Petit Mascot Akiyama Mizuki";
-wishOk = wishOk && WishParse.PriceFromText("Rp149.000") == "IDR 149,000" && WishParse.PriceFromText("Harga: IDR 1,250,000.") == "IDR 1,250,000"
-         && WishParse.PriceFromText("149000") == "IDR 149,000" && WishParse.PriceFromText("Rp 75.500,00") == "IDR 75.500,00" && WishParse.PriceFromText("tidak ada harga") == "" && WishParse.PriceFromText(null) == "";
-Console.WriteLine(wishOk ? "WISH OK" : $"WISH GAGAL {wp} {wj} {WishParse.SlugTitle("https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.123.456?sp=1")}");
-if (!wishOk) fail++;
-
 // Cek mandiri pengenal kode OTP di notifikasi: perlu kata kunci + angka 4-8 digit; harga, tahun-tanpa-kunci, dan teks biasa tidak dianggap kode
 bool otpOk = Otp.Find("Bank Rey", "Kode OTP kamu 482913. Jangan bagikan.") == "482913"
              && Otp.Find("Google", "G-123 456 is your verification code") == "123456"
@@ -229,17 +216,6 @@ bool otpOk = Otp.Find("Bank Rey", "Kode OTP kamu 482913. Jangan bagikan.") == "4
              && Otp.Find(null, null) == null;
 Console.WriteLine(otpOk ? "OTP OK" : "OTP GAGAL");
 if (!otpOk) fail++;
-
-// Cek mandiri pengenal rapat: aplikasi rapat asli cukup dari mikrofon; peramban perlu judul tab rapat; tab biasa dan tanpa mikrofon bukan rapat
-bool meetOk = MeetingDetect.Classify(new[] { "Zoom" }, new string[0]) == "Zoom"
-              && MeetingDetect.Classify(new[] { "ms-teams" }, null) == "Teams"
-              && MeetingDetect.Classify(new[] { "chrome" }, new[] { "Meet - abc-defg-hij - Google Chrome" }) == "Meet"
-              && MeetingDetect.Classify(new[] { "chrome" }, new[] { "Perekam suara - Google Chrome" }) == null
-              && MeetingDetect.Classify(new string[0], new[] { "Meet - abc-defg-hij" }) == null
-              && MeetingDetect.Classify(new[] { "discord" }, new string[0]) == null
-              && MeetingDetect.Classify(new[] { "WhatsApp.Root" }, null) == "WhatsApp";
-Console.WriteLine(meetOk ? "MEETING OK" : "MEETING GAGAL");
-if (!meetOk) fail++;
 
 // Cek mandiri jadwal ibadah mingguan dan pembaca cuaca open-meteo
 var wl = Worship.Parse("min 08:00 Kebaktian; jum,sab 18.30 Latihan koor; tiap 21:00 Doa\nrusak; sen 25:00 salah");
@@ -254,40 +230,18 @@ bool worshipOk = wl.Count == 1 + 2 + 7                  // Min | Jum+Sab | tiap 
 Console.WriteLine(worshipOk ? "WORSHIP/WEATHER OK" : $"WORSHIP/WEATHER GAGAL {wl.Count} {due.Count} {wr}");
 if (!worshipOk) fail++;
 
-// Cek mandiri jembatan ekstensi Wishlist: kunci link, asal permintaan, token, dan validasi kiriman halaman (masukan tidak tepercaya)
-var png = Convert.ToBase64String(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-var okPage = WishBridgeCore.ParsePage("{\"url\":\"https://shopee.co.id/Sepatu-i.1.2?xptdk=abc\",\"title\":\"Sepatu Bristol | Shopee Indonesia\",\"price\":\"\",\"priceText\":\"Rp149.000\",\"image\":\"data:image/png;base64," + png + "\"}");
-bool bridgeOk = WishBridgeCore.Key("https://www.Shopee.co.id/Sepatu-i.1.2/?xptdk=zzz&utm_source=a#x") == WishBridgeCore.Key("https://shopee.co.id/Sepatu-i.1.2")
-                && WishBridgeCore.Key("https://a.com/p?id=1") != WishBridgeCore.Key("https://a.com/p?id=2")
-                && WishBridgeCore.Key("ftp://a.com/x") == null && WishBridgeCore.Key("bukan link") == null
-                && WishBridgeCore.OriginAllowed("chrome-extension://abcdef") && !WishBridgeCore.OriginAllowed("https://evil.example") && !WishBridgeCore.OriginAllowed(null)
-                && WishBridgeCore.TokenOk("abc123", "abc123") && !WishBridgeCore.TokenOk("abc124", "abc123") && !WishBridgeCore.TokenOk("", "") && !WishBridgeCore.TokenOk("abc", "abc123")
-                && WishBridgeCore.CleanTitle("Jual Ortuseight Sepatu Sneakers Bristol 1.2 - Ash Grey | Shopee Indonesia") == "Ortuseight Sepatu Sneakers Bristol 1.2 - Ash Grey"
-                && WishBridgeCore.CleanTitle("Jual Aku") == "Jual Aku"
-                && okPage != null && okPage.Title == "Sepatu Bristol" && okPage.Price == "IDR 149,000" && okPage.Image != null && WishBridgeCore.ImageExt(okPage.Image) == ".png"
-                && WishBridgeCore.ParsePage("{\"url\":\"javascript:alert(1)\",\"title\":\"x\"}") == null
-                && WishBridgeCore.ParsePage("{\"url\":\"https://a.com/p\",\"title\":\"\"}") == null
-                && WishBridgeCore.ParsePage("bukan json") == null
-                && WishBridgeCore.ParsePage("{\"url\":\"https://a.com/p\",\"title\":\"Ok\",\"image\":\"data:image/png;base64,AAAA\"}").Image == null   // bukan gambar sungguhan: dibuang
-                && WishBridgeCore.ParsePage("{\"url\":\"https://a.com/p\",\"title\":\"Ok\",\"price\":\"149000\",\"currency\":\"IDR\"}").Price == "IDR 149,000";
-bridgeOk = bridgeOk && WishBridgeCore.ParseNotify("{\"text\":\"Build selesai\",\"seconds\":6}") is { Text: "Build selesai", Seconds: 6 }
-           && WishBridgeCore.ParseNotify("{\"text\":\"a\\nb\",\"seconds\":999}") is { Text: "a b", Seconds: 30 }
-           && WishBridgeCore.ParseNotify("{\"text\":\"x\",\"seconds\":0}") is { Seconds: 2 }
-           && WishBridgeCore.ParseNotify("{\"text\":\"\"}") == null && WishBridgeCore.ParseNotify("bukan json") == null && WishBridgeCore.ParseNotify("{\"seconds\":5}") == null;
-Console.WriteLine(bridgeOk ? "BRIDGE OK" : "BRIDGE GAGAL");
-
 // Cek mandiri filter sumber musik dan warna aksen Windows
 bool miscOk = MediaFilter.Ignored("Discord.exe", "discord, zoom") && MediaFilter.Ignored("us.zoom.Zoom", "Zoom") && !MediaFilter.Ignored("Spotify.exe", "discord, zoom")
               && !MediaFilter.Ignored("Spotify.exe", "") && !MediaFilter.Ignored("Spotify.exe", "s") && !MediaFilter.Ignored(null, "discord")
               && AccentColor.FromAbgr(unchecked((int)0xFFD77800)) != "0078D7"          // biru Windows (R0 G120 B215) gelap: dicerahkan
               && AccentColor.FromAbgr(unchecked((int)0xFFFFFF00)) == "00FFFF"          // sudah terang (cyan): tidak berubah
               && AccentColor.FromAbgr(unchecked((int)0xFF000000)).Length == 6;
-var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("w https://kyou.id/items/1"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
+var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
 miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 }
-          && qc[2] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[3].Kind == QuickCmd.Kind.Wish && qc[4] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[5] is { Kind: QuickCmd.Kind.Water, Value: 250 }
-          && qc[6] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[7].Kind == QuickCmd.Kind.Hide
+          && qc[2] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[3] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[4] is { Kind: QuickCmd.Kind.Water, Value: 250 }
+          && qc[5] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[6].Kind == QuickCmd.Kind.Hide
           && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown
-          && QuickCmd.Parse("w bukan link").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
+          && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
 // overlay performa: baris nvidia-smi nyata dari RTX 3050 laptop (daya [N/A] di data lain), pilihan metrik, penyusun baris
 var smi = PerfFormat.ParseSmi("32, 405, 810, 50, 645, 6144, 8.86, 20, P5, [N/A], 0x0000000000000001");
 var smiNa = PerfFormat.ParseSmi("5, 210, 405, 41, 300, 6144, [N/A]");
@@ -358,7 +312,6 @@ miscOk = miscOk && ProcGuard.CanKill("notepad++", @"C:\Program Files\Notepad++\n
           && !ProcGuard.CanKill("zaxlet", @"D:\x\ZaxLet.exe") && !ProcGuard.CanKill("System", null) && !ProcGuard.CanKill("x", "");
 Console.WriteLine(miscOk ? "MISC OK" : $"MISC GAGAL {AccentColor.FromAbgr(unchecked((int)0xFFD77800))}");
 if (!miscOk) fail++;
-if (!bridgeOk) fail++;
 
 // Cek mandiri parser AiTaskParse: worker JSON (BOM/terpotong), status MATI, stage, vonis, dan token
 {

@@ -204,13 +204,6 @@ public sealed class Settings
     public string CapDir { get; set; } = "";
     public bool CapClipboard { get; set; } = true;
     public int RecFps { get; set; } = 30;
-    public bool WishBridgeOn { get; set; } = true;             // terima info halaman produk dari ekstensi browser (hanya 127.0.0.1)
-    public bool WishSuggest { get; set; } = true;              // link produk yang dikenali ekstensi ditawarkan ke Wishlist saat disalin
-    [JsonConverter(typeof(SecretConverter))] public string WishToken { get; set; } = "";              // rahasia ekstensi browser; dibuat sekali, tidak ikut cadangan
-    public bool MeetOn { get; set; } = true;                  // deteksi rapat (Zoom, Meet, Teams, ...) lewat pemakaian mikrofon
-    public bool MeetMic { get; set; } = true;                  // tombol mikrofon di pill selama rapat
-    public bool MeetPause { get; set; } = true;                // musik dijeda selama rapat
-    public bool MeetHold { get; set; } = true;                 // notifikasi HP ditahan selama rapat
 
     // minum: pengingat lembut, hanya saat jam aktif, dan (mode pintar) hanya bila asupan tertinggal dari jadwal
     public bool WaterOn { get; set; } = true;

@@ -28,7 +28,7 @@ public partial class IslandWindow
 
     static readonly Guid GUID_DEVINTERFACE_VOLUME = new("53f5630d-b6bf-11d0-94f2-00a0c91efb8b");
 
-    static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["wish"] = ("", "Wishlist");TabMeta["clip"] = ("", "Clipboard"); }
+    static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["clip"] = ("", "Clipboard"); }
 
     // ---------- tema, mode tampil, musik di layar penuh ----------
     static readonly Dictionary<string, Brush> ThemeBrushes = BuildThemes();
@@ -73,7 +73,7 @@ public partial class IslandWindow
 
     /// <summary>Ada yang sedang terjadi di island (musik, notifikasi, timer, rapat, fokus, rekaman): dipakai mode "hanya saat ada aktivitas".</summary>
     bool HasActivity() => _open || MediaService.I.Playing || _rows.Count > 0 || _alert != null && DateTime.Now < _alertUntil
-        || TimerService.I.Running || MeetingService.I.Active || CaptureService.Recording;
+        || TimerService.I.Running || CaptureService.Recording;
 
     bool FsMusicOn => _fsApp && Settings.Cur.FsMusic && MediaService.I.Playing;
 
@@ -252,7 +252,7 @@ public partial class IslandWindow
         else if (_altT.IsEnabled) { _altT.Stop(); AltCheck(); }   // AltCheck terakhir melepas pill yang sedang "hantu"
         if (s.OsdOn || s.YieldOn) _osdT.Start(); else _osdT.Stop();   // YieldOn: poll yang sama mengisi persegi pill untuk YieldService
         _yield.Enable(s.YieldOn);
-        bool slow = s.OsdOn || s.PrivacyOn || s.MeetOn || ShareServer.I.On || MeetingService.I.Active;
+        bool slow = s.OsdOn || s.PrivacyOn || ShareServer.I.On;
         if (slow != _slowOn && _slowT != null) { _slowOn = slow; _slowT.Change(slow ? 4000 : Timeout.Infinite, slow ? 2000 : Timeout.Infinite); }
     }
 
@@ -299,7 +299,7 @@ public partial class IslandWindow
     /// <summary>Dipanggil dari hook jendela: pesan Windows yang dipakai fitur tambahan.</summary>
     void HookFeatures(int msg, IntPtr wp, IntPtr lp, ref bool handled)
     {
-        if (msg == 0x031D) { ClipboardHistory.Capture(); WishBridge.OnClipboard(); handled = true; }   // WM_CLIPBOARDUPDATE
+        if (msg == 0x031D) { ClipboardHistory.Capture(); handled = true; }   // WM_CLIPBOARDUPDATE
         else if (msg == 0x0219)   // WM_DEVICECHANGE
         {
             long ev = wp.ToInt64();
@@ -516,7 +516,6 @@ public partial class IslandWindow
                     Alert(L.F(n.StartsWith("mic:") ? "Mikrofon dipakai: {0}" : "Kamera dipakai: {0}", n[4..]), 4, null, sound: false);
                 _lastPrivacy = now;
             }
-            MeetingService.I.Poll();
             if (ShareServer.I.On && !_netWarned)
             {
                 var net = NetInfo.Current();

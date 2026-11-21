@@ -25,11 +25,8 @@
     <Compile Include="..\..\src\ZaxLet\Services\DownloadWatch.cs" Link="DownloadWatch.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\UpdateCheck.cs" Link="UpdateCheck.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\SettingsBackup.cs" Link="SettingsBackup.cs" />
-    <Compile Include="..\..\src\ZaxLet\Services\WishParse.cs" Link="WishParse.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\Otp.cs" Link="Otp.cs" />
-    <Compile Include="..\..\src\ZaxLet\Services\MeetingDetect.cs" Link="MeetingDetect.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\Worship.cs" Link="Worship.cs" />
-    <Compile Include="..\..\src\ZaxLet\Services\WishBridgeCore.cs" Link="WishBridgeCore.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\MediaFilter.cs" Link="MediaFilter.cs" />
     <Compile Include="..\..\src\ZaxLet\Services\PerfFormat.cs" Link="PerfFormat.cs" />
     <Compile Include="..\..\src\ZaxLet\Core\AccentColor.cs" Link="AccentColor.cs" />

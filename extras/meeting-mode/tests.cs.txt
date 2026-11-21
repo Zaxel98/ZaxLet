@@ -1,0 +1,10 @@
+// Cek mandiri pengenal rapat: aplikasi rapat asli cukup dari mikrofon; peramban perlu judul tab rapat; tab biasa dan tanpa mikrofon bukan rapat
+bool meetOk = MeetingDetect.Classify(new[] { "Zoom" }, new string[0]) == "Zoom"
+              && MeetingDetect.Classify(new[] { "ms-teams" }, null) == "Teams"
+              && MeetingDetect.Classify(new[] { "chrome" }, new[] { "Meet - abc-defg-hij - Google Chrome" }) == "Meet"
+              && MeetingDetect.Classify(new[] { "chrome" }, new[] { "Perekam suara - Google Chrome" }) == null
+              && MeetingDetect.Classify(new string[0], new[] { "Meet - abc-defg-hij" }) == null
+              && MeetingDetect.Classify(new[] { "discord" }, new string[0]) == null
+              && MeetingDetect.Classify(new[] { "WhatsApp.Root" }, null) == "WhatsApp";
+Console.WriteLine(meetOk ? "MEETING OK" : "MEETING GAGAL");
+if (!meetOk) fail++;

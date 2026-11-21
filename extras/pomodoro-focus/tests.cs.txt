@@ -1,0 +1,5 @@
+// Potongan tes QuickCmd untuk Mode Fokus yang dikeluarkan dari tests/ZaxLet.Tests/Program.cs:
+var qcFocus = new[] { QuickCmd.Parse("fokus"), QuickCmd.Parse("fokus 25") };
+bool focusOk = qcFocus[0] is { Kind: QuickCmd.Kind.Focus, Value: 0 }
+            && qcFocus[1] is { Kind: QuickCmd.Kind.Focus, Value: 25 }
+            && QuickCmd.Parse("fokus 999").Kind == QuickCmd.Kind.Unknown;
