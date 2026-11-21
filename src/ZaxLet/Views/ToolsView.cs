@@ -17,6 +17,7 @@ public sealed class ToolsView : TabView
     public override double H => 210;
 
     readonly Action _paintMic;
+    readonly Action _paintPrompter;
 
     public ToolsView()
     {
@@ -54,7 +55,7 @@ public sealed class ToolsView : TabView
         root.Children.Add(head);
 
         var recBg = UI.B(RecBgHex);
-        var row = new UniformGrid { Rows = 2, Columns = 4 };
+        var row = new UniformGrid { Rows = 2, Columns = 5 };
         row.Children.Add(Tile("", "Layar penuh", CaptureService.Full, UI.Card));
         row.Children.Add(Tile("", "Area", CaptureService.Area, UI.Card));
         row.Children.Add(Tile("", "Jendela", CaptureService.Window, UI.Card));
@@ -63,13 +64,25 @@ public sealed class ToolsView : TabView
         row.Children.Add(Tile("", "Pipet warna", ColorPick.Pick, UI.Card));
         row.Children.Add(Tile("", "Rekam layar", CaptureService.ToggleRecord, recBg));
         row.Children.Add(Tile("", "Rekam area", CaptureService.ToggleRecordArea, recBg));
+        var (prompterTile, prompterLabel) = TileWithLabel("\uE8A5", "Teleprompter", () =>
+        {
+            if (PrompterWindow.IsOpen) { PrompterWindow.Stop(); _paintPrompter?.Invoke(); }
+            else PrompterSetup.ShowIt();
+        }, UI.Card);
+        prompterTile.ToolTip = L.T("Naskah bergulir di bawah kamera, tidak ikut terekam");
+        _paintPrompter = () => prompterLabel.Text = L.T(PrompterWindow.IsOpen ? "Hentikan teleprompter" : "Teleprompter");
+        _paintPrompter();
+        row.Children.Add(prompterTile);
         root.Children.Add(row.At(1));
         Children.Add(root);
     }
 
-    public override void OnShow() => _paintMic();
+    public override void OnShow() { _paintMic(); _paintPrompter(); }
 
-    static UIElement Tile(string glyph, string label, Action click, Brush bg)
+    static UIElement Tile(string glyph, string label, Action click, Brush bg) =>
+        TileWithLabel(glyph, label, click, bg).Tile;
+
+    static (Border Tile, TextBlock Label) TileWithLabel(string glyph, string label, Action click, Brush bg)
     {
         var sp = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         sp.Children.Add(UI.Icon(glyph, 22));
@@ -79,6 +92,6 @@ public sealed class ToolsView : TabView
         sp.Children.Add(t);
         var b = UI.Btn(sp, click, bg, 14, new Thickness(6, 11, 6, 11));
         b.Margin = new Thickness(4);
-        return b;
+        return (b, t);
     }
 }
