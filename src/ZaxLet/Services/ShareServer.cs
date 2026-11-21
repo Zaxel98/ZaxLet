@@ -522,8 +522,11 @@ public sealed class ShareServer
                     pktCount = 0;
                     pktBytes = 0;
                 }
+                long cb0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 var pcm = opus.Decode(data);
                 if (pcm != null && pcm.Length > 0) PhoneAudio.Push(pcm);
+                long cbMs = (System.Diagnostics.Stopwatch.GetTimestamp() - cb0) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+                if (cbMs >= 200) PhoneAudio.Diag($"decode+Push lambat {cbMs} ms (pool pend={System.Threading.ThreadPool.PendingWorkItemCount})");
             });
         }
         catch (Exception ex) { PhoneAudio.Diag("aliran berhenti karena galat: " + ex.GetType().Name + " " + ex.Message); }
