@@ -8,11 +8,11 @@ namespace ZaxLet;
 /// </summary>
 public static class QuickCmd
 {
-    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Prompter, Unknown }
+    public enum Kind { None, Timer, Focus, Note, Wish, Water, Theme, Hide, Perf, Bt, Calc, Open, Lock, Sleep, MusicSleep, Dark, Light, Wifi, Bluetooth, Power, Awake, Ocr, Color, Remind, Topmost, Eject, Hp, Unknown }
 
     public sealed record Cmd(Kind Kind, string Arg = "", double Value = 0);
 
-    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  tp <naskah>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
+    public const string Help = "t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]";
 
     static readonly string[] Themes = { "black", "aurora", "matcha", "senja", "neon" };
 
@@ -90,8 +90,6 @@ public static class QuickCmd
                     : new Cmd(Kind.Unknown, "lepas [huruf drive, mis. e]");
             case "hp": case "phone":
                 return new Cmd(Kind.Hp, arg);
-            case "prompter": case "tp":
-                return new Cmd(Kind.Prompter, arg);
             case "buka": case "open": case "ke":
                 return arg.Length > 0 ? new Cmd(Kind.Open, arg.ToLowerInvariant()) : new Cmd(Kind.Unknown, "buka <nama tab>");
             default:

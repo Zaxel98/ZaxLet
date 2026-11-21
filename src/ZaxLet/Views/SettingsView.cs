@@ -636,9 +636,6 @@ public sealed class SettingsView : TabView
                 yield return ("§Discord dan Meet", null);
                 yield return ("Panduan Discord\n" + (DiscordRpc.I.Connected ? L.T("Tersambung") + (DiscordRpc.I.InVoice ? " · voice: " + DiscordRpc.I.Channel : "") : DiscordRpc.Configured ? DiscordRpc.I.Status : L.T("Cara cepat siap; cara lengkap belum disambungkan")), Act("Buka panduan", () => DiscordGuide.Show(true), UI.Fg));
                 yield return ("~Atur ulang sambungan Discord", Act("Atur ulang", () => { s.DiscordClientId = s.DiscordSecret = ""; s.DiscordSetupAsked = false; DiscordRpc.I.ResetToken(); Render(); }, UI.Warn));
-                yield return ("§Teleprompter", null);
-                yield return ("Kecepatan gulir (kata/menit)", Num(60, 300, 10, " kpm", () => Math.Clamp(s.PrompterWpm, 60, 300), v => s.PrompterWpm = v));
-                yield return ("Ukuran huruf", Num(16, 48, 2, " pt", () => Math.Clamp(s.PrompterFont, 16, 48), v => s.PrompterFont = v));
                 break;
 
             case "addons":
