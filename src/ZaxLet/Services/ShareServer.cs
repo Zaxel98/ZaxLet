@@ -381,6 +381,7 @@ public sealed class ShareServer
                 else if (rq[0] == "GET" && path == "/cam") await Send(ns, 200, "text/html; charset=utf-8", CamPage());
                 else if (rq[0] == "GET" && path == "/cam/ws" && hdr.TryGetValue("sec-websocket-key", out var wk)) await CamSocket(ns, wk, dev?.Name ?? "HP");
                 else if (rq[0] == "GET" && path == "/aud/ws" && hdr.TryGetValue("sec-websocket-key", out var ak)) await AudSocket(ns, ak);
+                else if (rq[0] == "GET" && path == "/aud/opus" && hdr.TryGetValue("sec-websocket-key", out var aok)) await AudOpusSocket(ns, aok);
                 else if (rq[0] == "GET" && path == "/scr/ws" && hdr.TryGetValue("sec-websocket-key", out var sk)) await ScrSocket(ns, sk);
                 else if (rq[0] == "GET" && path == "/cam.mjpg") await Mjpeg(ns, c);
                 else if (rq[0] == "GET" && path == "/cam.jpg" && PhoneCam.Latest is { } jpg) await Send(ns, 200, "image/jpeg", jpg);
@@ -494,6 +495,37 @@ public sealed class ShareServer
         var t0 = DateTime.Now;
         PhoneAudio.Diag("HP tersambung (audio)");
         try { await WsIn(ns, key, PhoneAudio.Push); }
+        catch (Exception ex) { PhoneAudio.Diag("aliran berhenti karena galat: " + ex.GetType().Name + " " + ex.Message); }
+        finally { PhoneAudio.Stop(); PhoneAudio.Diag($"HP terputus setelah {(DateTime.Now - t0).TotalSeconds:0} dtk"); }
+    }
+
+    // audio HP -> PC (Opus 48 kHz stereo 20 ms): didekode ke PCM lalu diteruskan ke PhoneAudio.Push
+    static async Task AudOpusSocket(Stream ns, string key)
+    {
+        var t0 = DateTime.Now;
+        var opus = new OpusIn();
+        long lastStatTick = Environment.TickCount64, pktCount = 0, pktBytes = 0;
+        PhoneAudio.Diag("HP tersambung (audio opus)");
+        PhoneAudio.Diag("PhoneAudio: codec=opus avgPkt=0B");
+        try
+        {
+            await WsIn(ns, key, data =>
+            {
+                pktCount++;
+                pktBytes += data.Length;
+                long now = Environment.TickCount64;
+                if (now - lastStatTick >= 10_000)
+                {
+                    lastStatTick = now;
+                    long avg = pktCount > 0 ? pktBytes / pktCount : 0;
+                    PhoneAudio.Diag($"PhoneAudio: codec=opus avgPkt={avg}B pkts={pktCount}");
+                    pktCount = 0;
+                    pktBytes = 0;
+                }
+                var pcm = opus.Decode(data);
+                if (pcm != null && pcm.Length > 0) PhoneAudio.Push(pcm);
+            });
+        }
         catch (Exception ex) { PhoneAudio.Diag("aliran berhenti karena galat: " + ex.GetType().Name + " " + ex.Message); }
         finally { PhoneAudio.Stop(); PhoneAudio.Diag($"HP terputus setelah {(DateTime.Now - t0).TotalSeconds:0} dtk"); }
     }
