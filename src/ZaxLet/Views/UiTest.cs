@@ -72,7 +72,7 @@ public static class UiTest
             ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()),
             ("usage", () => new UsageView()), ("monitor", () => MonitorView.Preview()), ("today", () => new CalendarView()),
             ("prayer", () => new PrayerView()), ("comm", () => new AppsView()), ("clipboard", () => new ClipboardView()),
-            ("capture", () => new ToolsView()), ("eyes", () => new EyeView()),
+            ("capture", () => new ToolsView()),
         })
         {
             try { var v = make(); v.OnShow(); Shot(v, "tab-" + name, 660, 262); v.OnHide(); log.AppendLine("ok tab " + name); }

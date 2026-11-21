@@ -20,14 +20,11 @@ public sealed class TimerView : TabView
     readonly StackPanel _remList = new();
     readonly TextBlock _go = UI.Icon("", 20);
 
-    readonly TextBlock _focusT = UI.T("", 12.5);
-    Border _focus;
-
     public TimerView()
     {
         var cols = UI.Cols(-1, 200);
         var root = UI.Rows(0, -1, 0);
-        foreach (var (m, name) in new[] { (TMode.Timer, "Timer"), (TMode.Pomodoro, "Pomodoro"), (TMode.Stopwatch, "Stopwatch") })
+        foreach (var (m, name) in new[] { (TMode.Timer, "Timer"), (TMode.Stopwatch, "Stopwatch") })
         {
             var mode = m;
             var b = UI.Btn(UI.T(name, 12.5), () => { _t.SetMode(mode); Render(); }, UI.Card, 12, new Thickness(12, 4, 12, 4));
@@ -35,10 +32,6 @@ public sealed class TimerView : TabView
             b.Tag = m;
             _modes.Children.Add(b);
         }
-        _focus = UI.Btn(_focusT, () => { var f = FocusService.I; if (f.Manual) f.Stop(); else f.Start(Settings.Cur.FocusMin); }, UI.Card, 12, new Thickness(12, 4, 12, 4));
-        _focus.Margin = new Thickness(10, 0, 0, 0);
-        _focus.ToolTip = L.T("Mode Fokus: notifikasi HP ditahan, kode OTP tetap lewat. Lamanya diatur di Pengaturan > Pengingat");
-        _modes.Children.Add(_focus);
         root.Children.Add(_modes);
 
         var mid = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -76,8 +69,8 @@ public sealed class TimerView : TabView
         }
     }
 
-    public override void OnShow() { _t.Tick += OnTick; FocusService.I.Changed += OnTick; ReminderService.I.Changed += OnTick; Render(); }
-    public override void OnHide() { _t.Tick -= OnTick; FocusService.I.Changed -= OnTick; ReminderService.I.Changed -= OnTick; }
+    public override void OnShow() { _t.Tick += OnTick; ReminderService.I.Changed += OnTick; Render(); }
+    public override void OnHide() { _t.Tick -= OnTick; ReminderService.I.Changed -= OnTick; }
     void OnTick() => Render();
 
     void Render()
@@ -86,17 +79,11 @@ public sealed class TimerView : TabView
         _go.Text = _t.Running ? "" : "";
         _sub.Text = _t.Mode switch
         {
-            TMode.Pomodoro => L.T(_t.PomoBreak ? "Istirahat " : "Fokus ") + L.F("· {0}/{1} menit", Settings.Cur.PomoWork, Settings.Cur.PomoBreak),
             TMode.Timer => L.T("Hitung mundur"),
             _ => L.T("Hitung maju")
         };
         _presets.Visibility = _t.Mode == TMode.Timer ? Visibility.Visible : Visibility.Hidden;
         foreach (Border b in _modes.Children) if (b.Tag is TMode tm) b.Background = tm == _t.Mode ? UI.CardOn : UI.Card;
-        var f = FocusService.I;
-        _focusT.Text = f.Active
-            ? L.T("Fokus") + " " + UI.Clock(f.Left) + (f.HeldCount > 0 ? " · " + L.F("{0} tertahan", f.HeldCount) : "")
-            : L.T("Mode Fokus");
-        _focus.Background = f.Active ? UI.AccentBg : UI.Card;
         RenderReminders();
     }
 

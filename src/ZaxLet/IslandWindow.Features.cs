@@ -73,7 +73,7 @@ public partial class IslandWindow
 
     /// <summary>Ada yang sedang terjadi di island (musik, notifikasi, timer, rapat, fokus, rekaman): dipakai mode "hanya saat ada aktivitas".</summary>
     bool HasActivity() => _open || MediaService.I.Playing || _rows.Count > 0 || _alert != null && DateTime.Now < _alertUntil
-        || TimerService.I.Running || MeetingService.I.Active || FocusService.I.Active || CaptureService.Recording;
+        || TimerService.I.Running || MeetingService.I.Active || CaptureService.Recording;
 
     bool FsMusicOn => _fsApp && Settings.Cur.FsMusic && MediaService.I.Playing;
 

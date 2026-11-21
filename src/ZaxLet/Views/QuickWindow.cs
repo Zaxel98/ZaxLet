@@ -71,9 +71,6 @@ public sealed class QuickWindow : Window
             case QuickCmd.Kind.Timer:
                 TimerService.I.SetMode(TMode.Timer); TimerService.I.SetTotal(TimeSpan.FromSeconds(c.Value)); TimerService.I.Start();
                 msg = L.F("Timer {0} berjalan", DurText.Fmt(c.Value)); break;
-            case QuickCmd.Kind.Focus:
-                int min = c.Value > 0 ? (int)c.Value : Settings.Cur.FocusMin;
-                FocusService.I.Start(min); msg = L.F("Mode Fokus {0} menit", min); break;
             case QuickCmd.Kind.Note:
                 CalendarService.I.Add(DateOnly.FromDateTime(DateTime.Today), c.Arg); msg = L.T("Dicatat di tugas hari ini"); break;
             case QuickCmd.Kind.Wish:

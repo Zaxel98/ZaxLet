@@ -24,11 +24,11 @@ public partial class IslandWindow : Window
     {
         ["music"] = ("", "Musik"), ["usage"] = ("", "AI"), ["monitor"] = ("", "Monitor"),
         ["calendar"] = ("", "Hari ini"), ["prayer"] = ("", "Sholat"), ["shelf"] = ("", "Shelf"),
-        ["tools"] = ("", "Tangkap"), ["timer"] = ("", "Timer"), ["eye"] = ("", "Mata"),
+        ["tools"] = ("", "Tangkap"), ["timer"] = ("", "Timer"),
         ["settings"] = ("", "Atur"),
         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
     };
-    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "eye", "settings" };
+    public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "wish", "clip", "tools", "timer", "settings" };
     /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
     public static string[] TabOrder
     {
@@ -110,7 +110,6 @@ public partial class IslandWindow : Window
         _make["shelf"] = () => new ShelfView();
         _make["tools"] = () => new ToolsView();
         _make["timer"] = () => new TimerView();
-        _make["eye"] = () => new EyeView();
         _make["water"] = () => new WaterView();
         _make["apps"] = () => new AppsView();
         _make["ctrl"] = () => new ControlView();
@@ -668,7 +667,7 @@ public partial class IslandWindow : Window
         }
         if (_fs && !FsMusicOn || (text == null && shownRows > 0)) text = null;   // notifikasi menggantikan timer/lirik: idle tetap satu baris
         else if (text == null && TimerService.I.Running)
-            text = (TimerService.I.Mode == TMode.Stopwatch ? "Stopwatch " : TimerService.I.PomoBreak ? "Istirahat " : "Timer ") + UI.Clock(TimerService.I.Value);
+            text = (TimerService.I.Mode == TMode.Stopwatch ? "Stopwatch " : "Timer ") + UI.Clock(TimerService.I.Value);
         if ((!_fs || FsMusicOn) && text == null && shownRows == 0 && s.MusicLyrics && s.IdleLyrics && ms.Playing && ms.Lyrics.Count > 0)   // lirik dimatikan = idle ikut mati
         {
             var l = ms.CurrentLine();
@@ -849,7 +848,7 @@ public partial class IslandWindow : Window
         ShareServer.I.DevicesChanged += () => { _idleKey = ""; RefreshIdle(); };
         PhoneNotifs.Posted += n =>
         {
-            if (FocusService.I.Hold(n)) return;   // Mode Fokus: ditahan, isinya tetap ada di tab Komunikasi
+            if (Settings.Cur.MeetHold && MeetingService.I.Active && Otp.Find(n.Title, n.Text) == null) return;   // Mode rapat: ditahan, OTP tetap lewat
             // idle hanya satu baris: notifikasi terbaru menggantikan yang lama (percakapan lengkap ada di tab Komunikasi)
             // notifikasi lain dari aplikasi yang sama saat yang lama masih tampil digabung: satu baris dengan penanda "(+n)", bukan baris yang terus berganti
             int count = _rows.Count > 0 && _rows[0].N.Pkg == n.Pkg && _rows[0].N.Key != n.Key && DateTime.Now < _rows[0].Until ? _rows[0].Count + 1 : _rows.Count > 0 && _rows[0].N.Key == n.Key ? _rows[0].Count : 1;

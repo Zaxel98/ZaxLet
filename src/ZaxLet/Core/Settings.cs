@@ -204,8 +204,6 @@ public sealed class Settings
     public string CapDir { get; set; } = "";
     public bool CapClipboard { get; set; } = true;
     public int RecFps { get; set; } = 30;
-    public bool EyeOn { get; set; }
-    public double EyeMinutes { get; set; } = 20;
     public bool WishBridgeOn { get; set; } = true;             // terima info halaman produk dari ekstensi browser (hanya 127.0.0.1)
     public bool WishSuggest { get; set; } = true;              // link produk yang dikenali ekstensi ditawarkan ke Wishlist saat disalin
     [JsonConverter(typeof(SecretConverter))] public string WishToken { get; set; } = "";              // rahasia ekstensi browser; dibuat sekali, tidak ikut cadangan
@@ -213,13 +211,6 @@ public sealed class Settings
     public bool MeetMic { get; set; } = true;                  // tombol mikrofon di pill selama rapat
     public bool MeetPause { get; set; } = true;                // musik dijeda selama rapat
     public bool MeetHold { get; set; } = true;                 // notifikasi HP ditahan selama rapat
-    public int FocusMin { get; set; } = 25;                    // lama Mode Fokus manual
-    public bool FocusPomo { get; set; }                        // fase kerja Pomodoro otomatis jadi Mode Fokus
-    public bool QuietOn { get; set; }                          // jam tenang terjadwal: tahan notifikasi HP di rentang jam ini
-    public string QuietFrom { get; set; } = "22:00";
-    public string QuietTo { get; set; } = "06:00";
-    public double PomoWork { get; set; } = 25;
-    public double PomoBreak { get; set; } = 5;
 
     // minum: pengingat lembut, hanya saat jam aktif, dan (mode pintar) hanya bila asupan tertinggal dari jadwal
     public bool WaterOn { get; set; } = true;

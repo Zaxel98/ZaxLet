@@ -209,7 +209,7 @@ public sealed class SettingsView : TabView
         ["phone"] = "Sambungkan HP, notifikasi, dan kamera. Mulai dari Panduan sambung HP.",
         ["system"] = "Kuota Claude dan Codex serta kinerja PC.",
         ["calendar"] = "Kalender, hari libur, jadwal sholat, dan adzan.",
-        ["remind"] = "Minum, istirahat mata, dan Pomodoro.",
+        ["remind"] = "Pengingat minum.",
         ["tools"] = "Tangkap layar, clipboard, Discord, dan Meet.",
         ["addons"] = "Unduhan tambahan yang hanya diambil bila kamu memintanya.",
     };
@@ -267,7 +267,6 @@ public sealed class SettingsView : TabView
             var json = SettingsBackup.Import(System.IO.File.ReadAllText(dlg.FileName), System.Text.Json.JsonSerializer.Serialize(Settings.Cur));
             Settings.Cur = System.Text.Json.JsonSerializer.Deserialize<Settings>(json) ?? Settings.Cur;
             Settings.Apply();
-            EyeService.I.Apply();
             _backupMsg = L.T("Pengaturan dipulihkan. Bahasa berlaku setelah ZaxLet dimulai ulang.");
         }
         catch (FormatException) { _backupMsg = L.T("File ini bukan cadangan pengaturan ZaxLet."); }
@@ -336,7 +335,6 @@ public sealed class SettingsView : TabView
                     if (!_confirmReset) { _confirmReset = true; Render(); return; }
                     _confirmReset = false;
                     Settings.Reset();
-                    EyeService.I.Apply();
                     Render();
                 }, UI.Warn));
                 yield return ("Keluar dari ZaxLet", Act("Keluar", () => Application.Current.Shutdown(), UI.Bad));
@@ -591,18 +589,6 @@ public sealed class SettingsView : TabView
                 yield return ("~Jarak antar pengingat", Dur(() => s.WaterEverySec, v => s.WaterEverySec = v, 10, 86400, null, 60));
                 yield return ("~Lama pengingat tampil", Dur(() => s.WaterShowSec, v => s.WaterShowSec = v, 2, 600));
                 yield return ("Uji pengingat", Act("Tampilkan sekarang", () => IslandWindow.Instance?.Alert(L.F("Waktunya minum · {0}/{1} ml", HydrationService.I.Today, HydrationService.I.Goal), s.WaterShowSec), UI.Fg));
-                yield return ("§Istirahat mata", null);
-                yield return ("Pengingat istirahat mata", Toggle(() => s.EyeOn, v => { s.EyeOn = v; }, true, () => EyeService.I.Apply()));
-                yield return ("Interval istirahat mata", Dur(() => s.EyeMinutes * 60, v => s.EyeMinutes = v / 60, 10, 86400, () => EyeService.I.Apply(), 60));
-                yield return ("§Pomodoro", null);
-                yield return ("Pomodoro: fokus", Dur(() => s.PomoWork * 60, v => s.PomoWork = v / 60, 10, 86400, null, 60));
-                yield return ("Pomodoro: istirahat", Dur(() => s.PomoBreak * 60, v => s.PomoBreak = v / 60, 10, 86400, null, 60));
-                yield return ("§Mode Fokus", null);
-                yield return ("Lama Mode Fokus\nNotifikasi HP ditahan; kode OTP tetap lewat. Tombol ada di tab Timer", Num(5, 240, 5, " mnt", () => s.FocusMin, v => s.FocusMin = v));
-                yield return ("Fase kerja Pomodoro = Mode Fokus", Toggle(() => s.FocusPomo, v => s.FocusPomo = v));
-                yield return ("Jam tenang terjadwal\nNotifikasi HP ditahan selama rentang jam ini; kode OTP tetap lewat", Toggle(() => s.QuietOn, v => s.QuietOn = v));
-                yield return ("Jam tenang mulai", Txt(() => s.QuietFrom, v => { if (QuietHours.TryParseHm(v, out var t)) s.QuietFrom = t.ToString(@"hh\:mm"); }, 100));
-                yield return ("Jam tenang selesai", Txt(() => s.QuietTo, v => { if (QuietHours.TryParseHm(v, out var t)) s.QuietTo = t.ToString(@"hh\:mm"); }, 100));
                 break;
 
             case "tools":

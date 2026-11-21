@@ -282,11 +282,11 @@ bool miscOk = MediaFilter.Ignored("Discord.exe", "discord, zoom") && MediaFilter
               && AccentColor.FromAbgr(unchecked((int)0xFFD77800)) != "0078D7"          // biru Windows (R0 G120 B215) gelap: dicerahkan
               && AccentColor.FromAbgr(unchecked((int)0xFFFFFF00)) == "00FFFF"          // sudah terang (cyan): tidak berubah
               && AccentColor.FromAbgr(unchecked((int)0xFF000000)).Length == 6;
-var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("fokus"), QuickCmd.Parse("fokus 25"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("w https://kyou.id/items/1"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
-miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 } && qc[2] is { Kind: QuickCmd.Kind.Focus, Value: 0 } && qc[3] is { Kind: QuickCmd.Kind.Focus, Value: 25 }
-          && qc[4] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[5].Kind == QuickCmd.Kind.Wish && qc[6] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[7] is { Kind: QuickCmd.Kind.Water, Value: 250 }
-          && qc[8] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[9].Kind == QuickCmd.Kind.Hide
-          && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("fokus 999").Kind == QuickCmd.Kind.Unknown
+var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("w https://kyou.id/items/1"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
+miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 }
+          && qc[2] is { Kind: QuickCmd.Kind.Note, Arg: "beli susu" } && qc[3].Kind == QuickCmd.Kind.Wish && qc[4] is { Kind: QuickCmd.Kind.Water, Value: 0 } && qc[5] is { Kind: QuickCmd.Kind.Water, Value: 250 }
+          && qc[6] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[7].Kind == QuickCmd.Kind.Hide
+          && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown
           && QuickCmd.Parse("w bukan link").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
 // overlay performa: baris nvidia-smi nyata dari RTX 3050 laptop (daya [N/A] di data lain), pilihan metrik, penyusun baris
 var smi = PerfFormat.ParseSmi("32, 405, 810, 50, 645, 6144, 8.86, 20, P5, [N/A], 0x0000000000000001");

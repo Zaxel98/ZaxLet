@@ -231,7 +231,6 @@ public partial class App : Application
         BuildTray();
         void Safe(Action act) { try { act(); } catch (Exception ex) { Log(ex); } }
         Safe(() => _ = MediaService.I.StartAsync());
-        Safe(() => EyeService.I.Apply());
         Safe(() => PrayerAlerts.Start());
         Safe(() => WishBridge.Apply());
         Settings.Applied += WishBridge.Apply;
@@ -274,11 +273,6 @@ public partial class App : Application
         var menu = new WF.ContextMenuStrip();
         menu.Items.Add(L.T("Buka"), null, (_, _) => IslandWindow.Instance?.OpenNow());
         menu.Items.Add(L.T("Sembunyikan / tampilkan pill"), null, (_, _) => IslandWindow.Instance?.ToggleHidden());
-        var focus = new WF.ToolStripMenuItem(L.T("Mode Fokus"));
-        focus.Click += (_, _) => { if (FocusService.I.Manual && FocusService.I.Active) FocusService.I.Stop(); else FocusService.I.Start(Settings.Cur.FocusMin); };
-        menu.Items.Add(focus);
-        menu.Items.Add(L.T("Jeda notifikasi 1 jam"), null, (_, _) => FocusService.I.Start(60));   // notifikasi HP ditahan seperti Mode Fokus; OTP tetap lewat
-        menu.Opening += (_, _) => focus.Checked = FocusService.I.Manual && FocusService.I.Active;
         menu.Items.Add(L.T("Pengaturan"), null, (_, _) => SettingsWindow.ShowIt());
         menu.Items.Add(L.T("Periksa pembaruan"), null, async (_, _) =>
         {

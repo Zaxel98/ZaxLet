@@ -3,15 +3,15 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-public enum TMode { Timer, Pomodoro, Stopwatch }
+public enum TMode { Timer, Stopwatch }
 
-/// <summary>Timer / Pomodoro / Stopwatch. Hidup di luar tab agar tetap berjalan saat pill tertutup.</summary>
+/// <summary>Timer / Stopwatch. Hidup di luar tab agar tetap berjalan saat pill tertutup.</summary>
 public sealed class TimerService
 {
     public static readonly TimerService I = new();
     public event Action Tick;
     public TMode Mode = TMode.Timer;
-    public bool Running, PomoBreak;
+    public bool Running;
     public TimeSpan Total = TimeSpan.FromMinutes(25);
 
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(500) };
@@ -56,61 +56,22 @@ public sealed class TimerService
 
     public void Reset()
     {
-        Running = false; _t.Stop(); PomoBreak = false; _acc = TimeSpan.Zero;
+        Running = false; _t.Stop(); _acc = TimeSpan.Zero;
         _left = Duration();
         Tick?.Invoke();
     }
 
-    TimeSpan Duration() => Mode switch
-    {
-        TMode.Pomodoro => TimeSpan.FromMinutes(Math.Max(0.1, PomoBreak ? Settings.Cur.PomoBreak : Settings.Cur.PomoWork)),
-        _ => Total
-    };
+    TimeSpan Duration() => Total;
 
     void Step()
     {
         if (Mode != TMode.Stopwatch && Value <= TimeSpan.Zero)
         {
             Running = false; _t.Stop();
-            if (Mode == TMode.Pomodoro)
-            {
-                PomoBreak = !PomoBreak;
-                IslandWindow.Instance?.Alert(PomoBreak ? L.F("Pomodoro selesai · istirahat {0} menit", Settings.Cur.PomoBreak) : L.T("Istirahat selesai · fokus lagi"), 10);
-                _left = Duration();
-                Start();
-                return;
-            }
             IslandWindow.Instance?.Alert(L.T("Timer selesai"), 10);
             _left = Duration();
         }
         Tick?.Invoke();
-    }
-}
-
-/// <summary>Pengingat istirahat mata: tiap N menit.</summary>
-public sealed class EyeService
-{
-    public static readonly EyeService I = new();
-    public DateTime Next;
-    readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
-
-    EyeService() { _t.Tick += (_, _) => Check(); }
-
-    public void Apply()
-    {
-        _t.Stop();
-        if (!Settings.Cur.EyeOn) return;
-        Next = DateTime.Now.AddMinutes(Settings.Cur.EyeMinutes);
-        _t.Start();
-    }
-
-    public void BreakNow() => IslandWindow.Instance?.Alert(L.T("Istirahat mata · lihat jauh 20 detik"), 20);
-
-    void Check()
-    {
-        if (DateTime.Now < Next) return;
-        BreakNow();
-        Next = DateTime.Now.AddMinutes(Settings.Cur.EyeMinutes);
     }
 }
 
