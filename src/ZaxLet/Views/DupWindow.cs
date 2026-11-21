@@ -33,11 +33,47 @@ public sealed class DupWindow : Window
         return t;
     }
 
+    /// <summary>Checkbox gelap: kotak 16px bertepi tipis, terisi aksen + centang saat dicentang (bawaan Windows: kotak putih yang tidak serasi dengan jendela gelap).</summary>
+    static ControlTemplate DarkCheckTemplate()
+    {
+        var box = new FrameworkElementFactory(typeof(Border), "box");
+        box.SetValue(FrameworkElement.WidthProperty, 16.0);
+        box.SetValue(FrameworkElement.HeightProperty, 16.0);
+        box.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        box.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        box.SetValue(Border.BorderBrushProperty, UI.B("#66FFFFFF"));
+        box.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        var tick = new FrameworkElementFactory(typeof(TextBlock), "tick");
+        tick.SetValue(TextBlock.TextProperty, "");
+        tick.SetValue(TextBlock.FontFamilyProperty, UI.IconFont);
+        tick.SetValue(TextBlock.FontSizeProperty, 11.0);
+        tick.SetValue(TextBlock.ForegroundProperty, Brushes.Black);
+        tick.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        tick.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        tick.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+        box.AppendChild(tick);
+        var tpl = new ControlTemplate(typeof(CheckBox)) { VisualTree = box };
+        var on = new Trigger { Property = System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, Value = true };
+        on.Setters.Add(new Setter(Border.BackgroundProperty, UI.Accent, "box"));
+        on.Setters.Add(new Setter(Border.BorderBrushProperty, UI.Accent, "box"));
+        on.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "tick"));
+        tpl.Triggers.Add(on);
+        var off = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+        off.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45, "box"));
+        tpl.Triggers.Add(off);
+        var focus = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true };
+        focus.Setters.Add(new Setter(Border.BorderBrushProperty, Brushes.White, "box"));
+        tpl.Triggers.Add(focus);
+        return tpl;
+    }
+
+    readonly ControlTemplate _checkTpl = DarkCheckTemplate();
+
     sealed class FileEntry
     {
         public DupFile File;
         public CheckBox Box;
-        public TextBlock KeepBadge;
+        public FrameworkElement KeepBadge;
         public GroupState Group;
     }
 
@@ -54,11 +90,25 @@ public sealed class DupWindow : Window
     readonly List<GroupState> _groups = new();
 
     const int RenderChunkSize = 20;
+    const double PathColW = 300;   // perkiraan lebar kolom path (jendela 680 - padding - kolom centang/Simpan/ukuran/tanggal)
 
     string _folder;
     CancellationTokenSource _cts;
     bool _scanning, _recycling, _rendering, _closed;
     int _scanId, _renderVersion;
+
+    /// <summary>Untuk <c>--ui-test</c>: isi jendela (tanpa ditampilkan) dengan grup contoh, lalu serahkan kontennya untuk dirender ke PNG.</summary>
+    internal static FrameworkElement Preview(string baseFolder, List<DupGroup> groups)
+    {
+        var w = new DupWindow(null) { _folder = baseFolder };
+        w._folderLabel.Text = baseFolder;
+        w.RenderGroups(groups);
+        w._statusLabel.Foreground = UI.Good;
+        w._statusLabel.Text = $"Ditemukan {groups.Count} grup file duplikat.";
+        var c = (FrameworkElement)w.Content;
+        w.Content = null;
+        return c;
+    }
 
     public static void Show(string folder)
     {
@@ -356,13 +406,19 @@ public sealed class DupWindow : Window
             var cb = new CheckBox
             {
                 IsChecked = !newest,
+                Template = _checkTpl,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center
             };
 
-            var keepBadge = UI.T("Simpan", 10.5, UI.Accent, true);
-            keepBadge.Margin = new Thickness(4, 0, 4, 0);
-            keepBadge.Visibility = newest ? Visibility.Visible : Visibility.Collapsed;
+            // penanda "Simpan" sebagai chip (sebelumnya teks aksen 10.5px yang nyaris tak terbaca)
+            var keepBadge = new Border
+            {
+                Background = UI.AccentBg, CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 1, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+                Child = UI.T("Simpan", 10.5, UI.Accent, true),
+                Visibility = newest ? Visibility.Visible : Visibility.Collapsed
+            };
 
             var entry = new FileEntry
             {
@@ -380,10 +436,25 @@ public sealed class DupWindow : Window
             rowGrid.Children.Add(cb);
             rowGrid.Children.Add(keepBadge.At(0, 1));
 
-            var pathTxt = RawText(ShortenPath(file.Path, _folder), 11.5, TextFg);
-            pathTxt.Margin = new Thickness(0, 0, 8, 0);
-            pathTxt.ToolTip = file.Path;
-            rowGrid.Children.Add(pathTxt.At(0, 2));
+            // folder (redup, dipotong di ujung) + nama berkas (terang, selalu terlihat): path panjang tidak lagi menghilangkan nama berkasnya
+            var rel = ShortenPath(file.Path, _folder);
+            var dirPart = Path.GetDirectoryName(rel);
+            var pathBox = UI.Cols(0, 0);
+            pathBox.Margin = new Thickness(0, 0, 8, 0);
+            pathBox.ToolTip = file.Path;
+            var nameTxt = RawText(Path.GetFileName(rel), 11.5, TextFg);
+            double nameW = Math.Min(PathColW, UI.TextWidth(nameTxt.Text, 11.5, FontWeights.Normal) + 2);
+            nameTxt.MaxWidth = PathColW;
+            if (!string.IsNullOrEmpty(dirPart))
+            {
+                // lebar kolom path tetap: folder mengisi sisa setelah nama berkas, sehingga keduanya berdampingan dan yang dipotong hanya folder
+                var dirTxt = RawText(dirPart + Path.DirectorySeparatorChar, 11.5, CaptionFg);
+                dirTxt.MaxWidth = Math.Max(36, PathColW - nameW - 4);
+                pathBox.Children.Add(dirTxt);
+            }
+            nameTxt.HorizontalAlignment = HorizontalAlignment.Left;
+            pathBox.Children.Add(nameTxt.At(0, 1));
+            rowGrid.Children.Add(pathBox.At(0, 2));
 
             var sizeTxt = RawText(DupFinder.FmtSize(file.Size), 11, CaptionFg);
             sizeTxt.HorizontalAlignment = HorizontalAlignment.Right;

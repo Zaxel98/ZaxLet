@@ -63,6 +63,26 @@ public static class UiTest
             catch (Exception ex) { log.AppendLine($"GAGAL tab {name}: {ex}"); }
         }
 
+        try
+        {
+            var t0 = new DateTime(2026, 9, 11, 20, 27, 0);
+            var root = @"C:\Users\contoh\Documents";
+            var groups = new System.Collections.Generic.List<DupGroup>
+            {
+                new(713000, "a", new[] { new DupFile(root + @"\House Flipper\Profiles.backup\Profile 1\Backup-2026-09-11-20-27-01-an-extremely-long-file-name.json", 713000, t0), new DupFile(root + @"\House Flipper\Profiles.backup\Profile 1\Backup-2026-09-11-20-26-59.json", 713000, t0), new DupFile(root + @"\catatan.md", 713000, t0) }),
+                new(824000, "b", new[] { new DupFile(root + @"\skripsi\bab3.docx", 824000, t0), new DupFile(root + @"\skripsi\salinan\bab3 (1).docx", 824000, t0) }),
+            };
+            var host = DupWindow.Preview(root, groups);
+            host.Width = 680; host.Height = 480;
+            host.Measure(new Size(680, 480)); host.Arrange(new Rect(0, 0, 680, 480)); host.UpdateLayout();
+            var bmp = new RenderTargetBitmap(680, 480, 96, 96, PixelFormats.Pbgra32);
+            bmp.Render(host);
+            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(bmp));
+            using var fs = File.Create(Path.Combine(dir, "dialog-dup.png")); enc.Save(fs);
+            log.AppendLine("ok dialog dup");
+        }
+        catch (Exception ex) { log.AppendLine("GAGAL dialog dup: " + ex); }
+
         void Guide(string id, System.Collections.Generic.List<GuideStep> steps)
         {
             for (int i = 0; i < steps.Count; i++)
