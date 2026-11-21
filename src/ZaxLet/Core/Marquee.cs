@@ -43,7 +43,7 @@ public sealed class Marquee : Grid
         if (PaceSeconds > 0)
         {
             // sekali jalan, berhenti di ujung (tidak kembali ke awal); selesai sedikit sebelum baris berikutnya
-            var once = new DoubleAnimation(0, -dist, TimeSpan.FromSeconds(Math.Max(1, PaceSeconds * 0.85))) { FillBehavior = FillBehavior.HoldEnd };
+            var once = new DoubleAnimation(0, -dist, TimeSpan.FromSeconds(Math.Max(1, PaceSeconds * 0.85 - 0.5))) { BeginTime = TimeSpan.FromMilliseconds(500), FillBehavior = FillBehavior.HoldEnd };   // jeda 500 ms supaya kata pertama sempat terbaca
             Timeline.SetDesiredFrameRate(once, 30);
             _x.BeginAnimation(TranslateTransform.XProperty, once);
             return;
