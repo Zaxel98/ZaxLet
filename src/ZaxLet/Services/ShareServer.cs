@@ -381,6 +381,7 @@ public sealed class ShareServer
                 else if (rq[0] == "GET" && path == "/cam") await Send(ns, 200, "text/html; charset=utf-8", CamPage());
                 else if (rq[0] == "GET" && path == "/cam/ws" && hdr.TryGetValue("sec-websocket-key", out var wk)) await CamSocket(ns, wk, dev?.Name ?? "HP");
                 else if (rq[0] == "GET" && path == "/aud/ws" && hdr.TryGetValue("sec-websocket-key", out var ak)) await AudSocket(ns, ak);
+                else if (rq[0] == "GET" && path == "/scr/ws" && hdr.TryGetValue("sec-websocket-key", out var sk)) await ScrSocket(ns, sk);
                 else if (rq[0] == "GET" && path == "/cam.mjpg") await Mjpeg(ns, c);
                 else if (rq[0] == "GET" && path == "/cam.jpg" && PhoneCam.Latest is { } jpg) await Send(ns, 200, "image/jpeg", jpg);
                 else if (rq[0] == "GET" && path.StartsWith("/d/") && int.TryParse(path[3..], out var idx)) await Download(ns, idx);
@@ -495,6 +496,43 @@ public sealed class ShareServer
         try { await WsIn(ns, key, PhoneAudio.Push); }
         catch (Exception ex) { PhoneAudio.Diag("aliran berhenti karena galat: " + ex.GetType().Name + " " + ex.Message); }
         finally { PhoneAudio.Stop(); PhoneAudio.Diag($"HP terputus setelah {(DateTime.Now - t0).TotalSeconds:0} dtk"); }
+    }
+
+    // layar HP -> PC (JPEG/info/err) dan PC -> HP (kontrol sentuh/tombol/teks)
+    static async Task ScrSocket(Stream ns, string key)
+    {
+        var accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
+        await ns.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"));
+        var writeLock = PhoneScreen.Attach(ns);
+        try
+        {
+            var hdr = new byte[14];
+            while (true)
+            {
+                using var frameCts = new CancellationTokenSource(75000);   // izinkan jeda diam >= 60 dtk saat layar HP dijeda
+                await ReadExact(ns, hdr, 2, frameCts.Token);
+                int op = hdr[0] & 0x0F; bool masked = (hdr[1] & 0x80) != 0; long len = hdr[1] & 0x7F;
+                if (len == 126) { await ReadExact(ns, hdr, 2, frameCts.Token); len = (hdr[0] << 8) | hdr[1]; }
+                else if (len == 127) { var e = new byte[8]; await ReadExact(ns, e, 8, frameCts.Token); len = (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(e); }
+                if (len < 0 || len > (4 << 20)) return;   // batas bingkai 4 MB
+                var mask = new byte[4];
+                if (masked) await ReadExact(ns, mask, 4, frameCts.Token);
+                var data = new byte[len];
+                await ReadExact(ns, data, (int)len, frameCts.Token);
+                if (masked) for (int i = 0; i < data.Length; i++) data[i] ^= mask[i & 3];
+                if (op == 8) return;
+                if (op == 9)
+                {
+                    await writeLock.WaitAsync();
+                    try { await ns.WriteAsync(new byte[] { 0x8A, 0 }); await ns.FlushAsync(); }
+                    finally { writeLock.Release(); }
+                    continue;
+                }
+                if (op == 1) PhoneScreen.OnText(Encoding.UTF8.GetString(data));
+                else if (op == 2 && data.Length > 2 && data[0] == 0xFF && data[1] == 0xD8) PhoneScreen.PushFrame(data);
+            }
+        }
+        finally { PhoneScreen.Detach(ns); }
     }
 
     /// <summary>WebSocket masuk: jabat tangan, lalu setiap bingkai teks/biner diteruskan ke onData sampai soket ditutup.</summary>
