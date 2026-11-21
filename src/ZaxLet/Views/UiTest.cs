@@ -83,9 +83,9 @@ public static class UiTest
         try
         {
             var prevClaudeOn = Settings.Cur.ClaudeOn; var prevCodexOn = Settings.Cur.CodexOn;
-            var prevSlot2 = Settings.Cur.Slot2; var prevCost = Settings.Cur.ShowCost; var prevPt = Settings.Cur.ShowPonytail;
+            var prevSlot2 = Settings.Cur.Slot2; var prevCost = Settings.Cur.ShowCost;
             Settings.Cur.ClaudeOn = true; Settings.Cur.CodexOn = true; Settings.Cur.Slot2 = "antigravity";
-            Settings.Cur.ShowCost = true; Settings.Cur.ShowPonytail = true;
+            Settings.Cur.ShowCost = true;
             var now = DateTimeOffset.Now;
             var claude = new ProviderUsage
             {
@@ -109,16 +109,13 @@ public static class UiTest
                     new QuotaWindow { Label = "Claude · 5h", Pct = 18, Reset = now.AddHours(4).AddMinutes(10) },
                 }
             };
-            var pt = new PonytailStats { Cost = 345.67, Turns = 1234, Sessions = 12, Tokens = 210_000_000 };
-            var pw = new PonytailStats { Cost = 1890.12, Turns = 9876, Sessions = 45, Tokens = 860_000_000 };
-            var pm = new PonytailStats { Cost = 5890.40, Turns = 31000, Sessions = 160, Tokens = 3_210_000_000 };
-            var aiBig = UsageView.Preview(claude, agy, pt, pw, pm, (prov, w) =>
+            var aiBig = UsageView.Preview(claude, agy, (prov, w) =>
                 prov == "Antigravity" && w.Label == "Gemini Pro · 5h"
                     ? new BurnProjection(true, true, TimeSpan.FromMinutes(45), 18.5)
                     : new BurnProjection(true, false, null, 2.0));
             Shot(aiBig, "tab-ai-big", 660, 262);
             Settings.Cur.ClaudeOn = prevClaudeOn; Settings.Cur.CodexOn = prevCodexOn;
-            Settings.Cur.Slot2 = prevSlot2; Settings.Cur.ShowCost = prevCost; Settings.Cur.ShowPonytail = prevPt;
+            Settings.Cur.Slot2 = prevSlot2; Settings.Cur.ShowCost = prevCost;
             log.AppendLine("ok tab ai-big");
         }
         catch (Exception ex) { log.AppendLine("GAGAL tab ai-big: " + ex); }

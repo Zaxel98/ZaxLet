@@ -159,7 +159,7 @@ public sealed class UsageView : TabView
         return true;
     }
 
-    static void Fill(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null, (PonytailStats Today, PonytailStats Week, PonytailStats Month)? codeOverride = null, ProviderUsage agyOverride = null)
+    static void Fill(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null, ProviderUsage agyOverride = null)
     {
         host.Children.Clear();
         var head = new StackPanel { Orientation = Orientation.Horizontal };
@@ -224,30 +224,22 @@ public sealed class UsageView : TabView
         }
 
         if (u.Name == "Antigravity") return;   // tokennya tampil sebagai kolom Agy di tabel Claude
-        // tabel pemakaian: Total (semua catatan sesi) dan Code (sesi yang dicatat Ponytail)
-        var code = u.Name == "Claude" && Settings.Cur.ShowPonytail && (codeOverride != null || PonytailService.Available);
-        PonytailStats pt = null, pw = null, pm = null;
-        if (code)
-        {
-            if (codeOverride is { } co) (pt, pw, pm) = co;
-            else try { (pt, pw, pm) = PonytailService.Read(); } catch (Exception ex) { App.Log(ex); }
-        }
+        // tabel pemakaian: total token (Claude + Agy) | perkiraan biaya Claude | Claude (token) | Antigravity (token); kolom Claude dan Agy hanya bila Agy aktif
         var s = Settings.Cur;
         var agy = u.Name == "Claude" && s.CodexOn && s.Slot2 == "antigravity" ? (agyOverride ?? UsageService.I.Agy) : null;
-        host.Children.Add(Head(code, agy != null));
-        // kolom: total token (Claude + Agy) | perkiraan biaya | Claude Code (token) | Antigravity (token)
-        host.Children.Add(Line("Today", u.TodayTok + (agy?.TodayTok ?? 0), u.TodayCost, code, pt, agy?.TodayTok));
-        host.Children.Add(Line("Week", u.WeekTok + (agy?.WeekTok ?? 0), u.WeekCost, code, pw, agy?.WeekTok));
-        host.Children.Add(Line("Month", u.MonthTok + (agy?.MonthTok ?? 0), u.MonthCost, code, pm, agy?.MonthTok));
+        host.Children.Add(Head(agy != null));
+        host.Children.Add(Line("Today", u.TodayTok, u.TodayCost, agy?.TodayTok));
+        host.Children.Add(Line("Week", u.WeekTok, u.WeekCost, agy?.WeekTok));
+        host.Children.Add(Line("Month", u.MonthTok, u.MonthCost, agy?.MonthTok));
     }
 
     /// <summary>Untuk <c>--ui-test</c>: isi tab AI dengan data contoh besar tanpa membaca log atau jaringan.</summary>
-    internal static UsageView Preview(ProviderUsage claude, ProviderUsage agy, PonytailStats pt, PonytailStats pw, PonytailStats pm, Func<string, QuotaWindow, BurnProjection> burn)
+    internal static UsageView Preview(ProviderUsage claude, ProviderUsage agy, Func<string, QuotaWindow, BurnProjection> burn)
     {
         var v = new UsageView();
         v._claude.Visibility = Visibility.Visible;
         v._codex.Visibility = Visibility.Visible;
-        Fill(v._claude, claude, burn, (pt, pw, pm), agy);
+        Fill(v._claude, claude, burn, agy);
         Fill(v._codex, agy, burn);
         return v;
     }
@@ -297,31 +289,35 @@ public sealed class UsageView : TabView
         }
     }
 
-    static Grid Head(bool code, bool agy)
+    static Grid Head(bool agy)
     {
         var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);
         g.Margin = new Thickness(0, 7, 0, 1);
         g.Children.Add(new TextBlock { Text = L.T("Total"), FontSize = 10.5, Foreground = UI.Faint }.At(0, 1));
-        if (code) g.Children.Add(new TextBlock { Text = "Code", FontSize = 10.5, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
-        if (agy) g.Children.Add(new TextBlock { Text = "Agy", FontSize = 10.5, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
+        if (agy)
+        {
+            g.Children.Add(new TextBlock { Text = "Claude", FontSize = 10.5, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
+            g.Children.Add(new TextBlock { Text = "Agy", FontSize = 10.5, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
+        }
         return g;
     }
 
-    static Grid Line(string label, long tok, double cost, bool code, PonytailStats p, long? agy)
+    /// <param name="claudeTok">token Claude saja; kolom Total = Claude + Agy (akumulasi)</param>
+    static Grid Line(string label, long claudeTok, double cost, long? agy)
     {
-        var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);   // label | token | biaya (Auto: tidak pernah dipotong) | sisa | Code | Agy
+        long tok = claudeTok + (agy ?? 0);
+        var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);   // label | total token | biaya (Auto: tidak pernah dipotong) | sisa | Claude | Agy
         g.Margin = new Thickness(0, 1, 0, 0);
         g.Children.Add(UI.T(label, 12, UI.Dim));
         var tk = UI.T(UI.Tok(tok), 12, UI.Dim);
         tk.TextTrimming = TextTrimming.None; tk.Margin = new Thickness(0, 0, 10, 0);
         g.Children.Add(tk.At(0, 1));
         if (Settings.Cur.ShowCost) g.Children.Add(new TextBlock { Text = "~$" + cost.ToString("0.00", CultureInfo.InvariantCulture), FontSize = 12, Foreground = UI.Fg, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.None }.At(0, 2));
-        if (code)
+        if (agy != null)
         {
-            var t = p.Sessions == 0 ? "—" : UI.Tok(p.Tokens);
-            g.Children.Add(new TextBlock { Text = t, FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
+            g.Children.Add(new TextBlock { Text = UI.Tok(claudeTok), FontSize = 12, Foreground = UI.Accent, Width = CodeW, TextAlignment = TextAlignment.Right }.At(0, 4));
+            g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
         }
-        if (agy != null) g.Children.Add(new TextBlock { Text = UI.Tok(agy.Value), FontSize = 12, Foreground = AgyBrush, Width = AgyW, TextAlignment = TextAlignment.Right }.At(0, 5));
         return g;
     }
 }

@@ -507,7 +507,6 @@ public sealed class SettingsView : TabView
                 yield return ("~Isi kotak kedua\nAntigravity dibaca dari aplikasinya yang sedang terbuka", Choice(new[] { ("codex", "Codex"), ("antigravity", "Antigravity") }, () => s.Slot2, v => s.Slot2 = v));
                 yield return ("Tampilkan perkiraan biaya", Toggle(() => s.ShowCost, v => s.ShowCost = v));
                 yield return ("~Interval baca kuota", Dur(() => s.UsageRefreshSec, v => s.UsageRefreshSec = v, 1, 86400));
-                yield return ("~Kolom Code (data Ponytail)", Toggle(() => s.ShowPonytail, v => s.ShowPonytail = v));
                 yield return ("~Peringatan kuning di", Num(30, 95, 5, "%", () => s.WarnAt, v => s.WarnAt = v));
                 yield return ("~Peringatan merah di", Num(50, 100, 5, "%", () => s.CritAt, v => s.CritAt = v));
                 yield return ("§Monitor", null);
