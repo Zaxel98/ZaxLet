@@ -259,7 +259,7 @@ public sealed class MediaService
         }
         var key = $"{p.Artist}|{p.Title}";
         bool newTrack = key != _baseKey;
-        if (newTrack) { _vidTitle = p.Title ?? ""; _vidArtist = p.Artist ?? ""; _chap = null; _chapIdx = -1; _chapOpen = false; lock (_posLk) _goodTimeline = false; }
+        if (newTrack) { _vidTitle = p.Title ?? ""; _vidArtist = p.Artist ?? ""; _chap = null; _chapIdx = -1; _chapOpen = false; lock (_posLk) { _goodTimeline = false; _uiaValAt = DateTime.MinValue; } }
         if (_chapIdx < 0)   // pada video bersegmen, judul dan artis mengikuti segmen yang sedang diputar
         {
             _rawTitle = _vidTitle; _rawArtist = _vidArtist;
@@ -386,6 +386,7 @@ public sealed class MediaService
 
     // ---------- posisi asli dari halaman YouTube ----------
     DateTime _uiaAt = DateTime.MinValue;
+    double _uiaVal; DateTime _uiaValAt = DateTime.MinValue;   // bacaan bilah sebelumnya, untuk mengenali nilai yang macet
     int _uiaBusy;
     System.Threading.Timer _uiaT;
 
@@ -411,6 +412,12 @@ public sealed class MediaService
             lock (_posLk)
             {
                 if ((DateTime.Now - _seekAt).TotalSeconds < 2) return;   // setelah lompatan kita, tunggu halaman menerapkannya
+                // tab yang tertutup/tak tampil: YouTube berhenti memperbarui bilahnya, nilainya macet. Bacaan yang tidak ikut maju sejak pembacaan lalu
+                // diabaikan (posisi terus diperkirakan dari yang terakhir sah, dan laporan Windows boleh mengambil alih); kalau tidak, posisi diputar ulang ke nilai basi tiap 2 dtk.
+                var now = DateTime.Now;
+                bool live = !Playing || _uiaValAt == DateTime.MinValue || Math.Abs((r.Pos - _uiaVal) - (now - _uiaValAt).TotalSeconds) < 2.0;
+                _uiaVal = r.Pos; _uiaValAt = now;
+                if (!live) { _uiaAt = DateTime.MinValue; return; }
                 _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bilah memuat detik yang dibulatkan ke bawah
                 _posAt = DateTimeOffset.Now; _uiaAt = DateTime.Now; _goodTimeline = true;
                 if (RawDuration <= TimeSpan.Zero) RawDuration = TimeSpan.FromSeconds(r.Max);
@@ -678,7 +685,7 @@ public sealed class MediaService
     {
         var s = _s;
         if (s == null) return;
-        lock (_posLk) { _pos = to; _posAt = DateTimeOffset.Now; _seekAt = DateTime.Now; }
+        lock (_posLk) { _pos = to; _posAt = DateTimeOffset.Now; _seekAt = DateTime.Now; _uiaValAt = DateTime.MinValue; }
         _ = s.TryChangePlaybackPositionAsync(to.Ticks);
     }
 
