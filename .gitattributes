@@ -1,3 +1,6 @@
 * text=auto
 *.ico binary
 *.png binary
+
+# patch dipakai git apply: jangan ubah akhir baris
+*.patch -text
