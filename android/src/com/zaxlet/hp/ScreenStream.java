@@ -27,9 +27,9 @@ import org.json.JSONObject;
 final class ScreenStream {
     private static final long MIN_FRAME_MS = 83;   // <= 12 fps
     private static final long SLOW_SEND_MS = 250;
-    private static final long STEP_UP_MS = 10000;
-    private static final int[] QUALITIES = {55, 40, 40, 40};
-    private static final int[] LONG_SIDES = {1280, 1280, 960, 720};
+    private static final long STEP_UP_MS = 15000;
+    private static final int[] QUALITIES = {45, 40, 35, 30};
+    private static final int[] LONG_SIDES = {960, 720, 720, 540};
 
     private final Context ctx;
     private final MediaProjection mp;
@@ -239,6 +239,15 @@ final class ScreenStream {
                     if (keepAlive) { w.sendText("{\"t\":\"ka\"}"); continue; }
                     if (pendingInfo != null) w.sendText(pendingInfo);
                     if (frame == null) continue;
+                    if (AudioService.audioQueued >= 5) {
+                        // Antrean audio penuh: tunda video (hanya simpan bingkai terbaru) agar audio tidak kalah di Wi-Fi
+                        synchronized (wake) {
+                            if (!stopping && ws == w) {
+                                try { wake.wait(25); } catch (InterruptedException e) { return; }
+                            }
+                        }
+                        continue;
+                    }
 
                     long t0 = SystemClock.elapsedRealtime();
                     w.sendBinary(frame, frame.length);
@@ -259,6 +268,14 @@ final class ScreenStream {
                             level--;
                             fastSinceMs = now;
                             if (LONG_SIDES[level] != prevSide && capHandler != null) capHandler.post(() -> setupCapture(true));
+                        }
+                    }
+
+                    if (dt > 0 && !stopping && ws == w) {
+                        synchronized (wake) {
+                            if (!stopping && ws == w) {
+                                try { wake.wait(dt); } catch (InterruptedException e) { return; }
+                            }
                         }
                     }
                 }
@@ -308,6 +325,7 @@ final class ScreenStream {
             synchronized (frameLock) {
                 if (ws == w) { ws = null; frameLock.notifyAll(); }
             }
+            synchronized (wake) { wake.notifyAll(); }
         }
     }
 

@@ -12,11 +12,13 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.util.Log;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 
 /**
- * Audio yang diputar HP (Reels, video, dll) ditangkap lewat AudioPlaybackCapture lalu dikirim ke PC (/aud/ws) sebagai PCM 16-bit stereo 48 kHz,
+ * Audio yang diputar HP (Reels, video, dll) ditangkap lewat AudioPlaybackCapture lalu dikirim ke PC (/aud/opus atau fallback /aud/ws),
  * potongan 20 ms. Selama aktif volume musik HP dibuat 0 supaya suaranya hanya keluar di PC; volume lama dikembalikan saat berhenti.
  * Android 10+ dan izin rekam layar (dialog "Mulai sekarang") wajib tiap kali dimulai.
  */
@@ -27,8 +29,10 @@ public class AudioService extends Service {
 
     static volatile boolean alive;
     static volatile boolean videoActive;
+    static volatile int audioQueued;
     static volatile String err = "";
     private volatile boolean stopping;
+    private volatile boolean usePcmFallback;
     private MediaProjection mp;
     private ScreenStream screenStream;
     private AudioRecord rec;
@@ -42,6 +46,7 @@ public class AudioService extends Service {
     private final ArrayDeque<byte[]> queue = new ArrayDeque<>(MAX_QUEUE_FRAMES);
     private int droppedChunks;
     private int sentFrames;
+    private long sentBytes;
     private long maxSendMs;
 
     @Override public IBinder onBind(Intent i) { return null; }
@@ -81,6 +86,7 @@ public class AudioService extends Service {
         } catch (Throwable e) { err = "Audio gagal: " + e.getMessage(); alive = true; shutdown(); return START_NOT_STICKY; }
         am = (AudioManager) getSystemService(AUDIO_SERVICE);
         alive = true; stopping = false;
+        audioQueued = 0; usePcmFallback = false;
         videoActive = in.getBooleanExtra("video", false);
         if (videoActive) {
             screenStream = new ScreenStream(this, mp, () -> {
@@ -130,6 +136,7 @@ public class AudioService extends Service {
                                 droppedChunks++;
                             }
                             queue.addLast(chunk);
+                            audioQueued = queue.size();
                             qLock.notifyAll();
                         }
                     }
@@ -142,15 +149,18 @@ public class AudioService extends Service {
                 long now = SystemClock.elapsedRealtime();
                 if (now - lastLogMs >= 5000) {
                     int qSz, drops, sent;
-                    long maxMs;
+                    long maxMs, bytes;
                     synchronized (qLock) {
                         qSz = queue.size();
                         drops = droppedChunks;
                         sent = sentFrames;
+                        bytes = sentBytes;
                         maxMs = maxSendMs;
                         maxSendMs = 0;
                     }
-                    Log.i(TAG, "sent=" + sent + " q=" + qSz + " drop=" + drops + " shortErr=" + shortOrErrReads + " maxSendMs=" + maxMs);
+                    String codec = usePcmFallback ? "pcm" : "opus";
+                    long avgPkt = sent > 0 ? bytes / sent : 0;
+                    Log.i(TAG, "codec=" + codec + " avgPkt=" + avgPkt + " sent=" + sent + " q=" + qSz + " drop=" + drops + " shortErr=" + shortOrErrReads + " maxSendMs=" + maxMs);
                     lastLogMs = now;
                 }
             }
@@ -160,6 +170,7 @@ public class AudioService extends Service {
             synchronized (qLock) {
                 ws = null;
                 queue.clear();
+                audioQueued = 0;
                 qLock.notifyAll();
             }
             synchronized (wake) { wake.notifyAll(); }
@@ -177,8 +188,49 @@ public class AudioService extends Service {
         boolean everConnected = false;
         while (!stopping) {
             Ws w = null;
+            MediaCodec enc = null;
+            boolean immediateReconnect = false;
             try {
-                w = new Ws("/aud/ws");
+                if (!usePcmFallback) {
+                    try {
+                        MediaFormat fmt = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, 48000, 2);
+                        fmt.setInteger(MediaFormat.KEY_BIT_RATE, 64000);
+                        enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS);
+                        enc.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+                        enc.start();
+                    } catch (Throwable t) {
+                        Log.w(TAG, "Opus encoder gagal dibuat, fallback ke PCM: " + t.getMessage());
+                        if (enc != null) {
+                            try { enc.stop(); } catch (Exception ignored) { }
+                            try { enc.release(); } catch (Exception ignored) { }
+                            enc = null;
+                        }
+                        usePcmFallback = true;
+                    }
+                }
+
+                if (!usePcmFallback) {
+                    try {
+                        w = new Ws("/aud/opus");
+                    } catch (IOException e) {
+                        String msg = e.getMessage();
+                        if (msg != null && msg.startsWith("ditolak:")) {
+                            Log.w(TAG, "Server tolak /aud/opus (" + msg + "), fallback ke PCM");
+                            if (enc != null) {
+                                try { enc.stop(); } catch (Exception ignored) { }
+                                try { enc.release(); } catch (Exception ignored) { }
+                                enc = null;
+                            }
+                            usePcmFallback = true;
+                            w = new Ws("/aud/ws");
+                        } else {
+                            throw e;
+                        }
+                    }
+                } else {
+                    w = new Ws("/aud/ws");
+                }
+
                 if (stopping) { w.close(); break; }
                 w.sock.setTcpNoDelay(true);
                 w.sock.setSendBufferSize(65536);
@@ -186,12 +238,20 @@ public class AudioService extends Service {
                 everConnected = true;
                 synchronized (qLock) {
                     queue.clear();
+                    audioQueued = 0;
                     droppedChunks = 0;
                     sentFrames = 0;
+                    sentBytes = 0;
                     maxSendMs = 0;
                     ws = w;
                 }
                 setNote(videoActive ? "Layar + audio HP -> PC" : "Speaker HP senyap, suara diputar di PC");
+
+                long totalSamples = 0;
+                long firstFeedMs = 0;
+                boolean gotFirstPacket = false;
+                MediaCodec.BufferInfo bufInfo = enc != null ? new MediaCodec.BufferInfo() : null;
+
                 while (!stopping) {
                     byte[] chunk;
                     synchronized (qLock) {
@@ -200,14 +260,45 @@ public class AudioService extends Service {
                         }
                         if (stopping) break;
                         chunk = queue.pollFirst();
+                        audioQueued = queue.size();
                     }
                     if (chunk == null) continue;
-                    long t0 = SystemClock.elapsedRealtime();
-                    w.sendBinary(chunk, chunk.length);
-                    long dt = SystemClock.elapsedRealtime() - t0;
-                    synchronized (qLock) {
-                        sentFrames++;
-                        if (dt > maxSendMs) maxSendMs = dt;
+
+                    if (enc == null) {
+                        long t0 = SystemClock.elapsedRealtime();
+                        w.sendBinary(chunk, chunk.length);
+                        long dt = SystemClock.elapsedRealtime() - t0;
+                        synchronized (qLock) {
+                            sentFrames++;
+                            sentBytes += chunk.length;
+                            if (dt > maxSendMs) maxSendMs = dt;
+                        }
+                    } else {
+                        int inIdx = enc.dequeueInputBuffer(20000);
+                        if (inIdx < 0) {
+                            if (drainOpus(enc, bufInfo, w)) gotFirstPacket = true;
+                            inIdx = enc.dequeueInputBuffer(20000);
+                        }
+                        if (inIdx >= 0) {
+                            ByteBuffer inBuf = enc.getInputBuffer(inIdx);
+                            if (inBuf != null) {
+                                inBuf.clear();
+                                int toWrite = Math.min(chunk.length, inBuf.remaining());
+                                inBuf.put(chunk, 0, toWrite);
+                                long ptsUs = (totalSamples * 1_000_000L) / 48000L;
+                                totalSamples += toWrite / 4;
+                                enc.queueInputBuffer(inIdx, 0, toWrite, ptsUs, 0);
+                                if (firstFeedMs == 0) firstFeedMs = SystemClock.elapsedRealtime();
+                            }
+                        }
+                        if (drainOpus(enc, bufInfo, w)) gotFirstPacket = true;
+
+                        if (!gotFirstPacket && firstFeedMs > 0 && SystemClock.elapsedRealtime() - firstFeedMs >= 1000) {
+                            Log.w(TAG, "Opus tidak mengeluarkan paket dalam 1 dtk, fallback ke PCM");
+                            usePcmFallback = true;
+                            immediateReconnect = true;
+                            break;
+                        }
                     }
                 }
             } catch (Throwable ignored) {
@@ -217,10 +308,17 @@ public class AudioService extends Service {
                 synchronized (qLock) {
                     if (ws == w) ws = null;
                     queue.clear();
+                    audioQueued = 0;
+                }
+                if (enc != null) {
+                    try { enc.stop(); } catch (Exception ignored) { }
+                    try { enc.release(); } catch (Exception ignored) { }
+                    enc = null;
                 }
                 if (w != null) try { w.close(); } catch (Exception ignored) { }
             }
             if (stopping) break;
+            if (immediateReconnect) continue;
             setNote("Menyambung ulang…");
             synchronized (wake) {
                 if (!stopping) {
@@ -229,6 +327,45 @@ public class AudioService extends Service {
             }
             backoff = Math.min(backoff * 2, 10000);
         }
+    }
+
+    private boolean drainOpus(MediaCodec enc, MediaCodec.BufferInfo bufInfo, Ws w) throws IOException {
+        boolean produced = false;
+        long timeoutUs = 20000;
+        while (!stopping) {
+            int outIdx = enc.dequeueOutputBuffer(bufInfo, timeoutUs);
+            if (outIdx == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                break;
+            } else if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                continue;
+            } else if (outIdx >= 0) {
+                timeoutUs = 0;
+                boolean isConfig = (bufInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0;
+                byte[] pkt = null;
+                if (!isConfig && bufInfo.size > 0) {
+                    ByteBuffer outBuf = enc.getOutputBuffer(outIdx);
+                    if (outBuf != null) {
+                        outBuf.position(bufInfo.offset);
+                        outBuf.limit(bufInfo.offset + bufInfo.size);
+                        pkt = new byte[bufInfo.size];
+                        outBuf.get(pkt);
+                    }
+                }
+                enc.releaseOutputBuffer(outIdx, false);
+                if (pkt != null) {
+                    produced = true;
+                    long t0 = SystemClock.elapsedRealtime();
+                    w.sendBinary(pkt, pkt.length);
+                    long dt = SystemClock.elapsedRealtime() - t0;
+                    synchronized (qLock) {
+                        sentFrames++;
+                        sentBytes += pkt.length;
+                        if (dt > maxSendMs) maxSendMs = dt;
+                    }
+                }
+            }
+        }
+        return produced;
     }
 
     /** Volume lama disimpan di prefs: bila proses mati saat senyap, sesi berikutnya tetap memulihkan volume asli (bukan 0). */
@@ -263,7 +400,7 @@ public class AudioService extends Service {
         alive = false; videoActive = false; stopping = true; audThread = null;
         ScreenStream ss = screenStream; screenStream = null;
         if (ss != null) try { ss.stop(); } catch (Exception e) { }
-        synchronized (qLock) { queue.clear(); qLock.notifyAll(); }
+        synchronized (qLock) { queue.clear(); audioQueued = 0; qLock.notifyAll(); }
         try { if (ws != null) { ws.close(); ws = null; } } catch (Exception e) { }
         try { if (rec != null) { rec.stop(); rec.release(); rec = null; } } catch (Exception e) { }
         try { if (mp != null) { mp.stop(); mp = null; } } catch (Exception e) { }
