@@ -211,7 +211,7 @@ public static class PhoneAudio
             {
                 _lastLogTick = now;
                 int qMs = (EffectiveQueuedBytes() + _pendCount) / BytesPerMs;
-                logLine = $"PhoneAudio: queue={qMs}ms prebuf={_prebufferMs}ms underruns={_underruns} resyncs={_resyncs} dropped={_droppedBytes}B maxGap={_maxGapMs}ms";
+                logLine = $"PhoneAudio: queue={qMs}ms prebuf={_prebufferMs}ms underruns={_underruns} resyncs={_resyncs} dropped={_droppedBytes}B maxGap={_maxGapMs}ms gcPause={(long)System.GC.GetTotalPauseDuration().TotalMilliseconds}ms gc0/1/2={System.GC.CollectionCount(0)}/{System.GC.CollectionCount(1)}/{System.GC.CollectionCount(2)} pool={System.Threading.ThreadPool.ThreadCount}t pend={System.Threading.ThreadPool.PendingWorkItemCount}";
                 _maxGapMs = 0;
             }
         }
