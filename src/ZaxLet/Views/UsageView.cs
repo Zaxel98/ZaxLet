@@ -159,7 +159,7 @@ public sealed class UsageView : TabView
         return true;
     }
 
-    static void Fill(StackPanel host, ProviderUsage u)
+    static void Fill(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null, (PonytailStats Today, PonytailStats Week)? codeOverride = null, ProviderUsage agyOverride = null)
     {
         host.Children.Clear();
         var head = new StackPanel { Orientation = Orientation.Horizontal };
@@ -180,7 +180,7 @@ public sealed class UsageView : TabView
         if (wins.Count == 0)
             host.Children.Add(new TextBlock { Text = u.Error ?? L.T("memuat…"), Foreground = UI.Dim, FontSize = 12, Margin = new Thickness(0, 12, 0, 8), TextWrapping = TextWrapping.Wrap });
         bool tight = wins.Count > 3;   // 5 bar (Antigravity) harus muat di tinggi tab
-        if (u.Name == "Antigravity") PairBars(host, u);
+        if (u.Name == "Antigravity") PairBars(host, u, burnFn);
         else foreach (var w in wins)
         {
             if (w == null || (u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now)) continue; // jendela lama sudah lewat
@@ -190,7 +190,7 @@ public sealed class UsageView : TabView
             pct.Inlines.Add(new Run(w.Label + "  ") { FontSize = 11.5, Foreground = UI.Dim });
             pct.Inlines.Add(new Run($"{Math.Round(w.Pct)}%") { FontSize = tight ? 13 : 18, FontWeight = FontWeights.SemiBold });
             row.Children.Add(pct);
-            var burn = UsageService.I.Burn(u.Name, w);
+            var burn = (burnFn ?? UsageService.I.Burn)(u.Name, w);
             if (w.Reset != null || burn.HasData)
             {
                 var right = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 11.5 };
@@ -225,21 +225,36 @@ public sealed class UsageView : TabView
 
         if (u.Name == "Antigravity") return;   // tokennya tampil sebagai kolom Agy di tabel Claude
         // tabel pemakaian: Total (semua catatan sesi) dan Code (sesi yang dicatat Ponytail)
-        var code = u.Name == "Claude" && Settings.Cur.ShowPonytail && PonytailService.Available;
+        var code = u.Name == "Claude" && Settings.Cur.ShowPonytail && (codeOverride != null || PonytailService.Available);
         PonytailStats pt = null, pw = null;
-        if (code) try { (pt, pw) = PonytailService.Read(); } catch (Exception ex) { App.Log(ex); }
+        if (code)
+        {
+            if (codeOverride is { } co) (pt, pw) = co;
+            else try { (pt, pw) = PonytailService.Read(); } catch (Exception ex) { App.Log(ex); }
+        }
         var s = Settings.Cur;
-        var agy = u.Name == "Claude" && s.CodexOn && s.Slot2 == "antigravity" ? UsageService.I.Agy : null;
+        var agy = u.Name == "Claude" && s.CodexOn && s.Slot2 == "antigravity" ? (agyOverride ?? UsageService.I.Agy) : null;
         host.Children.Add(Head(code, agy != null));
         host.Children.Add(Line("Today", u.TodayTok, u.TodayCost, code, pt, agy?.TodayTok));
         host.Children.Add(Line("Week", u.WeekTok, u.WeekCost, code, pw, agy?.WeekTok));
+    }
+
+    /// <summary>Untuk <c>--ui-test</c>: isi tab AI dengan data contoh besar tanpa membaca log atau jaringan.</summary>
+    internal static UsageView Preview(ProviderUsage claude, ProviderUsage agy, PonytailStats pt, PonytailStats pw, Func<string, QuotaWindow, BurnProjection> burn)
+    {
+        var v = new UsageView();
+        v._claude.Visibility = Visibility.Visible;
+        v._codex.Visibility = Visibility.Visible;
+        Fill(v._claude, claude, burn, (pt, pw), agy);
+        Fill(v._codex, agy, burn);
+        return v;
     }
 
     static readonly Brush AgyBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0xB4, 0xF8));
     const double LabW = 36, CodeW = 100, AgyW = 48;   // lebar kolom tabel pemakaian; kolom token dan biaya selebar isinya (Auto) supaya angka tidak terpotong
 
     /// <summary>Antigravity: satu baris per grup model, weekly dan 5h bersebelahan.</summary>
-    static void PairBars(StackPanel host, ProviderUsage u)
+    static void PairBars(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null)
     {
         var live = (u.Windows ?? new List<QuotaWindow>()).Where(w => w != null && !string.IsNullOrEmpty(w.Label) && !(u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now));
         foreach (var grp in live.GroupBy(w => w.Label.Split(" · ")[0]))
@@ -253,7 +268,7 @@ public sealed class UsageView : TabView
             bool anyData = false;
             foreach (var w in grp.OrderBy(w => w.Label.EndsWith("5h") ? 1 : 0))
             {
-                var b = UsageService.I.Burn(u.Name, w);
+                var b = (burnFn ?? UsageService.I.Burn)(u.Name, w);
                 anyData |= b.HasData;
                 if (b.HasData && b.WillExhaust) parts.Add((w.Label.EndsWith("5h") ? "5h " : "weekly ") + BurnRate.Format(b));
             }

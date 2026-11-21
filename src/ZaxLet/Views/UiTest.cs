@@ -56,12 +56,74 @@ public static class UiTest
             Wishlist.Items.Clear();
             Wishlist.Items.Add(new WishItem { Id = "t1", Url = "https://shopee.co.id/Fuwa-Petit-Mascot-Akiyama-Mizuki-i.1.2", Title = "Fuwa Petit Mascot Akiyama Mizuki", Price = "IDR 149,000", Source = "Shopee", Added = DateTime.Now });
             Wishlist.Items.Add(new WishItem { Id = "t2", Url = "https://kyou-hobby.com/p/nendoroid-miku", Title = "nendoroid miku", Source = "Kyou Hobby", Added = DateTime.Now });
+
+            ClipboardHistory.Items.Clear();
+            ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "git status && dotnet test --no-restore", At = DateTime.Now.AddMinutes(-2), Pinned = true });
+            ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "Ini adalah contoh teks clipboard yang sangat panjang untuk menguji apakah pemotongan baris atau elipsis di tab Clipboard bekerja dengan rapi tanpa menabrak tombol pin dan hapus di sebelah kanan layar.", At = DateTime.Now.AddMinutes(-5) });
+            ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "https://example.com/docs/zaxlet/release-notes", At = DateTime.Now.AddMinutes(-12) });
+            ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "var x = UI.Tok(245_800_000);", At = DateTime.Now.AddMinutes(-25) });
+            ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "Catatan rapat sore: cek kuota AI dan jadwal rilis", At = DateTime.Now.AddMinutes(-40) });
         }
-        foreach (var (name, make) in new (string, Func<TabView>)[] { ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()), ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()), ("usage", () => new UsageView()) })
+        bool prevClip = Settings.Cur.ClipboardOn;
+        Settings.Cur.ClipboardOn = true;
+        foreach (var (name, make) in new (string, Func<TabView>)[]
+        {
+            ("wishlist", () => new WishlistView()), ("timer", () => new TimerView()), ("shelf", () => new ShelfView()),
+            ("water", () => new WaterView()), ("music", () => new MusicView()), ("ctrl", () => new ControlView()),
+            ("usage", () => new UsageView()), ("monitor", () => new MonitorView()), ("today", () => new CalendarView()),
+            ("prayer", () => new PrayerView()), ("comm", () => new AppsView()), ("clipboard", () => new ClipboardView()),
+            ("capture", () => new ToolsView()), ("eyes", () => new EyeView()),
+        })
         {
             try { var v = make(); v.OnShow(); Shot(v, "tab-" + name, 660, 262); v.OnHide(); log.AppendLine("ok tab " + name); }
             catch (Exception ex) { log.AppendLine($"GAGAL tab {name}: {ex}"); }
         }
+        Settings.Cur.ClipboardOn = prevClip;
+
+        try
+        {
+            var prevClaudeOn = Settings.Cur.ClaudeOn; var prevCodexOn = Settings.Cur.CodexOn;
+            var prevSlot2 = Settings.Cur.Slot2; var prevCost = Settings.Cur.ShowCost; var prevPt = Settings.Cur.ShowPonytail;
+            Settings.Cur.ClaudeOn = true; Settings.Cur.CodexOn = true; Settings.Cur.Slot2 = "antigravity";
+            Settings.Cur.ShowCost = true; Settings.Cur.ShowPonytail = true;
+            var now = DateTimeOffset.Now;
+            var claude = new ProviderUsage
+            {
+                Name = "Claude", Plan = "Max", Source = "api",
+                TodayTok = 245_800_000, WeekTok = 892_450_000, TodayCost = 1234.56, WeekCost = 4567.89,
+                Windows = new()
+                {
+                    new QuotaWindow { Label = "5-hour", Pct = 82, Reset = now.AddHours(2).AddMinutes(15) },
+                    new QuotaWindow { Label = "Weekly", Pct = 64, Reset = now.AddDays(3).AddHours(10) },
+                }
+            };
+            var agy = new ProviderUsage
+            {
+                Name = "Antigravity", Plan = "Pro",
+                TodayTok = 156_400_000, WeekTok = 780_900_000,
+                Windows = new()
+                {
+                    new QuotaWindow { Label = "Gemini Pro · weekly", Pct = 78, Reset = now.AddDays(2).AddHours(5) },
+                    new QuotaWindow { Label = "Gemini Pro · 5h", Pct = 91, Reset = now.AddHours(3).AddMinutes(20) },
+                    new QuotaWindow { Label = "Claude · weekly", Pct = 32, Reset = now.AddDays(4).AddHours(1) },
+                    new QuotaWindow { Label = "Claude · 5h", Pct = 18, Reset = now.AddHours(4).AddMinutes(10) },
+                }
+            };
+            var pt = new PonytailStats { Cost = 345.67, Turns = 1234, Sessions = 12 };
+            var pw = new PonytailStats { Cost = 1890.12, Turns = 9876, Sessions = 45 };
+            var aiBig = UsageView.Preview(claude, agy, pt, pw, (prov, w) =>
+                prov == "Antigravity" && w.Label == "Gemini Pro · 5h"
+                    ? new BurnProjection(true, true, TimeSpan.FromMinutes(45), 18.5)
+                    : new BurnProjection(true, false, null, 2.0));
+            Shot(aiBig, "tab-ai-big", 660, 262);
+            Settings.Cur.ClaudeOn = prevClaudeOn; Settings.Cur.CodexOn = prevCodexOn;
+            Settings.Cur.Slot2 = prevSlot2; Settings.Cur.ShowCost = prevCost; Settings.Cur.ShowPonytail = prevPt;
+            log.AppendLine("ok tab ai-big");
+        }
+        catch (Exception ex) { log.AppendLine("GAGAL tab ai-big: " + ex); }
+
+        // island-idle.png dilewati: Pill berada di dalam IslandWindow (jendela nyata dengan animasi/ukuran dinamis)
+        log.AppendLine("skip island-idle: tidak dirender tanpa jendela nyata");
 
         try
         {
