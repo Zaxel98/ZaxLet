@@ -18,6 +18,15 @@ public partial class IslandWindow
 {
     [DllImport("user32.dll")] static extern short GetKeyState(int vk);
     [DllImport("user32.dll")] static extern bool AddClipboardFormatListener(IntPtr h);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr RegisterDeviceNotification(IntPtr hRecipient, ref DEV_BROADCAST_DEVICEINTERFACE notificationFilter, uint flags);
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool UnregisterDeviceNotification(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct DEV_BROADCAST_DEVICEINTERFACE { public int dbcc_size, dbcc_devicetype, dbcc_reserved; public Guid dbcc_classguid; public short dbcc_name; }
+
+    static readonly Guid GUID_DEVINTERFACE_VOLUME = new("53f5630d-b6bf-11d0-94f2-00a0c91efb8b");
 
     static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["wish"] = ("", "Wishlist");TabMeta["clip"] = ("", "Clipboard"); }
 
@@ -247,29 +256,62 @@ public partial class IslandWindow
         if (slow != _slowOn && _slowT != null) { _slowOn = slow; _slowT.Change(slow ? 4000 : Timeout.Infinite, slow ? 2000 : Timeout.Infinite); }
     }
 
+    IntPtr _devNotify;
+    DateTime _lastDevChange = DateTime.MinValue;
+    DispatcherTimer _usbFallbackT;
+
+    static IEnumerable<char> CurrentDriveLetters()
+    {
+        try { return System.IO.DriveInfo.GetDrives().Where(d => d.Name.Length > 0).Select(d => char.ToUpperInvariant(d.Name[0])).ToArray(); }
+        catch { return Array.Empty<char>(); }
+    }
+
+    static void NotifyUsbArrival(char letter)
+    {
+        if (!UsbDrives.IsRemovable(letter) || !UsbDrives.NoteArrival(letter)) return;
+        var drv = char.ToUpperInvariant(letter);
+        Instance?.Alert(L.F("Flashdisk {0}:", drv), 8, () => UsbDrives.OpenExplorer(drv));
+    }
+
+    static void ScanNewUsbDrives()
+    {
+        var present = CurrentDriveLetters().ToList();
+        UsbDrives.PruneRemoved(present);
+        foreach (var c in present) NotifyUsbArrival(c);
+    }
+
     /// <summary>Dipanggil dari hook jendela: pesan Windows yang dipakai fitur tambahan.</summary>
     void HookFeatures(int msg, IntPtr wp, IntPtr lp, ref bool handled)
     {
         if (msg == 0x031D) { ClipboardHistory.Capture(); WishBridge.OnClipboard(); handled = true; }   // WM_CLIPBOARDUPDATE
-        else if (msg == 0x0219 && wp.ToInt64() == 0x8000 && lp != IntPtr.Zero)   // WM_DEVICECHANGE + DBT_DEVICEARRIVAL
+        else if (msg == 0x0219)   // WM_DEVICECHANGE
         {
-            if (Marshal.ReadInt32(lp, 4) == 2 && (Marshal.ReadInt16(lp, 16) & 3) == 0)   // DBT_DEVTYP_VOLUME, bukan media optik/jaringan
+            _lastDevChange = DateTime.UtcNow;
+            long ev = wp.ToInt64();
+            if (ev == 0x8000 && lp != IntPtr.Zero)   // DBT_DEVICEARRIVAL
             {
-                uint mask = (uint)Marshal.ReadInt32(lp, 12);
-                foreach (var letter in UsbDrives.LettersFromMask(mask))
+                int devType = Marshal.ReadInt32(lp, 4);
+                if (devType == 2 && (Marshal.ReadInt16(lp, 16) & 3) == 0)   // DBT_DEVTYP_VOLUME, bukan media optik/jaringan
                 {
-                    if (!UsbDrives.IsRemovable(letter)) continue;
-                    UsbDrives.NoteArrival(letter);
-                    if (!Settings.Cur.OsdOn) continue;
-                    string size = "";
-                    try
-                    {
-                        var di = new System.IO.DriveInfo(letter + ":\\");
-                        if (di.IsReady) size = " · " + UsbDrives.FormatSize(di.TotalSize);
-                    }
-                    catch { }
-                    var drv = letter;
-                    Alert(L.F("Flashdisk {0}:", drv) + size, 8, () => UsbDrives.OpenExplorer(drv));
+                    uint mask = (uint)Marshal.ReadInt32(lp, 12);
+                    foreach (var letter in UsbDrives.LettersFromMask(mask)) NotifyUsbArrival(letter);
+                }
+                else if (devType == 5)   // DBT_DEVTYP_DEVICEINTERFACE dari RegisterDeviceNotification
+                {
+                    ScanNewUsbDrives();
+                }
+            }
+            else if (ev == 0x8004 && lp != IntPtr.Zero)   // DBT_DEVICEREMOVECOMPLETE
+            {
+                int devType = Marshal.ReadInt32(lp, 4);
+                if (devType == 2)
+                {
+                    uint mask = (uint)Marshal.ReadInt32(lp, 12);
+                    foreach (var letter in UsbDrives.LettersFromMask(mask)) UsbDrives.NoteRemoval(letter);
+                }
+                else if (devType == 5)
+                {
+                    UsbDrives.PruneRemoved(CurrentDriveLetters());
                 }
             }
         }
@@ -283,6 +325,22 @@ public partial class IslandWindow
     void StartFeatureListeners(IntPtr hwnd)
     {
         try { AddClipboardFormatListener(hwnd); } catch (Exception ex) { App.Log(ex); }
+        try
+        {
+            foreach (var c in CurrentDriveLetters()) UsbDrives.NoteArrival(c);
+            var filter = new DEV_BROADCAST_DEVICEINTERFACE
+            {
+                dbcc_size = Marshal.SizeOf<DEV_BROADCAST_DEVICEINTERFACE>(),
+                dbcc_devicetype = 5,
+                dbcc_classguid = GUID_DEVINTERFACE_VOLUME,
+            };
+            _devNotify = RegisterDeviceNotification(hwnd, ref filter, 0);
+        }
+        catch (Exception ex) { App.Log(ex); }
+        // Cadangan 5 dtk hanya berjalan saat tidak ada WM_DEVICECHANGE dalam 1 menit terakhir (lebih ringan dan andal bila broadcast terlewat).
+        _usbFallbackT = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _usbFallbackT.Tick += (_, _) => { if (DateTime.UtcNow - _lastDevChange > TimeSpan.FromMinutes(1)) ScanNewUsbDrives(); };
+        _usbFallbackT.Start();
         ReminderService.I.Start();
         _bt.Changed += (name, on) =>
         {
@@ -328,6 +386,8 @@ public partial class IslandWindow
         {
             _netClosed = true;
             _netDebounceT?.Stop();
+            _usbFallbackT?.Stop();
+            if (_devNotify != IntPtr.Zero) { UnregisterDeviceNotification(_devNotify); _devNotify = IntPtr.Zero; }
             NetworkChange.NetworkAvailabilityChanged -= OnNetAvailChanged;
             NetworkChange.NetworkAddressChanged -= OnNetAddrChanged;
         };
