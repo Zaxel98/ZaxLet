@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace ZaxLet;
 
@@ -52,9 +53,12 @@ public sealed class DupWindow : Window
     readonly StackPanel _groupsPanel = new();
     readonly List<GroupState> _groups = new();
 
+    const int RenderChunkSize = 20;
+
     string _folder;
     CancellationTokenSource _cts;
-    bool _busy;
+    bool _scanning, _recycling, _rendering, _closed;
+    int _scanId, _renderVersion;
 
     public static void Show(string folder)
     {
@@ -101,6 +105,7 @@ public sealed class DupWindow : Window
         _cancelBtn = UI.Btn(UI.T("Batal", 11.5, TextFg), CancelScan, UI.CardOn, 8, new Thickness(10, 4, 10, 4));
         _cancelBtn.Visibility = Visibility.Collapsed;
         _cancelBtn.Margin = new Thickness(8, 0, 0, 0);
+        _cancelBtn.MouseLeftButtonDown += (_, e) => e.Handled = true;
         statusRow.Children.Add(_cancelBtn.At(0, 1));
         head.Children.Add(statusRow.At(1, 0));
 
@@ -112,12 +117,14 @@ public sealed class DupWindow : Window
         var pickBtn = UI.Btn(UI.T("Pilih folder", 11.5, TextFg), PickFolder, UI.CardOn, 8, new Thickness(10, 5, 10, 5));
         pickBtn.Margin = new Thickness(0, 0, 6, 0);
         pickBtn.VerticalAlignment = VerticalAlignment.Center;
+        pickBtn.MouseLeftButtonDown += (_, e) => e.Handled = true;
         Grid.SetRowSpan(pickBtn, 3);
         head.Children.Add(pickBtn.At(0, 1));
 
         var closeBtn = UI.IconBtn("", Close, 12, CardBg);
         closeBtn.Padding = new Thickness(6);
         closeBtn.VerticalAlignment = VerticalAlignment.Center;
+        closeBtn.MouseLeftButtonDown += (_, e) => e.Handled = true;
         Grid.SetRowSpan(closeBtn, 3);
         head.Children.Add(closeBtn.At(0, 2));
         root.Children.Add(head.At(0));
@@ -164,13 +171,17 @@ public sealed class DupWindow : Window
 
         KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape) { e.Handled = true; if (_busy) CancelScan(); else Close(); }
+            if (e.Key == Key.Escape) { e.Handled = true; Close(); }
         };
 
         Closed += (_, _) =>
         {
-            _cts?.Cancel();
+            _closed = true;
+            _renderVersion++;
+            _rendering = false;
+            try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
             _cts?.Dispose();
+            _cts = null;
             IslandWindow.Instance?.KeepOpen(false);
             if (_cur == this) _cur = null;
         };
@@ -181,7 +192,8 @@ public sealed class DupWindow : Window
 
     void PickFolder()
     {
-        if (_busy) return;
+        if (_recycling) return;
+        if (_scanning) CancelScan();
         var dlg = new Microsoft.Win32.OpenFolderDialog
         {
             Title = L.T("Pilih folder untuk mencari file duplikat")
@@ -192,17 +204,24 @@ public sealed class DupWindow : Window
 
     void CancelScan()
     {
-        _cts?.Cancel();
+        try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         _statusLabel.Foreground = UI.Warn;
         _statusLabel.Text = L.T("Membatalkan...");
     }
 
     async void StartScan(string folder)
     {
-        if (_busy) return;
+        if (_recycling || _closed) return;
+        int myScanId = ++_scanId;
+        try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+        _cts?.Dispose();
+        _cts = null;
+
         _folder = folder;
         _folderLabel.Text = folder;
         _folderLabel.ToolTip = folder;
+        _renderVersion++;
+        _rendering = false;
         _groupsPanel.Children.Clear();
         _groups.Clear();
         UpdateSavings();
@@ -214,28 +233,32 @@ public sealed class DupWindow : Window
         }
         catch (Exception ex)
         {
+            _scanning = false;
+            _cancelBtn.Visibility = Visibility.Collapsed;
             _statusLabel.Foreground = UI.Bad;
             _statusLabel.Text = ex.Message;
+            UpdateSavings();
             return;
         }
 
-        _busy = true;
+        _scanning = true;
         _cancelBtn.Visibility = Visibility.Visible;
         _statusLabel.Foreground = UI.Fg;
         _statusLabel.Text = L.T("Memulai pemindaian...");
         SetRecycleEnabled(false);
 
-        _cts?.Dispose();
-        _cts = new CancellationTokenSource();
-        var token = _cts.Token;
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+        var token = cts.Token;
         var progress = new Progress<string>(msg =>
         {
-            if (_busy) _statusLabel.Text = msg;
+            if (!_closed && _scanId == myScanId && _scanning) _statusLabel.Text = msg;
         });
 
         try
         {
             var found = await Task.Run(() => DupFinder.Scan(safeFolder, progress, token), token);
+            if (_closed || _scanId != myScanId) return;
             RenderGroups(found);
             _statusLabel.Foreground = found.Count > 0 ? UI.Good : UI.Dim;
             _statusLabel.Text = found.Count > 0
@@ -244,121 +267,161 @@ public sealed class DupWindow : Window
         }
         catch (OperationCanceledException)
         {
+            if (_closed || _scanId != myScanId) return;
             _statusLabel.Foreground = UI.Warn;
             _statusLabel.Text = L.T("Pemindaian dibatalkan.");
         }
         catch (Exception ex)
         {
+            if (_closed || _scanId != myScanId) return;
             App.Log(ex);
             _statusLabel.Foreground = UI.Bad;
             _statusLabel.Text = ex.Message;
         }
         finally
         {
-            _busy = false;
-            _cancelBtn.Visibility = Visibility.Collapsed;
-            UpdateSavings();
+            if (!_closed && _scanId == myScanId)
+            {
+                _scanning = false;
+                _cancelBtn.Visibility = Visibility.Collapsed;
+                UpdateSavings();
+            }
         }
     }
 
     void RenderGroups(List<DupGroup> found)
     {
+        int version = ++_renderVersion;
         _groupsPanel.Children.Clear();
         _groups.Clear();
 
-        foreach (var g in found)
+        if (found == null || found.Count == 0)
         {
-            var gs = new GroupState { Group = g };
-            var stack = new StackPanel();
-
-            var hdrGrid = UI.Cols(-1, 0);
-            hdrGrid.Margin = new Thickness(0, 0, 0, 6);
-            var hdrLeft = RawText(L.F("{0} berkas · {1} per berkas", g.Files.Count, DupFinder.FmtSize(g.Size)), 12.5, CaptionFg, true);
-            var hdrRight = RawText(L.F("{0} duplikat", DupFinder.FmtSize((g.Files.Count - 1) * g.Size)), 12.5, CaptionFg);
-            hdrRight.Margin = new Thickness(8, 0, 0, 0);
-            hdrGrid.Children.Add(hdrLeft);
-            hdrGrid.Children.Add(hdrRight.At(0, 1));
-            stack.Children.Add(hdrGrid);
-
-            for (int i = 0; i < g.Files.Count; i++)
-            {
-                var file = g.Files[i];
-                bool newest = i == 0;   // DupFinder mengurutkan terbaru lebih dulu
-
-                var cb = new CheckBox
-                {
-                    IsChecked = !newest,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Center
-                };
-
-                var keepBadge = UI.T("Simpan", 10.5, UI.Accent, true);
-                keepBadge.Margin = new Thickness(4, 0, 4, 0);
-                keepBadge.Visibility = newest ? Visibility.Visible : Visibility.Collapsed;
-
-                var entry = new FileEntry
-                {
-                    File = file,
-                    Box = cb,
-                    KeepBadge = keepBadge,
-                    Group = gs
-                };
-                gs.Entries.Add(entry);
-
-                cb.Checked += (_, _) => OnEntryToggled(gs);
-                cb.Unchecked += (_, _) => OnEntryToggled(gs);
-
-                var rowGrid = UI.Cols(24, 60, -1, 80, 130);
-                rowGrid.Children.Add(cb);
-                rowGrid.Children.Add(keepBadge.At(0, 1));
-
-                var pathTxt = RawText(ShortenPath(file.Path, _folder), 11.5, TextFg);
-                pathTxt.Margin = new Thickness(0, 0, 8, 0);
-                pathTxt.ToolTip = file.Path;
-                rowGrid.Children.Add(pathTxt.At(0, 2));
-
-                var sizeTxt = RawText(DupFinder.FmtSize(file.Size), 11, CaptionFg);
-                sizeTxt.HorizontalAlignment = HorizontalAlignment.Right;
-                sizeTxt.TextAlignment = TextAlignment.Right;
-                rowGrid.Children.Add(sizeTxt.At(0, 3));
-
-                var dateTxt = RawText($"{file.Modified:yyyy-MM-dd HH:mm}", 11, CaptionFg);
-                dateTxt.HorizontalAlignment = HorizontalAlignment.Right;
-                dateTxt.TextAlignment = TextAlignment.Right;
-                rowGrid.Children.Add(dateTxt.At(0, 4));
-
-                var rowBorder = new Border
-                {
-                    Height = 32,
-                    Background = Brushes.Transparent,
-                    Padding = new Thickness(4, 0, 4, 0),
-                    Child = rowGrid,
-                    ToolTip = file.Path + L.T("\nKlik dua kali untuk membuka lokasi di Explorer")
-                };
-                rowBorder.MouseLeftButtonDown += (_, e) =>
-                {
-                    if (e.ClickCount == 2) OpenInExplorer(file.Path);
-                };
-
-                stack.Children.Add(rowBorder);
-            }
-
-            gs.Card = new Border
-            {
-                Background = CardBg,
-                BorderBrush = UI.Track,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(12, 10, 12, 8),
-                Margin = new Thickness(0, 0, 0, 10),
-                Child = stack
-            };
-            _groups.Add(gs);
-            _groupsPanel.Children.Add(gs.Card);
-            EnforceKeepOne(gs);
+            _rendering = false;
+            UpdateSavings();
+            return;
         }
 
+        _rendering = true;
         UpdateSavings();
+
+        int index = 0;
+        void RenderChunk()
+        {
+            if (_closed || version != _renderVersion) return;
+
+            int end = Math.Min(index + RenderChunkSize, found.Count);
+            for (; index < end; index++)
+            {
+                var gs = BuildGroupCard(found[index]);
+                _groups.Add(gs);
+                _groupsPanel.Children.Add(gs.Card);
+                EnforceKeepOne(gs);
+            }
+
+            if (index < found.Count)
+            {
+                UpdateSavings();
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)RenderChunk);
+            }
+            else
+            {
+                _rendering = false;
+                UpdateSavings();
+            }
+        }
+
+        RenderChunk();
+    }
+
+    GroupState BuildGroupCard(DupGroup g)
+    {
+        var gs = new GroupState { Group = g };
+        var stack = new StackPanel();
+
+        var hdrGrid = UI.Cols(-1, 0);
+        hdrGrid.Margin = new Thickness(0, 0, 0, 6);
+        var hdrLeft = RawText(L.F("{0} berkas · {1} per berkas", g.Files.Count, DupFinder.FmtSize(g.Size)), 12.5, CaptionFg, true);
+        var hdrRight = RawText(L.F("{0} duplikat", DupFinder.FmtSize((g.Files.Count - 1) * g.Size)), 12.5, CaptionFg);
+        hdrRight.Margin = new Thickness(8, 0, 0, 0);
+        hdrGrid.Children.Add(hdrLeft);
+        hdrGrid.Children.Add(hdrRight.At(0, 1));
+        stack.Children.Add(hdrGrid);
+
+        for (int i = 0; i < g.Files.Count; i++)
+        {
+            var file = g.Files[i];
+            bool newest = i == 0;   // DupFinder mengurutkan terbaru lebih dulu
+
+            var cb = new CheckBox
+            {
+                IsChecked = !newest,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+            var keepBadge = UI.T("Simpan", 10.5, UI.Accent, true);
+            keepBadge.Margin = new Thickness(4, 0, 4, 0);
+            keepBadge.Visibility = newest ? Visibility.Visible : Visibility.Collapsed;
+
+            var entry = new FileEntry
+            {
+                File = file,
+                Box = cb,
+                KeepBadge = keepBadge,
+                Group = gs
+            };
+            gs.Entries.Add(entry);
+
+            cb.Checked += (_, _) => OnEntryToggled(gs);
+            cb.Unchecked += (_, _) => OnEntryToggled(gs);
+
+            var rowGrid = UI.Cols(24, 60, -1, 80, 130);
+            rowGrid.Children.Add(cb);
+            rowGrid.Children.Add(keepBadge.At(0, 1));
+
+            var pathTxt = RawText(ShortenPath(file.Path, _folder), 11.5, TextFg);
+            pathTxt.Margin = new Thickness(0, 0, 8, 0);
+            pathTxt.ToolTip = file.Path;
+            rowGrid.Children.Add(pathTxt.At(0, 2));
+
+            var sizeTxt = RawText(DupFinder.FmtSize(file.Size), 11, CaptionFg);
+            sizeTxt.HorizontalAlignment = HorizontalAlignment.Right;
+            sizeTxt.TextAlignment = TextAlignment.Right;
+            rowGrid.Children.Add(sizeTxt.At(0, 3));
+
+            var dateTxt = RawText($"{file.Modified:yyyy-MM-dd HH:mm}", 11, CaptionFg);
+            dateTxt.HorizontalAlignment = HorizontalAlignment.Right;
+            dateTxt.TextAlignment = TextAlignment.Right;
+            rowGrid.Children.Add(dateTxt.At(0, 4));
+
+            var rowBorder = new Border
+            {
+                Height = 32,
+                Background = Brushes.Transparent,
+                Padding = new Thickness(4, 0, 4, 0),
+                Child = rowGrid,
+                ToolTip = file.Path + L.T("\nKlik dua kali untuk membuka lokasi di Explorer")
+            };
+            rowBorder.MouseLeftButtonDown += (_, e) =>
+            {
+                if (e.ClickCount == 2) OpenInExplorer(file.Path);
+            };
+
+            stack.Children.Add(rowBorder);
+        }
+
+        gs.Card = new Border
+        {
+            Background = CardBg,
+            BorderBrush = UI.Track,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(12, 10, 12, 8),
+            Margin = new Thickness(0, 0, 0, 10),
+            Child = stack
+        };
+        return gs;
     }
 
     static string ShortenPath(string fullPath, string baseFolder)
@@ -416,7 +479,7 @@ public sealed class DupWindow : Window
         _recycleBtnText.Text = count > 0
             ? L.F("Pindahkan yang dicentang ke Recycle Bin ({0:N0})", count)
             : L.T("Pindahkan yang dicentang ke Recycle Bin");
-        SetRecycleEnabled(!_busy && count > 0);
+        SetRecycleEnabled(!_scanning && !_recycling && !_rendering && count > 0);
     }
 
     void SetRecycleEnabled(bool enabled)
@@ -427,7 +490,7 @@ public sealed class DupWindow : Window
 
     async void RecycleSelected()
     {
-        if (_busy) return;
+        if (_scanning || _recycling || _rendering) return;
         var selected = _groups.SelectMany(g => g.Entries).Where(e => e.Box.IsChecked == true).ToList();
         if (selected.Count == 0) return;
 
@@ -441,7 +504,7 @@ public sealed class DupWindow : Window
 
         if (confirm != MessageBoxResult.Yes) return;
 
-        _busy = true;
+        _recycling = true;
         SetRecycleEnabled(false);
         _statusLabel.Foreground = UI.Fg;
         _statusLabel.Text = L.T("Memindahkan berkas ke Recycle Bin...");
@@ -450,6 +513,7 @@ public sealed class DupWindow : Window
         {
             var paths = selected.Select(e => e.File.Path).ToList();
             var (moved, failed) = await Task.Run(() => DupFinder.MoveToRecycleBin(paths));
+            if (_closed) return;
             var movedSet = new HashSet<string>(moved, StringComparer.OrdinalIgnoreCase);
 
             // Segarkan daftar grup yang tersisa
@@ -475,14 +539,18 @@ public sealed class DupWindow : Window
         }
         catch (Exception ex)
         {
+            if (_closed) return;
             App.Log(ex);
             _statusLabel.Foreground = UI.Bad;
             _statusLabel.Text = ex.Message;
         }
         finally
         {
-            _busy = false;
-            UpdateSavings();
+            if (!_closed)
+            {
+                _recycling = false;
+                UpdateSavings();
+            }
         }
     }
 
