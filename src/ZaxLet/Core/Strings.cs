@@ -559,5 +559,13 @@ public static class Strings
         ["Cari file duplikat di folder ini"] = "Find duplicate files in this folder",
         ["Kompres..."] = "Compress...",
         ["Kompres gambar atau PDF ke ukuran target"] = "Compress image or PDF to target size",
+
+        // kompresor PDF/gambar baru
+        ["File sudah paling kecil ({0}); hasil kompresi tidak lebih kecil dari file asli."] = "File is already at its smallest ({0}); compressed output is not smaller than the original.",
+        ["Target tidak tercapai pada resolusi penuh. Ukuran terkecil: {0}. Hapus centang \"Pertahankan resolusi\" untuk mengecilkan ukuran piksel."] = "Target not reached at full resolution. Smallest size: {0}. Uncheck \"Keep resolution\" to shrink pixel dimensions.",
+        ["Mencoba kualitas {0}/{1}"] = "Trying quality {0}/{1}",
+        ["Pertahankan resolusi (bisa lebih buram)"] = "Keep resolution (may be blurrier)",
+        ["Gambar di dalam PDF dikompres ulang; teks dan vektor tetap tajam. Jika target tak tercapai, halaman diubah menjadi gambar (teks tidak bisa diseleksi). PDF berpassword ditolak. File asli tidak diubah."] = "Images inside the PDF are recompressed; text and vectors stay sharp. If the target isn't reached, pages are converted to images (text won't be selectable). Password-protected PDFs are rejected. Original file is unchanged.",
+        ["Resolusi piksel dipertahankan secara default dengan menurunkan kualitas JPEG dan penghalusan ringan bila perlu. Hapus centang di atas untuk mengizinkan penurunan resolusi. Keluaran selalu JPEG (transparansi diisi putih). File asli tidak diubah."] = "Pixel resolution is kept by default by lowering JPEG quality and applying light smoothing if needed. Uncheck above to allow downscaling. Output is always JPEG (transparency filled with white). Original file is unchanged.",
     };
 }
