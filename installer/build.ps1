@@ -1,5 +1,6 @@
 # Bangun ZaxLetSetup.exe: zip isi dist\ (tanpa .pdb) lalu tanamkan ke pemasang yang dikompilasi dengan csc .NET Framework.
 # Jalankan setelah build.cmd (dan Android\build.ps1 bila APK berubah) supaya dist\ terbaru.
+param([string]$Dist = '')   # folder isi rilis; kosong = dist\ (untuk rilis, bangun ke folder bersih agar log/diagnostik pengembang tidak ikut)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $out = Join-Path $PSScriptRoot 'out'
@@ -8,7 +9,7 @@ $zip = Join-Path $out 'payload.zip'
 Remove-Item $zip -ErrorAction SilentlyContinue
 
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
-$dist = Join-Path $root 'dist'
+$dist = if ($Dist) { (Resolve-Path $Dist).Path } else { Join-Path $root 'dist' }
 $za = [System.IO.Compression.ZipFile]::Open($zip, 'Create')
 foreach ($f in Get-ChildItem $dist -Recurse -File | Where-Object { $_.Extension -ne '.pdb' }) {
     $rel = $f.FullName.Substring($dist.Length + 1).Replace('\', '/')

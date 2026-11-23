@@ -168,7 +168,7 @@ static class Setup
             k.SetValue("DisplayIcon", exe);
             k.SetValue("InstallLocation", dir);
             k.SetValue("Publisher", "ZaxLet");
-            k.SetValue("DisplayVersion", "1.2.0");
+            k.SetValue("DisplayVersion", "1.3.0");
             k.SetValue("UninstallString", "\"" + uninst + "\" /uninstall");
             k.SetValue("NoModify", 1, RegistryValueKind.DWord);
             k.SetValue("NoRepair", 1, RegistryValueKind.DWord);

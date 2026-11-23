@@ -44,7 +44,7 @@
 - Clipboard history (kept in memory only; copies from password managers are skipped).
 - Screenshots (full, area, window) and screen recording.
 - Quick action box (own shortcut): `t 10m`, `catat <text>`, `minum 250`, `tema neon`, `buka monitor`, `perf`, `bt`, plus a calculator and unit converter (`= 12*5`, `5 km mi`).
-- Performance overlay for games (FPS, CPU, GPU, VRAM, RAM, disk, network; click-through, off by default), optionally in the Monitor tab too. Optional auto-clear of the standby RAM cache (needs admin, off by default).
+- Performance overlay for games (FPS, CPU, GPU, VRAM, RAM, disk, network; click-through, off by default), optionally in the Monitor tab too.
 - Battery of Bluetooth headsets that report it to Windows, with a low-battery warning.
 
 <table>

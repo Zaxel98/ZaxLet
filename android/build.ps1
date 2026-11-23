@@ -9,7 +9,7 @@ Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$out\classes","$out\dex" | Out-Null
 
 & "$bt\aapt2.exe" compile --dir "$root\res" -o "$out\res.zip"
-& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$root\AndroidManifest.xml" --min-sdk-version 26 --target-sdk-version 34 --version-code 3 --version-name 1.2 "$out\res.zip"
+& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$root\AndroidManifest.xml" --min-sdk-version 26 --target-sdk-version 34 --version-code 4 --version-name 1.3 "$out\res.zip"
 
 $src = Get-ChildItem "$root\src" -Recurse -Filter *.java | ForEach-Object FullName
 $zx = Join-Path $root "lib\core-3.5.3.jar"   # ZXing core (Apache 2.0): pemindai QR pasangan
