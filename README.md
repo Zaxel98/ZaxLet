@@ -5,8 +5,24 @@
 [![Release](https://img.shields.io/github/v/release/Zaxel98/ZaxLet?label=release)](https://github.com/Zaxel98/ZaxLet/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Zaxel98/ZaxLet/total?label=downloads)](https://github.com/Zaxel98/ZaxLet/releases)
 
-[Why](#why-zaxlet) · [Features](#features) · [Install](#install) · [Quick start](#quick-start) · [Privacy](#privacy) · [FAQ](#faq) · [Build](#build-from-source)
+[Preview](#preview) · [Why](#why-zaxlet) · [Features](#features) · [Install](#install) · [Quick start](#quick-start) · [Privacy](#privacy) · [FAQ](#faq) · [Build](#build-from-source)
 
+## Preview
+
+<p align="center"><img src="docs/img/island-music.png" width="600" alt="ZaxLet island on the Music tab: track, progress bar, controls and synced lyrics"></p>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/tab-ai-usage.png" alt="AI usage tab with Claude and Antigravity quota"><br><sub>AI usage: quota windows, tokens and cost</sub></td>
+<td width="50%"><img src="docs/img/tab-monitor.png" alt="Monitor tab with CPU, RAM, GPU, network and top memory"><br><sub>Monitor: CPU, RAM, GPU, network, battery</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/tab-clipboard.png" alt="Clipboard history tab"><br><sub>Clipboard history (kept in memory only)</sub></td>
+<td width="50%"><img src="docs/img/tab-prayer.png" alt="Prayer times tab with the sun's path"><br><sub>Prayer times, computed offline</sub></td>
+</tr>
+</table>
+
+<sub>Screenshots of the real app. In the music shot the cover art and lyrics are placeholders; the other tabs show sample data, not anyone's real usage.</sub>
 ## Why ZaxLet
 
 - **Light.** About 75 MB of RAM at idle, a 7 MB installer and no WebView.
