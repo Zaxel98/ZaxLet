@@ -32,16 +32,16 @@
 - Send text both ways: share text to ZaxLet HP and it lands on the PC clipboard; the Shelf has a "Text to phone" button for the other direction.
 - One-time codes (OTP) in notifications get a Copy button, and the code stays out of the clipboard history.
 - Pair by scanning a QR code in the phone app. The app restarts itself after a reboot, reconnects when the network changes, can send the phone's audio to the PC, and reports its battery level (tooltip on the phone dot, with a low-battery warning).
+- Share the phone screen to the PC and control it with the mouse and keyboard (needs the Accessibility service turned on in the phone app). Phone audio travels compressed (Opus) and falls back to raw PCM if the encoder is unavailable.
 
 **Everyday tools**
-- Timer, Pomodoro and stopwatch; eye-break and water reminders. Focus mode in the Timer tab holds phone notifications (OTP codes still pass) and summarises them afterwards.
-- Meeting mode: Zoom, Meet, Teams and other calls are recognised from microphone use; the pill gets a mic mute button, music pauses and notifications are held.
-- Wishlist tab: copy a product link and click Paste link. With the small browser extension (Firefox, Chrome, Edge, Brave; folder `extension` next to ZaxLet.exe with `zaxlet-wishlist.xpi` for Firefox, setup guide inside the tab; release Firefox needs the .xpi signed by Mozilla, which is free through addons.mozilla.org "On your own") the title, price and picture come from the page in your own browser and go only to ZaxLet on this PC (127.0.0.1, token-protected); the pill even offers to save a product link you just copied. Without the extension ZaxLet takes the shop name and a title from the link, and you can paste the picture and the price by hand. ZaxLet never tries to get around a shop's bot protection.
+- Timer and stopwatch; water reminders.
+- Rarely used features are kept out of the build in `extras/` (eye-break reminder, Pomodoro with Focus mode, quiet hours, meeting mode, and the Wishlist with its browser extension); `extras/README.md` explains how to bring one back.
 - Optional weather (open-meteo) with a rain alert, imsak and break-fast reminders, a JAKIM method, and a weekly schedule for other worship.
 - Calendar with to-dos, and prayer times computed offline, with an optional adhan sound of your own choosing.
 - Clipboard history (kept in memory only; copies from password managers are skipped).
 - Screenshots (full, area, window) and screen recording.
-- Quick action box (own shortcut): `t 10m`, `fokus 25`, `catat <text>`, `w <link>`, `minum 250`, `tema neon`, `buka monitor`, `perf`, `bt`, plus a calculator and unit converter (`= 12*5`, `5 km mi`).
+- Quick action box (own shortcut): `t 10m`, `catat <text>`, `minum 250`, `tema neon`, `buka monitor`, `perf`, `bt`, plus a calculator and unit converter (`= 12*5`, `5 km mi`).
 - Performance overlay for games (FPS, CPU, GPU, VRAM, RAM, disk, network; click-through, off by default), optionally in the Monitor tab too. Optional auto-clear of the standby RAM cache (needs admin, off by default).
 - Battery of Bluetooth headsets that report it to Windows, with a low-battery warning.
 
