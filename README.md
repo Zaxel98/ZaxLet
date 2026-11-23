@@ -5,24 +5,8 @@
 [![Release](https://img.shields.io/github/v/release/Zaxel98/ZaxLet?label=release)](https://github.com/Zaxel98/ZaxLet/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Zaxel98/ZaxLet/total?label=downloads)](https://github.com/Zaxel98/ZaxLet/releases)
 
-[Preview](#preview) · [Why](#why-zaxlet) · [Features](#features) · [Install](#install) · [Quick start](#quick-start) · [Privacy](#privacy) · [FAQ](#faq) · [Build](#build-from-source)
+[Why](#why-zaxlet) · [Features](#features) · [Install](#install) · [Quick start](#quick-start) · [Privacy](#privacy) · [FAQ](#faq) · [Build](#build-from-source)
 
-## Preview
-
-<p align="center"><img src="docs/img/island-music.png" width="600" alt="ZaxLet island on the Music tab: track, progress bar, controls and synced lyrics"></p>
-
-<table>
-<tr>
-<td width="50%"><img src="docs/img/tab-ai-usage.png" alt="AI usage tab with Claude and Antigravity quota"><br><sub>AI usage: quota windows, tokens and cost</sub></td>
-<td width="50%"><img src="docs/img/tab-monitor.png" alt="Monitor tab with CPU, RAM, GPU, network and top memory"><br><sub>Monitor: CPU, RAM, GPU, network, battery</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/img/tab-clipboard.png" alt="Clipboard history tab"><br><sub>Clipboard history (kept in memory only)</sub></td>
-<td width="50%"><img src="docs/img/tab-prayer.png" alt="Prayer times tab with the sun's path"><br><sub>Prayer times, computed offline</sub></td>
-</tr>
-</table>
-
-<sub>Screenshots of the real app. In the music shot the cover art and lyrics are placeholders; the other tabs show sample data, not anyone's real usage.</sub>
 ## Why ZaxLet
 
 - **Light.** About 75 MB of RAM at idle, a 7 MB installer and no WebView.
@@ -41,6 +25,8 @@
 - Lyric timing can be shifted per song (saved), and a "Wrong lyrics?" button throws out the shown lyrics and looks for another version.
 - Volume and shuffle in the Music tab, Spotify ads recognised (no lyrics lookup, not counted), and a weekly recap of your top songs and artists, kept only on this PC. With nothing playing, the tab shows the last song, the recap and an Open player button.
 - Complex features come with a step-by-step guide that opens the first time (phone connection, Discord), and an info button to open it again. Advanced users get extra rows through Settings > General > Advanced mode.
+
+<p align="center"><img src="docs/img/island-music.png" width="600" alt="ZaxLet island on the Music tab: track, progress bar, controls and synced lyrics"><br><sub>The Music tab (real app; cover art and lyrics are placeholders here).</sub></p>
 
 **Phone**
 - Notifications from the apps you pick appear in the pill. Chats such as WhatsApp can be replied to from the PC.
@@ -61,6 +47,13 @@
 - Performance overlay for games (FPS, CPU, GPU, VRAM, RAM, disk, network; click-through, off by default), optionally in the Monitor tab too. Optional auto-clear of the standby RAM cache (needs admin, off by default).
 - Battery of Bluetooth headsets that report it to Windows, with a low-battery warning.
 
+<table>
+<tr>
+<td width="50%"><img src="docs/img/tab-clipboard.png" alt="Clipboard history tab"><br><sub>Clipboard history, kept in memory only</sub></td>
+<td width="50%"><img src="docs/img/tab-prayer.png" alt="Prayer times tab with the sun's path"><br><sub>Prayer times, computed offline</sub></td>
+</tr>
+</table>
+
 **In the island itself**
 - Scroll over the island for volume, double-click the closed island to play or pause, swipe two fingers sideways to switch tabs.
 - Small popups for volume, brightness, Caps Lock, Bluetooth connections and microphone mute, plus which app is using the microphone or camera, and finished downloads.
@@ -75,6 +68,13 @@
 - Remaining quota and spend for Claude and Codex.
 
 The idle pill, the tabs and their order are all configurable in Settings.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/tab-ai-usage.png" alt="AI usage tab with Claude and Antigravity quota"><br><sub>AI usage: quota windows, tokens and cost (sample data)</sub></td>
+<td width="50%"><img src="docs/img/tab-monitor.png" alt="Monitor tab with CPU, RAM, GPU, network and top memory"><br><sub>Monitor: CPU, RAM, GPU, network, battery (sample data)</sub></td>
+</tr>
+</table>
 
 ## Install
 
