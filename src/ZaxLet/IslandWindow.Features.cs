@@ -13,7 +13,7 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-/// <summary>Fitur tambahan island: gestur, popup OSD, indikator mikrofon/kamera, unduhan selesai, jaringan, riwayat clipboard, adzan.</summary>
+/// <summary>Extra island features: gestures, OSD popups, mic/camera indicators, completed downloads, network, clipboard history, adzan.</summary>
 public partial class IslandWindow
 {
     [DllImport("user32.dll")] static extern short GetKeyState(int vk);
@@ -30,7 +30,7 @@ public partial class IslandWindow
 
     static IslandWindow() { TabMeta["ctrl"] = ("", "Control Panel");TabMeta["clip"] = ("", "Clipboard"); }
 
-    // ---------- tema, mode tampil, musik di layar penuh ----------
+    // ---------- themes, display mode, music in fullscreen ----------
     static readonly Dictionary<string, Brush> ThemeBrushes = BuildThemes();
 
     static Dictionary<string, Brush> BuildThemes()
@@ -45,15 +45,15 @@ public partial class IslandWindow
         return new()
         {
             ["black"] = Brushes.Black, ["neon"] = Brushes.Black,
-            ["aurora"] = G(new Point(0, 0), new Point(0, 1), ("#FF040A1C", 0), ("#FF0A2552", 1)),     // biru gelap seperti kaca
-            ["matcha"] = G(new Point(0, 0), new Point(0, 1), ("#FF0A150D", 0), ("#FF1D3A22", 1)),     // hijau teh
-            ["senja"] = G(new Point(0, 0), new Point(1, 1), ("#FF1A0A30", 0), ("#FF4A1532", .6), ("#FF7A3A12", 1)),   // ungu ke oranye
+            ["aurora"] = G(new Point(0, 0), new Point(0, 1), ("#FF040A1C", 0), ("#FF0A2552", 1)),     // glass-like dark blue
+            ["matcha"] = G(new Point(0, 0), new Point(0, 1), ("#FF0A150D", 0), ("#FF1D3A22", 1)),     // tea green
+            ["senja"] = G(new Point(0, 0), new Point(1, 1), ("#FF1A0A30", 0), ("#FF4A1532", .6), ("#FF7A3A12", 1)),   // purple to orange
         };
     }
 
     Brush ThemeFill() => ThemeBrushes.GetValueOrDefault(Settings.Cur.Theme) ?? Brushes.Black;
 
-    /// <summary>Warna dasar tema, dan garis tepi neon yang mengikuti warna sampul lagu (warna aksen bila tidak ada lagu).</summary>
+    /// <summary>Base theme color, and neon border that follows the album art color (accent color when no song is playing).</summary>
     void ApplyTheme()
     {
         if (!_open) Shape.Fill = ThemeFill();
@@ -68,16 +68,16 @@ public partial class IslandWindow
     bool _fsApp, _hiddenByMode, _clickThru, _wasMini;
     (double W, double H) _idleFull = (200, 36);
 
-    /// <summary>Pil jam kecil: island menyingkir karena menutupi tombol aplikasi lain (bukan layar penuh sungguhan), tapi tetap tampil sebagai jam kecil bila diizinkan.</summary>
-    bool MiniActive => _fs && !_fsApp && !_snooze && Settings.Cur.MiniClock != "off" && !FsMusicOn;   // layar penuh sungguhan: tidak ada jam (dicoba dan dibatalkan: tidak berguna)
+    /// <summary>Mini clock pill: island yields because it covers another app's buttons (not true fullscreen), but still shows as a mini clock if allowed.</summary>
+    bool MiniActive => _fs && !_fsApp && !_snooze && Settings.Cur.MiniClock != "off" && !FsMusicOn;   // true fullscreen: no clock (tried and reverted: not useful)
 
-    /// <summary>Ada yang sedang terjadi di island (musik, notifikasi, timer, rapat, fokus, rekaman): dipakai mode "hanya saat ada aktivitas".</summary>
+    /// <summary>Something is active on the island (music, notification, timer, meeting, focus, recording): used by "only when active" mode.</summary>
     bool HasActivity() => _open || MediaService.I.Playing || _rows.Count > 0 || _alert != null && DateTime.Now < _alertUntil
         || TimerService.I.Running || CaptureService.Recording;
 
     bool FsMusicOn => _fsApp && Settings.Cur.FsMusic && MediaService.I.Playing;
 
-    /// <summary>"Disembunyikan sampai dibuka dari tray" memakai mekanisme sembunyi yang sudah ada; "hanya saat ada aktivitas" memakai intipan kursor di tepi atas.</summary>
+    /// <summary>"Hidden until opened from tray" uses the existing hide mechanism; "only when active" uses cursor peek at the top edge.</summary>
     void ApplyShowMode()
     {
         var mode = Settings.Cur.ShowMode;
@@ -87,7 +87,7 @@ public partial class IslandWindow
         SyncVisible();
     }
 
-    /// <summary>Jendela tidak menangkap klik (WS_EX_TRANSPARENT): permainan di bawah tidak terganggu.</summary>
+    /// <summary>Window does not capture clicks (WS_EX_TRANSPARENT): games underneath are not interrupted.</summary>
     void SetClickThrough(bool on)
     {
         if (on == _clickThru) return;
@@ -98,20 +98,20 @@ public partial class IslandWindow
         Native.SetWindowLong(h, Native.GWL_EXSTYLE, on ? ex | 0x20 : ex & ~0x20);
     }
 
-    /// <summary>Buka pill lalu pilih tab (dari klik pada notifikasi ringkasan).</summary>
+    /// <summary>Open pill and select tab (from clicking a summary notification).</summary>
     public void OpenTab(string key) { OpenNow(); Select(key); }
 
     string _flashTitle = "";
     DispatcherTimer _flashT;
 
-    /// <summary>Lagu ganti: tepi pill menyala sekali dengan warna sampul lalu padam. Hanya di island (bukan layar), tidak di layar penuh, dan tidak di tema Neon (garisnya sudah menyala).</summary>
+    /// <summary>Track changed: pill edge flashes once with album art color then fades. Only on island (not screen), not in fullscreen, and not in Neon theme (its border is already lit).</summary>
     void TrackFlash()
     {
         var ms = MediaService.I;
         if (ms.Title == _flashTitle) return;
         _flashTitle = ms.Title ?? "";
         if (_flashTitle.Length == 0 || !ms.Playing || !Settings.Cur.TrackFlash || Settings.Cur.Theme == "neon") return;
-        _flashT ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };   // warna sampul datang sesaat setelah judul
+        _flashT ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };   // album art color arrives shortly after title
         _flashT.Tick -= DoFlash; _flashT.Tick += DoFlash;
         _flashT.Stop(); _flashT.Start();
     }
@@ -129,7 +129,7 @@ public partial class IslandWindow
     }
 
     DispatcherTimer _hkT;
-    IntPtr _prevFg;   // jendela yang aktif sebelum island dibuka lewat pintasan; fokusnya dikembalikan saat island menutup
+    IntPtr _prevFg;   // active window before island was opened via shortcut; focus is restored when island closes
 
     void RestoreFocus()
     {
@@ -137,7 +137,7 @@ public partial class IslandWindow
         if (p != IntPtr.Zero && IsActive) Native.SetForegroundWindow(p);
     }
 
-    /// <summary>Panah kiri/kanan pindah tab, Esc menutup. Tidak aktif saat mengetik di kolom teks.</summary>
+    /// <summary>Left/right arrows switch tabs, Esc closes. Inactive while typing in a text field.</summary>
     void KeyNav(object s, System.Windows.Input.KeyEventArgs e)
     {
         if (!_open || Keyboard.FocusedElement is System.Windows.Controls.TextBox) return;
@@ -151,13 +151,13 @@ public partial class IslandWindow
         else if (e.Key == System.Windows.Input.Key.Escape) { KeepOpen(false); _closeT.Stop(); _hkT?.Stop(); Close_(); e.Handled = true; }
     }
 
-    /// <summary>Pintasan keyboard: buka island dan biarkan terbuka (tanpa kursor); tekan lagi untuk menutup. Menutup sendiri setelah 12 dtk bila kursor tidak di atasnya dan tidak sedang mengetik.</summary>
+    /// <summary>Keyboard shortcut: open island and keep it open (without cursor); press again to close. Auto-closes after 12 s if cursor is not over it and not typing.</summary>
     void ToggleOpenByKey()
     {
         if (_open) { KeepOpen(false); _closeT.Stop(); Close_(); _hkT?.Stop(); return; }
         _prevFg = Native.GetForegroundWindow();
         OpenNow(); KeepOpen(true);
-        if (_open) Activate();   // pintasan eksplisit: island menerima keyboard (panah ganti tab, Esc menutup)
+        if (_open) Activate();   // explicit shortcut: island receives keyboard input (arrows switch tabs, Esc closes)
         _hkT ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
         _hkT.Tick -= HotkeyIdle; _hkT.Tick += HotkeyIdle;
         _hkT.Stop(); _hkT.Start();
@@ -172,7 +172,7 @@ public partial class IslandWindow
     Action _alertAction;
     bool _dblSkip;
     readonly YieldService _yield = new();
-    (int L, int T, int R, int B) _pillPx;   // ditulis thread UI, dibaca thread latar: salinan sesaat yang tidak konsisten tidak berbahaya
+    (int L, int T, int R, int B) _pillPx;   // written by UI thread, read by background thread: momentary torn read is harmless
     readonly DispatcherTimer _osdT = new() { Interval = TimeSpan.FromMilliseconds(300) };
     Timer _slowT;
     readonly BluetoothWatch _bt = new();
@@ -180,7 +180,7 @@ public partial class IslandWindow
     readonly DispatcherTimer _btT = new() { Interval = TimeSpan.FromMinutes(10) };
     readonly HashSet<string> _btWarned = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Tiap 10 menit: perangkat Bluetooth yang tersambung dan baterainya di bawah batas diperingatkan sekali (tanpa suara); pulih di atas batas + 10 baru bisa diperingatkan lagi.</summary>
+    /// <summary>Every 10 minutes: connected Bluetooth devices with battery below threshold are warned once (silent); must recover above threshold + 10 before warning again.</summary>
     void BtLowCheck()
     {
         var s = Settings.Cur;
@@ -194,7 +194,7 @@ public partial class IslandWindow
         }
     }
 
-    /// <summary>Baterai HP yang tersambung lewat aplikasi: pola dan batas yang sama dengan Bluetooth (BtBattery, BtLowPct); diam saat mengisi daya.</summary>
+    /// <summary>Battery of phone connected via the app: same pattern and threshold as Bluetooth (BtBattery, BtLowPct); silent while charging.</summary>
     void PhoneLowCheck()
     {
         var s = Settings.Cur;
@@ -207,14 +207,14 @@ public partial class IslandWindow
         }
     }
 
-    /// <summary>Perangkat Bluetooth tersambung dan persen baterainya (null bila tidak melaporkan): untuk tab Komunikasi.</summary>
+    /// <summary>Connected Bluetooth devices and their battery percent (null if not reporting): for Communication tab.</summary>
     public List<(string Name, int? Pct)> BtList()
     {
         var bat = BtBattery.Read();
         return _bt.Connected().Select(n => (n, bat.TryGetValue(n, out var p) ? (int?)p : null)).ToList();
     }
 
-    /// <summary>Teks untuk perintah "bt": perangkat tersambung yang melaporkan baterai.</summary>
+    /// <summary>Text for "bt" command: connected devices reporting battery.</summary>
     public string BtSummary()
     {
         var on = _bt.Connected();
@@ -222,7 +222,7 @@ public partial class IslandWindow
         return l.Count > 0 ? string.Join(" · ", l) : L.T("Tidak ada perangkat Bluetooth yang melaporkan baterai");
     }
 
-    // keadaan terakhir untuk mendeteksi perubahan (null = belum dibaca: bacaan pertama tidak memunculkan popup)
+    // last state for change detection (null = not yet read: first reading does not trigger a popup)
     float? _lastVol; bool? _lastMute, _lastMic; bool? _lastCaps; int? _lastBright;
     HashSet<string> _lastPrivacy = new();
     bool _netWarned;
@@ -235,7 +235,7 @@ public partial class IslandWindow
         Pill.PreviewMouseWheel += OnWheel;
         Pill.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            // klik dua kali pada pill idle = putar/jeda; klik kedua tidak boleh ikut membuka pill
+            // double-click on idle pill = play/pause; second click must not also open the pill
             if (Settings.Cur.Gestures && e.ClickCount == 2 && !_open && MediaService.I.HasSession) { MediaService.I.PlayPause(); _dblSkip = true; e.Handled = true; }
         };
         _osdT.Tick += (_, _) => OsdPoll();
@@ -244,13 +244,13 @@ public partial class IslandWindow
 
     bool _slowOn;
 
-    /// <summary>Timer latar hanya jalan bila fiturnya menyala. Dipanggil saat mulai, saat pengaturan berubah, dan saat server HP menyala/mati.</summary>
+    /// <summary>Background timers only run while their features are enabled. Called at startup, when settings change, and when phone server starts/stops.</summary>
     void SyncTimers()
     {
         var s = Settings.Cur;
         if (s.AltGhost) _altT.Start();
-        else if (_altT.IsEnabled) { _altT.Stop(); AltCheck(); }   // AltCheck terakhir melepas pill yang sedang "hantu"
-        if (s.OsdOn || s.YieldOn) _osdT.Start(); else _osdT.Stop();   // YieldOn: poll yang sama mengisi persegi pill untuk YieldService
+        else if (_altT.IsEnabled) { _altT.Stop(); AltCheck(); }   // final AltCheck releases any pill currently in "ghost" mode
+        if (s.OsdOn || s.YieldOn) _osdT.Start(); else _osdT.Stop();   // YieldOn: same poll fills pill rect for YieldService
         _yield.Enable(s.YieldOn);
         bool slow = s.OsdOn || s.PrivacyOn || ShareServer.I.On;
         if (slow != _slowOn && _slowT != null) { _slowOn = slow; _slowT.Change(slow ? 4000 : Timeout.Infinite, slow ? 2000 : Timeout.Infinite); }
@@ -296,7 +296,7 @@ public partial class IslandWindow
         foreach (var c in present) NotifyUsbArrival(c);
     }
 
-    /// <summary>Dipanggil dari hook jendela: pesan Windows yang dipakai fitur tambahan.</summary>
+    /// <summary>Called from window hook: Windows messages used by extra features.</summary>
     void HookFeatures(int msg, IntPtr wp, IntPtr lp, ref bool handled)
     {
         if (msg == 0x031D) { ClipboardHistory.Capture(); handled = true; }   // WM_CLIPBOARDUPDATE
@@ -306,12 +306,12 @@ public partial class IslandWindow
             if (ev == 0x8000 && lp != IntPtr.Zero)   // DBT_DEVICEARRIVAL
             {
                 int devType = Marshal.ReadInt32(lp, 4);
-                if (devType == 2 && (Marshal.ReadInt16(lp, 16) & 3) == 0)   // DBT_DEVTYP_VOLUME, bukan media optik/jaringan
+                if (devType == 2 && (Marshal.ReadInt16(lp, 16) & 3) == 0)   // DBT_DEVTYP_VOLUME, not optical/network media
                 {
                     uint mask = (uint)Marshal.ReadInt32(lp, 12);
                     foreach (var letter in UsbDrives.LettersFromMask(mask)) NotifyUsbArrival(letter);
                 }
-                else if (devType == 5)   // DBT_DEVTYP_DEVICEINTERFACE dari RegisterDeviceNotification
+                else if (devType == 5)   // DBT_DEVTYP_DEVICEINTERFACE from RegisterDeviceNotification
                 {
                     ScanNewUsbDrives();
                 }
@@ -330,7 +330,7 @@ public partial class IslandWindow
                 }
             }
         }
-        else if (msg == 0x020E && Settings.Cur.Gestures && _open && Pill.IsMouseOver)   // WM_MOUSEHWHEEL: sapuan dua jari ke samping
+        else if (msg == 0x020E && Settings.Cur.Gestures && _open && Pill.IsMouseOver)   // WM_MOUSEHWHEEL: two-finger horizontal swipe
         {
             int delta = (short)((wp.ToInt64() >> 16) & 0xFFFF);
             if (delta != 0) { ShiftTab(delta > 0 ? 1 : -1); handled = true; }
@@ -360,7 +360,7 @@ public partial class IslandWindow
         {
             if (!Settings.Cur.OsdOn) return;
             if (!on || !Settings.Cur.BtBattery) { Osd(L.F(on ? "Bluetooth tersambung: {0}" : "Bluetooth terputus: {0}", name)); return; }
-            // baterai baru dilaporkan beberapa detik setelah tersambung: satu popup saja, nama + persen
+            // battery is reported a few seconds after connecting: single popup, name + percent
             Dispatcher.InvokeAsync(async () =>
             {
                 await System.Threading.Tasks.Task.Delay(2500);
@@ -378,7 +378,7 @@ public partial class IslandWindow
                 () => { try { Process.Start("explorer.exe", $"/select,\"{path}\""); } catch { } });
         };
         _dl.Start();
-        // pembacaan yang agak berat (WMI, registri, jaringan) di thread latar tiap 2 dtk
+        // heavier reads (WMI, registry, network) on background thread every 2 s
         _slowT = new Timer(_ => SlowPoll(), null, Timeout.Infinite, Timeout.Infinite);
         ShareServer.I.RunChanged += () => Dispatcher.BeginInvoke(SyncTimers);
         SyncTimers();
@@ -420,7 +420,7 @@ public partial class IslandWindow
         });
     }
 
-    // ---------- klik pada pill ----------
+    // ---------- clicks on pill ----------
     bool HandleClickAction()
     {
         if (_dblSkip) { _dblSkip = false; return true; }
@@ -436,7 +436,7 @@ public partial class IslandWindow
         return false;
     }
 
-    // ---------- gestur ----------
+    // ---------- gestures ----------
     static bool InScrollable(DependencyObject d)
     {
         for (; d != null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
@@ -444,7 +444,7 @@ public partial class IslandWindow
         return false;
     }
 
-    // scroll di atas island = volume (kecuali di atas daftar/kotak teks yang menggulir sendiri)
+    // scroll over island = volume (except over lists/text boxes that scroll themselves)
     void OnWheel(object sender, MouseWheelEventArgs e)
     {
         if (!Settings.Cur.Gestures || OverNotifRows() || e.OriginalSource is DependencyObject d && InScrollable(d)) return;
@@ -476,9 +476,9 @@ public partial class IslandWindow
 
     void OsdPoll()
     {
-        {   // persegi pill dalam piksel layar untuk YieldService
+        {   // pill rect in screen pixels for YieldService
             var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            // ukuran pill TERTUTUP: panel yang terbuka menutupi banyak tombol, tapi itu pilihan pengguna dan tidak boleh membuat island menyingkir
+            // CLOSED pill size: an open panel covers many buttons, but that is the user's choice and must not make the island yield
             double w = _idleFull.W * Zoom, h = _idleFull.H * Zoom, x0 = Left + (Width - w) / 2;
             _pillPx = ((int)(x0 * dpi), (int)(Top * dpi), (int)((x0 + w) * dpi), (int)((Top + h) * dpi));
         }
@@ -494,7 +494,7 @@ public partial class IslandWindow
         _lastCaps = caps;
     }
 
-    // ---------- pembacaan latar ----------
+    // ---------- background reads ----------
     void SlowPoll()
     {
         try
@@ -529,10 +529,10 @@ public partial class IslandWindow
         catch (Exception ex) { App.Log(ex); }
     }
 
-    // ---------- baris pill menurut waktu ----------
+    // ---------- time-of-day pill line ----------
     string _ctxLine; DateTime _ctxAt;
 
-    /// <summary>Dihitung ulang paling cepat tiap 20 detik (jadwal sholat dan kalender tidak perlu dihitung tiap detik).</summary>
+    /// <summary>Recalculated at most every 20 seconds (prayer schedule and calendar do not need per-second updates).</summary>
     string ContextLine()
     {
         if (DateTime.Now - _ctxAt < TimeSpan.FromSeconds(20)) return _ctxLine;
@@ -547,7 +547,7 @@ public partial class IslandWindow
                 if (prayer == null) { var f = PrayerAlerts.For(now.Date.AddDays(1)).All[0]; prayer = (f.Name, f.At); }
             }
             var cal = CalendarService.I;
-            var next = DateOnly.FromDateTime(now.Hour < 5 ? now : now.AddDays(1));   // lewat tengah malam "besok" masih hari ini
+            var next = DateOnly.FromDateTime(now.Hour < 5 ? now : now.AddDays(1));   // past midnight "tomorrow" is still today
             string tomorrow = null;
             if (cal.Holidays.TryGetValue(next, out var hol)) tomorrow = L.T(now.Hour < 5 ? "Hari ini" : "Besok") + ": " + hol;
             else if (cal.On(next).Count(t => !t.Done) is var n and > 0) tomorrow = L.F(now.Hour < 5 ? "{0} tugas hari ini" : "{0} tugas besok", n);

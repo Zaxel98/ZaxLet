@@ -44,7 +44,7 @@ static class Native
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point p);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
 
-    /// <summary>PID pemilik jendela yang sedang di depan (0 bila tidak ada).</summary>
+    /// <summary>PID of the foreground window's owner (0 if none).</summary>
     public static int ForegroundPid()
     {
         var h = GetForegroundWindow();
@@ -53,10 +53,10 @@ static class Native
         return (int)pid;
     }
 
-    /// <summary>True selama tombol Alt (kiri/kanan) sedang ditahan, di aplikasi mana pun.</summary>
+    /// <summary>True while the Alt key (left/right) is held down, in any application.</summary>
     public static bool AltDown() => (GetAsyncKeyState(0x12) & 0x8000) != 0;
 
-    /// <summary>True bila jendela aktif (bukan milik kita / desktop / taskbar) menutupi seluruh monitor utama.</summary>
+    /// <summary>True if the active window (not ours / desktop / taskbar) covers the entire primary monitor.</summary>
     public static bool ForegroundFullscreenOnPrimary(System.Drawing.Rectangle? on = null)
     {
         var h = GetForegroundWindow();
@@ -66,7 +66,7 @@ static class Native
         var sb = new System.Text.StringBuilder(64);
         GetClassName(h, sb, 64);
         if (sb.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "XamlExplorerHostIslandWindow") return false;
-        var b = on ?? System.Windows.Forms.Screen.PrimaryScreen.Bounds;   // monitor tempat island berada
+        var b = on ?? System.Windows.Forms.Screen.PrimaryScreen.Bounds;   // monitor where the island is located
         var mon = MonitorFromPoint(new Point { X = b.Left + 1, Y = b.Top + 1 }, 2);
         if (MonitorFromWindow(h, 2) != mon) return false;
         var mi = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };

@@ -1,6 +1,6 @@
-# Bangun ZaxLetSetup.exe: zip isi dist\ (tanpa .pdb) lalu tanamkan ke pemasang yang dikompilasi dengan csc .NET Framework.
-# Jalankan setelah build.cmd (dan Android\build.ps1 bila APK berubah) supaya dist\ terbaru.
-param([string]$Dist = '')   # folder isi rilis; kosong = dist\ (untuk rilis, bangun ke folder bersih agar log/diagnostik pengembang tidak ikut)
+# Build ZaxLetSetup.exe: zip dist\ contents (excluding .pdb) and embed into the installer compiled with .NET Framework csc.
+# Run after build.cmd (and Android\build.ps1 if APK changed) so dist\ is up to date.
+param([string]$Dist = '')   # release contents folder; empty = dist\ (for releases, build to a clean folder so developer logs/diagnostics are excluded)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $out = Join-Path $PSScriptRoot 'out'
@@ -17,8 +17,8 @@ foreach ($f in Get-ChildItem $dist -Recurse -File | Where-Object { $_.Extension 
 }
 $za.Dispose()
 
-# arsip pembaruan otomatis: isinya sama dengan muatan pemasang, ditambah berkas hash. Unggah keduanya ke GitHub Release
-# bersama ZaxLetSetup.exe (nama aset harus persis ZaxLet-update.zip dan ZaxLet-update.zip.sha256).
+# auto-update archive: same contents as the installer payload, plus a hash file. Upload both to GitHub Release
+# alongside ZaxLetSetup.exe (asset names must be exactly ZaxLet-update.zip and ZaxLet-update.zip.sha256).
 $upd = Join-Path $out 'ZaxLet-update.zip'
 Copy-Item $zip $upd -Force
 $hash = (Get-FileHash $upd -Algorithm SHA256).Hash.ToLowerInvariant()

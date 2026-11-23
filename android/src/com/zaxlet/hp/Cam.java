@@ -14,7 +14,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 
-/** Camera2 -> JPEG tegak -> WebSocket /cam/ws. Dipakai ConnService selama PC meminta kamera. */
+/** Camera2 -> upright JPEG -> WebSocket /cam/ws. Used by ConnService while the PC requests the camera. */
 final class Cam {
     private final Context ctx;
     private HandlerThread th;
@@ -27,7 +27,7 @@ final class Cam {
     private long last;
     private int minGap, sensor;
     private boolean front;
-    private volatile int devOrient;   // 0/90/180/270 dari sensor orientasi HP (tetap bekerja walau rotasi layar dikunci)
+    private volatile int devOrient;   // 0/90/180/270 from phone orientation sensor (still works even when screen rotation is locked)
     private android.view.OrientationEventListener orient;
     private boolean sending;
     private final ByteArrayOutputStream jpg = new ByteArrayOutputStream(200000);
@@ -70,7 +70,7 @@ final class Cam {
             if (best == null || Math.abs(s.getHeight() - height) < Math.abs(best.getHeight() - height)) best = s;
         }
         final Size size = best;
-        // sambung WS di luar kunci agar stop() tidak terblokir I/O jaringan
+        // connect WS outside the lock so stop() is not blocked by network I/O
         Ws newWs = new Ws("/cam/ws");
         synchronized (this) {
             if (!running || th != myTh) { newWs.close(); return; }
@@ -123,7 +123,7 @@ final class Cam {
         }
     }
 
-    // kelas bernama (bukan anonim di dalam anonim): d8 versi build-tools lama gagal pada EnclosingMethod bersarang di bawah JDK baru
+    // named class (not anonymous inside anonymous): older build-tools d8 fails on nested EnclosingMethod under newer JDK
     private final class SessCb extends CameraCaptureSession.StateCallback {
         private final CaptureRequest.Builder b;
         private final HandlerThread myTh;
@@ -161,7 +161,7 @@ final class Cam {
                     int w0 = img.getWidth(), hh = img.getHeight();
                     byte[] nv21 = toNv21(img, w0, hh);
                     int ow = w0, oh = hh;
-                    // putar searah jarum jam agar tegak: rumus resmi Android untuk JPEG (depan dan belakang berbeda arah)
+                    // rotate clockwise to upright: official Android formula for JPEG (front and back differ in direction)
                     int rot = front ? (sensor - devOrient + 360) % 360 : (sensor + devOrient) % 360;
                     if (rot == 90 || rot == 270) { nv21 = rotate(nv21, w0, hh, rot == 90); ow = hh; oh = w0; }
                     else if (rot == 180) nv21 = rotate180(nv21, w0, hh);
@@ -204,7 +204,7 @@ final class Cam {
         return d;
     }
 
-    /** Putar NV21 90 derajat searah jarum jam (cw) atau 270 (ccw) supaya tegak untuk HP potret. */
+    /** Rotate NV21 90 degrees clockwise (cw) or 270 (ccw) so it is upright for portrait phone. */
     private static byte[] rotate(byte[] s, int w, int h, boolean cw) {
         byte[] d = new byte[s.length];
         int k = 0;

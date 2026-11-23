@@ -3,12 +3,12 @@ using System.Text.Json;
 
 namespace ZaxLet;
 
-/// <summary>Pembaca jawaban open-meteo untuk widget cuaca: suhu sekarang, kode cuaca WMO, dan peluang hujan tertinggi dua jam ke depan. Murni, tanpa jaringan.</summary>
+/// <summary>Parses open-meteo responses for the weather widget: current temperature, WMO weather code, and highest rain chance in the next two hours. Pure, no network.</summary>
 public static class WeatherParse
 {
     public sealed record Now(double Temp, int Code, int RainNext2h);
 
-    /// <summary>Null bila isinya tidak lengkap atau bukan JSON. Jam <c>hourly.time</c> dibaca sebagai waktu lokal lokasi (timezone=auto).</summary>
+    /// <summary>Null if the payload is incomplete or not JSON. <c>hourly.time</c> is parsed as the location's local time (timezone=auto).</summary>
     public static Now Read(string json, DateTime localNow)
     {
         try
@@ -32,7 +32,7 @@ public static class WeatherParse
         catch { return null; }
     }
 
-    /// <summary>Nama cuaca singkat (kunci terjemahan) dari kode WMO.</summary>
+    /// <summary>Short weather name (translation key) from a WMO code.</summary>
     public static string Describe(int code) => code switch
     {
         0 => "Cerah", 1 or 2 => "Cerah berawan", 3 => "Berawan", 45 or 48 => "Berkabut",

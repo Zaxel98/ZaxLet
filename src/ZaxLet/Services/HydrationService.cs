@@ -7,8 +7,8 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Catatan minum harian + pengingat lembut: hanya di jam aktif, jarak antar pengingat bebas diatur, dan (mode pintar)
-/// hanya bila asupan tertinggal dari jadwal linear menuju target. Minum menunda pengingat berikutnya.
+/// Daily water intake log + gentle reminders: only during active hours, configurable interval, and (smart mode)
+/// only when intake falls behind a linear schedule toward the goal. Logging a drink postpones the next reminder.
 /// </summary>
 public sealed class HydrationService
 {
@@ -36,7 +36,7 @@ public sealed class HydrationService
         Save();
     }
 
-    /// <summary>Hitungan hari ini kembali ke nol (salah catat, atau mulai ulang).</summary>
+    /// <summary>Reset today's count to zero (mislogged, or start over).</summary>
     public void Reset() { _days[Key(DateTime.Today)] = 0; _lastAdd = 0; Save(); }
 
     public void Undo() { if (_lastAdd != 0) { Add(-_lastAdd); _lastAdd = 0; } }
@@ -60,7 +60,7 @@ public sealed class HydrationService
         return (DateTime.Today + f, DateTime.Today + t);
     }
 
-    /// <summary>Kapan pengingat berikutnya (null bila mati, target tercapai, atau di luar jam aktif).</summary>
+    /// <summary>When the next reminder is due (null if disabled, goal reached, or outside active hours).</summary>
     public DateTime? NextReminder()
     {
         var s = Settings.Cur;
@@ -79,12 +79,12 @@ public sealed class HydrationService
         var now = DateTime.Now;
         var (from, to) = Window();
         if (now < from || now > to) return;
-        if (IslandWindow.Instance?.Fullscreen == true) return;   // jangan ganggu saat layar penuh (video, game, presentasi)
+        if (IslandWindow.Instance?.Fullscreen == true) return;   // do not disturb during fullscreen (video, game, presentation)
         if (NextReminder() is not { } due || now < due) return;
         if (s.WaterSmart)
         {
             double expected = Goal * (now - from).TotalSeconds / (to - from).TotalSeconds;
-            if (Today >= expected - s.WaterCupMl / 2.0) return;   // masih sesuai jadwal: tidak perlu mengingatkan
+            if (Today >= expected - s.WaterCupMl / 2.0) return;   // still on schedule: no need to remind
         }
         _lastRemind = now;
         IslandWindow.Instance?.Alert(L.F("Waktunya minum · {0}/{1} ml", Today, Goal), Math.Max(2, s.WaterShowSec));

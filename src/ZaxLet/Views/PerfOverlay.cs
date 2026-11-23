@@ -9,13 +9,13 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Overlay performa ala RivaTuner: kotak kecil di pojok layar, tidak bisa diklik dan tidak mengambil fokus, hanya berisi metrik yang dipilih di Pengaturan.
-/// Hanya ada (dan hanya membaca sensor) selama tampil: mati = nol biaya. Tampil di game borderless/windowed; game "exclusive fullscreen" menimpa jendela apa pun.
+/// RivaTuner-style performance overlay: small box in the corner of the screen, click-through and non-focusing, showing only metrics selected in Settings.
+/// Only exists (and only reads sensors) while visible: off = zero cost. Shows in borderless/windowed games; "exclusive fullscreen" games cover any window.
 /// </summary>
 public sealed class PerfOverlay : Window
 {
     static PerfOverlay _cur;
-    static bool? _force;   // pintasan/perintah "perf": paksa tampil atau sembunyi sampai Pengaturan diterapkan lagi
+    static bool? _force;   // shortcut/"perf" command: force show or hide until Settings are applied again
     static bool _lastFs;
 
     readonly PerfProbe _probe;
@@ -23,7 +23,7 @@ public sealed class PerfOverlay : Window
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly HashSet<string> _items = PerfFormat.Items(Settings.Cur.PerfItems);
 
-    /// <summary>Dipanggil tiap pemeriksaan layar penuh dan saat Pengaturan diterapkan: membuka atau menutup overlay sesuai mode.</summary>
+    /// <summary>Called on every fullscreen check and when Settings are applied: opens or closes the overlay according to mode.</summary>
     public static void Sync(bool fullscreen)
     {
         _lastFs = fullscreen;
@@ -31,7 +31,7 @@ public sealed class PerfOverlay : Window
         bool want = _force ?? (s.PerfShow == "on" || s.PerfShow == "game" && fullscreen);
         if (want && _cur == null) { _cur = new PerfOverlay(); _cur.Show(); }
         else if (!want && _cur != null) _cur.Close();
-        // fitur FPS mati (overlay "off" tanpa pintasan, atau metrik FPS dilepas): hentikan sesi ETW dan pembantu admin (pipa putus -> pembantu keluar)
+        // FPS feature off (overlay "off" without shortcut, or FPS metric removed): stop ETW session and admin helper (pipe broken -> helper exits)
         if (!(PerfFormat.Items(s.PerfItems).Contains("fps") && (want || s.PerfShow != "off"))) FpsSource.Stop();
     }
 
@@ -39,7 +39,7 @@ public sealed class PerfOverlay : Window
 
     public static void Toggle() { _force = _cur == null; Sync(_lastFs); if (_cur != null) AskAccess(); }
 
-    /// <summary>Dipanggil saat pengguna menyalakan overlay (tombol, perintah "perf"): izin yang dibutuhkan metrik terpilih diminta saat itu juga, tanpa membuka Pengaturan.</summary>
+    /// <summary>Called when the user enables the overlay (button, "perf" command): permissions needed by selected metrics are requested right away, without opening Settings.</summary>
     public static async void AskAccess()
     {
         try
@@ -52,13 +52,13 @@ public sealed class PerfOverlay : Window
         catch (Exception ex) { App.Log(ex); }
     }
 
-    /// <summary>Pengaturan berubah: bangun ulang agar pilihan metrik dan pojok baru berlaku.</summary>
+    /// <summary>Settings changed: rebuild so new metric selection and corner take effect.</summary>
     public static void Refresh() { _force = null; _cur?.Close(); Sync(_lastFs); }
 
     PerfOverlay()
     {
         _probe = new PerfProbe(_items);
-        // AllowsTransparency: hanya latar yang tembus (alfa per piksel), teks tetap tajam. Pengaturan lama memakai alfa Win32 seluruh jendela (teks ikut pudar).
+        // AllowsTransparency: only the background is transparent (per-pixel alpha), text stays sharp. Old settings used Win32 whole-window alpha (text faded too).
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; ShowActivated = false; Focusable = false; Topmost = true; ResizeMode = ResizeMode.NoResize;
         SizeToContent = SizeToContent.WidthAndHeight; MaxWidth = 460; _text.TextWrapping = TextWrapping.Wrap;
@@ -67,7 +67,7 @@ public sealed class PerfOverlay : Window
         SourceInitialized += (_, _) =>
         {
             var h = new WindowInteropHelper(this).Handle;
-            Native.SetWindowLong(h, Native.GWL_EXSTYLE, Native.GetWindowLong(h, Native.GWL_EXSTYLE) | 0x20 | 0x08000000 | Native.WS_EX_TOOLWINDOW);   // klik tembus, tanpa fokus, tidak di Alt+Tab
+            Native.SetWindowLong(h, Native.GWL_EXSTYLE, Native.GetWindowLong(h, Native.GWL_EXSTYLE) | 0x20 | 0x08000000 | Native.WS_EX_TOOLWINDOW);   // click-through, no focus, hidden from Alt+Tab
         };
         WindowStartupLocation = WindowStartupLocation.Manual;
         SizeChanged += (_, e) => Place(e.NewSize.Width, e.NewSize.Height);
@@ -77,7 +77,7 @@ public sealed class PerfOverlay : Window
         _t.Start();
     }
 
-    /// <summary>Menempel di pojok pilihan pada area kerja (pojok bawah tidak tertutup taskbar); WinForms memberi piksel, WPF butuh DIP.</summary>
+    /// <summary>Snaps to the chosen corner of the work area (bottom corners not covered by taskbar); WinForms gives pixels, WPF needs DIP.</summary>
     void Place(double width, double height)
     {
         var c = Settings.Cur.PerfCorner;

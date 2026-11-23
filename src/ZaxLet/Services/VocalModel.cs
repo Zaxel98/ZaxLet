@@ -3,14 +3,14 @@ using System;
 namespace ZaxLet;
 
 /// <summary>
-/// Regresi logistik kecil yang belajar per lagu: ciri audio per bingkai -> "vokal" atau "instrumen". Label datang dari waktu lirik
-/// (di dalam baris yang dinyanyikan = vokal; jeda panjang/intro = instrumen), jadi model menyesuaikan diri dengan mix lagu itu
-/// (vokal keras, pad tebal, gitar di pita vokal, dll.) tanpa ambang tetap. Sampel disimpan dalam reservoir kecil per kelas.
+/// Small logistic regression trained per song: per-frame audio features -> "vocal" or "instrumental". Labels come from lyric timestamps
+/// (inside sung lines = vocal; long gaps/intro = instrumental), so the model adapts to that song's mix
+/// (loud vocals, thick pads, guitar in the vocal band, etc.) without fixed thresholds. Samples are stored in a small reservoir per class.
 /// </summary>
 public sealed class VocalModel
 {
     public const int Dim = 5, Cap = 500;
-    readonly float[][][] _x = { new float[Cap][], new float[Cap][] };   // [kelas][sampel][ciri]
+    readonly float[][][] _x = { new float[Cap][], new float[Cap][] };   // [class][sample][feature]
     readonly int[] _n = new int[2], _seen = new int[2];
     readonly double[] _w = new double[Dim], _mu = new double[Dim], _sd = new double[Dim];
     double _b;
@@ -33,7 +33,7 @@ public sealed class VocalModel
         _seen[c]++;
         var copy = (float[])x.Clone();
         if (_n[c] < Cap) _x[c][_n[c]++] = copy;
-        else { int j = _rnd.Next(_seen[c]); if (j < Cap) _x[c][j] = copy; }   // reservoir: sampel lama dan baru sama peluangnya
+        else { int j = _rnd.Next(_seen[c]); if (j < Cap) _x[c][j] = copy; }   // reservoir: old and new samples have equal probability
     }
 
     public double Prob(float[] x)
@@ -43,7 +43,7 @@ public sealed class VocalModel
         return 1 / (1 + Math.Exp(-z));
     }
 
-    /// <summary>Latih ulang dari sampel yang ada (butuh ≥60 per kelas). Model dipakai hanya bila akurasinya ≥ 0,72.</summary>
+    /// <summary>Retrain from current samples (needs >= 60 per class). Model is used only when accuracy >= 0.72.</summary>
     public void Train()
     {
         if (_n[0] < 60 || _n[1] < 60) { Ready = false; return; }
@@ -63,7 +63,7 @@ public sealed class VocalModel
             Array.Clear(g); double gb = 0;
             for (int c = 0; c < 2; c++)
             {
-                double cw = 0.5 / _n[c];   // kelas seimbang walau sampel timpang
+                double cw = 0.5 / _n[c];   // balanced classes even when sample counts are skewed
                 for (int i = 0; i < _n[c]; i++)
                 {
                     double z = b;

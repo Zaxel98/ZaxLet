@@ -7,7 +7,7 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-/// <summary>Riwayat clipboard: klik satu baris untuk menyalinnya lagi, ikon pin untuk menyematkan, silang untuk menghapus.</summary>
+/// <summary>Clipboard history: click a row to copy it again, pin icon to pin, cross to delete.</summary>
 public sealed class ClipboardView : TabView
 {
     public override string Key => "clip";
@@ -84,7 +84,7 @@ public sealed class ClipboardView : TabView
                 if (!item.IsSecret) cell.ContextMenu = BuildTextMenu(item);
                 cell.ToolTip = (item.Text.Length > 400 ? item.Text[..400] + "…" : item.Text) + L.T("\nKlik: salin · seret: ke aplikasi lain");
                 cell.MouseLeftButtonUp += (_, _) => { ClipboardHistory.CopyBack(item); text.Text = L.T("Disalin ✓"); };
-                Point? down = null;   // seret ke aplikasi lain: pola yang sama dengan ShelfView
+                Point? down = null;   // drag to another app: same pattern as ShelfView
                 cell.PreviewMouseLeftButtonDown += (_, e) => down = e.GetPosition(cell);
                 cell.MouseMove += (_, e) =>
                 {
@@ -97,7 +97,7 @@ public sealed class ClipboardView : TabView
                     finally { IslandWindow.Instance?.KeepOpen(false); }
                 };
             }
-            ToolTipService.SetPlacement(cell, PlacementMode.Bottom);   // tooltip di bawah baris: bawaan (kanan-bawah kursor) menutupi tombol pin dan hapus
+            ToolTipService.SetPlacement(cell, PlacementMode.Bottom);   // tooltip below row: default (bottom-right of cursor) covers the pin and delete buttons
             row.Children.Add(cell);
             var pin = UI.IconBtn("", () => ClipboardHistory.TogglePin(item), 11, null);
             ((TextBlock)pin.Child).Foreground = item.Pinned ? UI.Accent : UI.Faint;

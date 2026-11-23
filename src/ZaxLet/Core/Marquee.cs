@@ -6,7 +6,7 @@ using System.Windows.Media.Animation;
 
 namespace ZaxLet;
 
-/// <summary>Satu baris teks: dipusatkan bila muat, berjalan seperti running text bila lebih panjang dari lebarnya.</summary>
+/// <summary>Single line of text: centered when it fits, scrolling like a marquee when longer than its width.</summary>
 public sealed class Marquee : Grid
 {
     readonly TextBlock _t = new() { FontSize = 12.5, TextWrapping = TextWrapping.NoWrap, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center };
@@ -28,7 +28,7 @@ public sealed class Marquee : Grid
 
     public Brush Foreground { get => _t.Foreground; set => _t.Foreground = value; }
 
-    /// <summary>Lama baris (detik) untuk lirik: teks panjang digeser sekali sepanjang lama itu dan berhenti di ujung. 0 = berjalan bolak-balik terus.</summary>
+    /// <summary>Line duration (seconds) for lyrics: long text scrolls once over that duration and stops at the end. 0 = scroll back and forth continuously.</summary>
     public double PaceSeconds { get; set; }
 
     void Restart()
@@ -42,22 +42,22 @@ public sealed class Marquee : Grid
         double dist = w - avail + 24;
         if (PaceSeconds > 0)
         {
-            // sekali jalan, berhenti di ujung (tidak kembali ke awal); selesai sedikit sebelum baris berikutnya
-            var once = new DoubleAnimation(0, -dist, TimeSpan.FromSeconds(Math.Max(1, PaceSeconds * 0.85 - 0.5))) { BeginTime = TimeSpan.FromMilliseconds(500), FillBehavior = FillBehavior.HoldEnd };   // jeda 500 ms supaya kata pertama sempat terbaca
+            // run once, stop at the end (do not return to start); finish slightly before the next line
+            var once = new DoubleAnimation(0, -dist, TimeSpan.FromSeconds(Math.Max(1, PaceSeconds * 0.85 - 0.5))) { BeginTime = TimeSpan.FromMilliseconds(500), FillBehavior = FillBehavior.HoldEnd };   // 500 ms pause so the first word can be read
             Timeline.SetDesiredFrameRate(once, 30);
             _x.BeginAnimation(TranslateTransform.XProperty, once);
             return;
         }
-        var run = TimeSpan.FromSeconds(Math.Max(2, dist / 38));   // ~38 px per detik
+        var run = TimeSpan.FromSeconds(Math.Max(2, dist / 38));   // ~38 px per second
         var a = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
-        a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.2))));              // jeda awal supaya sempat terbaca
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.2))));              // initial pause so it can be read
         a.KeyFrames.Add(new LinearDoubleKeyFrame(-dist, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.2) + run)));
-        a.KeyFrames.Add(new LinearDoubleKeyFrame(-dist, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2.0) + run)));   // jeda di ujung
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(-dist, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2.0) + run)));   // pause at the end
         Timeline.SetDesiredFrameRate(a, 30);
         _x.BeginAnimation(TranslateTransform.XProperty, a);
     }
 
-    // ukur teks tanpa batas lebar dan beri lebar penuh saat Arrange supaya Grid tidak memotong ujung kalimat sebelum digeser
+    // measure text without width limit and give full width during Arrange so Grid does not clip the end of the sentence before scrolling
     protected override Size MeasureOverride(Size constraint)
     {
         _t.Measure(new Size(double.PositiveInfinity, constraint.Height));

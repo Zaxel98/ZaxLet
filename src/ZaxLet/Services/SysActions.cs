@@ -10,7 +10,7 @@ using Windows.Devices.Radios;
 
 namespace ZaxLet;
 
-/// <summary>Aksi sistem untuk kotak Aksi cepat: kunci, tidur, tema Windows, radio Wi-Fi/Bluetooth. Semua lewat API Windows resmi (tanpa paket tambahan).</summary>
+/// <summary>System actions for the Quick Actions box: lock, sleep, Windows theme, Wi-Fi/Bluetooth radios. All via official Windows APIs (no extra packages).</summary>
 public static class SysActions
 {
     [DllImport("user32.dll")] static extern bool LockWorkStation();
@@ -19,9 +19,9 @@ public static class SysActions
 
     public static void Lock() => LockWorkStation();
 
-    public static void Sleep() => SetSuspendState(false, false, false);   // false = tidur, bukan hibernasi
+    public static void Sleep() => SetSuspendState(false, false, false);   // false = sleep, not hibernate
 
-    /// <summary>Tema aplikasi dan sistem Windows; siaran ImmersiveColorSet agar Explorer dan aplikasi terbuka ikut berubah tanpa masuk ulang.</summary>
+    /// <summary>Windows app and system theme; broadcasts ImmersiveColorSet so Explorer and open apps update without signing out.</summary>
     public static void SetDark(bool dark)
     {
         using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
@@ -32,7 +32,7 @@ public static class SysActions
         SendMessageTimeout((IntPtr)0xFFFF, 0x001A, IntPtr.Zero, "ImmersiveColorSet", 2, 200, out _);   // WM_SETTINGCHANGE, SMTO_ABORTIFHUNG
     }
 
-    /// <summary>mode: 1 nyala, 0 mati, -1 balik. Hasilnya muncul di pill.</summary>
+    /// <summary>mode: 1 on, 0 off, -1 toggle. Result appears in the pill.</summary>
     public static async void Radio(RadioKind kind, int mode, string label)
     {
         string msg;
@@ -77,7 +77,7 @@ public static class SysActions
         return (p.ExitCode, outTask.Result);
     }
 
-    /// <summary>Ganti rencana daya Windows lewat powercfg (tanpa admin) atau pulihkan rencana sebelum diubah ZaxLet.</summary>
+    /// <summary>Switch Windows power plan via powercfg (no admin) or restore the plan active before ZaxLet changed it.</summary>
     public static async void PowerPlan(string mode)
     {
         string msg;
@@ -265,7 +265,7 @@ public static class SysActions
         }
     }
 
-    /// <summary>Jaga layar dan PC tetap menyala sementara lewat SetThreadExecutionState di thread latar khusus.</summary>
+    /// <summary>Keep display and PC awake temporarily via SetThreadExecutionState on a dedicated background thread.</summary>
     public static string Awake(string mode, int minutes = 0)
     {
         if (mode == "status")

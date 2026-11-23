@@ -3,8 +3,8 @@ using System;
 namespace ZaxLet;
 
 /// <summary>
-/// Perintah singkat untuk kotak Aksi cepat (pintasan keyboard, gaya rofi/Spotlight): satu baris teks jadi satu aksi, tanpa membuka tab.
-/// Murni (tanpa WPF), jadi bisa dites. Contoh: "t 10m", "fokus 25", "catat beli susu", "minum 250", "tema neon", "sembunyi".
+/// Short commands for the Quick Action box (keyboard shortcut, rofi/Spotlight style): one line of text becomes one action, without opening a tab.
+/// Pure (no WPF), so it is testable. Examples: "t 10m", "fokus 25", "catat beli susu", "minum 250", "tema neon", "sembunyi".
 /// </summary>
 public static class QuickCmd
 {
@@ -31,11 +31,11 @@ public static class QuickCmd
         switch (verb)
         {
             case "t": case "timer":
-                return DurText.Parse(arg, 60, out var sec) && sec >= 1 ? new Cmd(Kind.Timer, arg, sec) : new Cmd(Kind.Unknown, "t 10m = timer 10 menit");   // angka tanpa satuan = menit
+                return DurText.Parse(arg, 60, out var sec) && sec >= 1 ? new Cmd(Kind.Timer, arg, sec) : new Cmd(Kind.Unknown, "t 10m = timer 10 menit");   // unitless number = minutes
             case "catat": case "todo": case "note":
                 return arg.Length > 0 ? new Cmd(Kind.Note, arg.Length > 200 ? arg[..200] : arg) : new Cmd(Kind.Unknown, "catat <teks>");
             case "minum": case "air": case "drink":
-                if (arg.Length == 0) return new Cmd(Kind.Water, "", 0);   // 0 = ukuran gelas bawaan
+                if (arg.Length == 0) return new Cmd(Kind.Water, "", 0);   // 0 = default glass size
                 return int.TryParse(arg, out var ml) && ml is >= 10 and <= 2000 ? new Cmd(Kind.Water, arg, ml) : new Cmd(Kind.Unknown, "minum 250 = 250 ml (10-2000)");
             case "tema": case "theme":
                 var th = arg.ToLowerInvariant();
@@ -47,12 +47,12 @@ public static class QuickCmd
                 return new Cmd(Kind.Perf);
             case "kunci": case "lock": return new Cmd(Kind.Lock);
             case "tidur": case "sleep":
-                if (arg.Length == 0) return new Cmd(Kind.Sleep);   // pemanggil wajib meminta konfirmasi
+                if (arg.Length == 0) return new Cmd(Kind.Sleep);   // caller must ask for confirmation
                 return ParseMusicSleep(arg);
             case "gelap": case "dark": return new Cmd(Kind.Dark);
             case "terang": case "light": return new Cmd(Kind.Light);
             case "wifi": case "bluetooth":
-                var k = verb == "wifi" ? Kind.Wifi : Kind.Bluetooth;   // Value: 1 nyala, 0 mati, -1 balik
+                var k = verb == "wifi" ? Kind.Wifi : Kind.Bluetooth;   // Value: 1 on, 0 off, -1 toggle
                 return arg.ToLowerInvariant() switch { "" => new Cmd(k, "", -1), "on" or "nyala" => new Cmd(k, arg, 1), "off" or "mati" => new Cmd(k, arg, 0), _ => new Cmd(Kind.Unknown, verb + " on / off") };
             case "daya": case "power":
                 var pm = arg.ToLowerInvariant() switch
@@ -92,7 +92,7 @@ public static class QuickCmd
         }
     }
 
-    /// <summary>"e", "E:" atau "e:\" -> 'E'. Murni, supaya proyek tes tidak butuh UsbDrives.</summary>
+    /// <summary>"e", "E:" or "e:\" -> 'E'. Pure, so the test project doesn't need UsbDrives.</summary>
     static bool TryDriveLetter(string arg, out char letter)
     {
         letter = '\0';

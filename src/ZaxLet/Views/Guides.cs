@@ -11,7 +11,7 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-/// <summary>Satu langkah panduan: judul, penjelasan, dan isi tambahan (kode QR, status langsung) yang dibangun sekali; Tick memperbarui isinya tiap detik.</summary>
+/// <summary>One guide step: title, description, and extra content (QR code, live status) built once; Tick updates its content every second.</summary>
 public sealed class GuideStep
 {
     public string Title, Body;
@@ -20,9 +20,9 @@ public sealed class GuideStep
 }
 
 /// <summary>
-/// Jendela panduan bertahap yang dipakai semua fitur yang rumit (sambung HP, Discord). Tampil otomatis sekali saat fitur pertama dipakai
-/// (<see cref="Settings.GuidesSeen"/>), dan bisa dibuka lagi kapan saja dari tombol info. Tiap langkah boleh menampilkan status langsung
-/// (mis. "HP tersambung") supaya pengguna tahu langkahnya berhasil tanpa menebak.
+/// Step-by-step guide window used by complex features (Phone link, Discord). Shows automatically once when the feature is first used
+/// (<see cref="Settings.GuidesSeen"/>), and can be reopened anytime from the info button. Each step may show live status
+/// (e.g. "Phone connected") so the user knows the step succeeded without guessing.
 /// </summary>
 public sealed class GuideWindow : Window
 {
@@ -40,7 +40,7 @@ public sealed class GuideWindow : Window
 
     static readonly Dictionary<string, GuideWindow> Open = new();
 
-    /// <param name="force">True = tombol info (selalu tampil); false = hanya bila panduan ini belum pernah tampil otomatis.</param>
+    /// <param name="force">True = info button (always show); false = only if this guide hasn't been shown automatically yet.</param>
     public static void Show(string id, List<GuideStep> steps, bool force)
     {
         if (!force && Settings.Cur.GuidesSeen.Contains(id)) return;
@@ -105,8 +105,8 @@ public sealed class GuideWindow : Window
         try { s.Tick?.Invoke(); } catch (Exception ex) { App.Log(ex); }
     }
 
-    // ---------- bahan bersama ----------
-    /// <summary>Baris status berwarna: "✓ teks" hijau bila ok, "○ teks" redup bila belum.</summary>
+    // ---------- shared helpers ----------
+    /// <summary>Colored status line: green "✓ text" if ok, dim "○ text" if not yet.</summary>
     public static TextBlock Status(bool ok, string text)
     {
         var t = UI.T((ok ? "✓ " : "○ ") + text, 12.5, ok ? UI.Good : UI.Dim, ok);
@@ -135,12 +135,12 @@ public sealed class GuideWindow : Window
     }
 }
 
-/// <summary>Panduan sambung HP: pasang aplikasi, pasangkan, izinkan notifikasi, dan bila gagal cek jaringan, dengan status langsung di tiap langkah.</summary>
+/// <summary>Phone link guide: install app, pair, allow notifications, and if it fails check network, with live status on each step.</summary>
 public static class PhoneGuide
 {
     public static void Show(bool force = true) => GuideWindow.Show("hp", Steps(), force);
 
-    /// <summary>Ringkasan satu baris keadaan sambungan HP, dipakai di Pengaturan dan Shelf.</summary>
+    /// <summary>One-line summary of phone connection state, used in Settings and Shelf.</summary>
     public static (bool Ok, string Text) State() =>
         !ShareServer.I.On ? (false, L.T("Server HP mati"))
         : ShareServer.I.AppCount > 0 ? (true, L.F("{0} HP tersambung", ShareServer.I.AppCount))
@@ -150,7 +150,7 @@ public static class PhoneGuide
     {
         var sv = ShareServer.I;
 
-        // satu isi yang dibangun ulang saat server dinyalakan: QR hanya ada bila server hidup
+        // single content rebuilt when server starts: QR only exists when server is alive
         UIElement QrOrSwitch(Func<string> url, string caption)
         {
             var host = new ContentControl();
@@ -234,7 +234,7 @@ public static class PhoneGuide
     }
 }
 
-/// <summary>Panduan Discord: cara cepat lewat pintasan, cara lengkap lewat RPC (status voice dan keluar VC), dengan deteksi Client ID/Secret dari clipboard.</summary>
+/// <summary>Discord guide: quick way via shortcut, full way via RPC (voice status and leave VC), with Client ID/Secret detection from clipboard.</summary>
 public static class DiscordGuide
 {
     static readonly Regex IdRx = new(@"^\d{17,20}$", RegexOptions.Compiled), SecretRx = new(@"^[A-Za-z0-9_\-]{32}$", RegexOptions.Compiled);

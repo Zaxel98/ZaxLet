@@ -11,8 +11,8 @@ using System.Windows.Media.Imaging;
 namespace ZaxLet;
 
 /// <summary>
-/// Riwayat teks dan gambar yang disalin (hanya di memori, hilang saat ZaxLet ditutup). Salinan dari pengelola kata sandi
-/// (penanda "Clipboard Viewer Ignore" / "ExcludeClipboardContentFromMonitorProcessing") tidak dicatat.
+/// History of copied text and images (in memory only, lost when ZaxLet closes). Copies from password managers
+/// ("Clipboard Viewer Ignore" / "ExcludeClipboardContentFromMonitorProcessing" markers) are not recorded.
 /// </summary>
 public static class ClipboardHistory
 {
@@ -33,9 +33,9 @@ public static class ClipboardHistory
     public const long MaxImagePixels = 8_000_000, MaxImageBytes = 8 * 1024 * 1024, MaxTotalImageBytes = 24 * 1024 * 1024;
     public static readonly List<Item> Items = new();
     public static event Action Changed;
-    static string _own, _ownImageHash;   // salinan yang baru kita tulis sendiri: jangan dicatat lagi sebagai salinan baru
+    static string _own, _ownImageHash;   // copy we just wrote ourselves: do not record again as a new copy
 
-    /// <summary>Dipanggil saat clipboard berubah (WM_CLIPBOARDUPDATE), di thread UI.</summary>
+    /// <summary>Called when clipboard changes (WM_CLIPBOARDUPDATE), on the UI thread.</summary>
     public static void Capture()
     {
         if (!Settings.Cur.ClipboardOn) return;
@@ -53,7 +53,7 @@ public static class ClipboardHistory
                 TryCaptureImage(d);
                 return;
             }
-            catch (System.Runtime.InteropServices.COMException) { Thread.Sleep(40); }   // clipboard sedang dikunci aplikasi lain
+            catch (System.Runtime.InteropServices.COMException) { Thread.Sleep(40); }   // clipboard is locked by another app
             catch { return; }
         }
     }
@@ -92,7 +92,7 @@ public static class ClipboardHistory
         else if (Clipboard.ContainsImage() && Clipboard.GetImage() is { } dib)
         {
             if (dib.PixelWidth <= 0 || dib.PixelHeight <= 0 || (long)dib.PixelWidth * dib.PixelHeight > MaxImagePixels) return;
-            var bgr = new FormatConvertedBitmap(dib, PixelFormats.Bgr32, null, 0);   // buang alfa DIB yang sering 0
+            var bgr = new FormatConvertedBitmap(dib, PixelFormats.Bgr32, null, 0);   // discard DIB alpha which is often 0
             var enc = new PngBitmapEncoder();
             enc.Frames.Add(BitmapFrame.Create(bgr));
             using var ms = new MemoryStream();
@@ -173,7 +173,7 @@ public static class ClipboardHistory
         catch { _own = null; }
     }
 
-    /// <summary>Salin teks hasil ubahan sebagai entri teratas baru tanpa menghapus item asli; abaikan item gambar atau rahasia.</summary>
+    /// <summary>Copy transformed text as a new top entry without removing the original item; ignore image or secret items.</summary>
     public static bool CopyTransformed(Item source, string text)
     {
         if (source == null || source.IsImage || source.IsSecret || string.IsNullOrWhiteSpace(text)) return false;
@@ -191,7 +191,7 @@ public static class ClipboardHistory
         }
     }
 
-    /// <summary>Taruh kode di clipboard dengan penanda pengecualian: tidak masuk riwayat ZaxLet maupun riwayat clipboard Windows (Win+V) dan clipboard cloud.</summary>
+    /// <summary>Place code on clipboard with exclusion markers: excluded from ZaxLet history, Windows clipboard history (Win+V), and cloud clipboard.</summary>
     public static bool CopySecret(string code)
     {
         try
@@ -204,14 +204,14 @@ public static class ClipboardHistory
             Clipboard.SetDataObject(d, true);
             return true;
         }
-        catch { return false; }   // clipboard sedang dikunci aplikasi lain
+        catch { return false; }   // clipboard is locked by another app
     }
 
     public static void Remove(Item it) { Items.Remove(it); Changed?.Invoke(); }
     public static void Clear() { Items.RemoveAll(x => !x.Pinned); Changed?.Invoke(); }
     public static void TogglePin(Item it) { it.Pinned = !it.Pinned; Changed?.Invoke(); }
 
-    /// <summary>Satu baris ringkas untuk daftar: spasi/baris baru dipadatkan, dipotong dengan "…".</summary>
+    /// <summary>Compact single line for the list: whitespace/newlines collapsed, truncated with "…".</summary>
     public static string OneLine(string t, int max = 90)
     {
         var s = System.Text.RegularExpressions.Regex.Replace(t.Trim(), @"\s+", " ");
@@ -219,7 +219,7 @@ public static class ClipboardHistory
     }
 }
 
-/// <summary>Suara adzan pilihan pengguna: diputar saat masuk waktu sholat, dihentikan dengan klik pada pill.</summary>
+/// <summary>User-selected adhan audio: played at prayer time, stopped by clicking the pill.</summary>
 public static class AdhanPlayer
 {
     static System.Windows.Media.MediaPlayer _p;

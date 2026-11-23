@@ -6,15 +6,15 @@ using System.Text;
 namespace ZaxLet;
 
 /// <summary>
-/// Mode rapat: begitu rapat terdeteksi (lihat <see cref="MeetingDetect"/>), pill menampilkan tombol mikrofon untuk membisukan mikrofon
-/// utama Windows (berlaku di semua aplikasi), musik dijeda sampai rapat selesai, dan notifikasi HP ditahan seperti Mode Fokus.
-/// Dibaca dari thread latar tiap 2 detik (<see cref="Poll"/>) dan hanya bila fiturnya menyala.
+/// Meeting mode: once a meeting is detected (see <see cref="MeetingDetect"/>), the pill shows a microphone button to mute Windows'
+/// default microphone (applies across all apps), music is paused until the meeting ends, and phone notifications are held like Focus Mode.
+/// Polled from a background thread every 2 seconds (<see cref="Poll"/>) and only when the feature is enabled.
 /// </summary>
 public sealed class MeetingService
 {
     public static readonly MeetingService I = new();
-    public event Action Changed;                 // thread UI
-    public string App;                           // null = tidak ada rapat
+    public event Action Changed;                 // UI thread
+    public string App;                           // null = no active meeting
     public bool Active => App != null;
 
     bool _pausedMusic;
@@ -24,7 +24,7 @@ public sealed class MeetingService
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
 
-    /// <summary>Mikrofon utama sedang bisu? Disegarkan tiap Poll dan tiap ToggleMic, supaya menggambar pill tidak memanggil COM.</summary>
+    /// <summary>Is the default microphone muted? Refreshed on each Poll and ToggleMic so pill rendering does not call COM.</summary>
     public bool MicMuted;
 
     public void ToggleMic()
@@ -34,7 +34,7 @@ public sealed class MeetingService
         Changed?.Invoke();
     }
 
-    /// <summary>Dari thread latar. Murah bila tidak ada yang memakai mikrofon: satu pembacaan registri.</summary>
+    /// <summary>From background thread. Cheap when nothing is using the microphone: a single registry read.</summary>
     public void Poll()
     {
         string app = null;
@@ -50,7 +50,7 @@ public sealed class MeetingService
         }
         if (app != null)
         {
-            bool m = AudioEndpoint.Muted(AudioEndpoint.Capture) == true;   // bisa diubah dari luar (tombol mic laptop, aplikasi rapat)
+            bool m = AudioEndpoint.Muted(AudioEndpoint.Capture) == true;   // can be changed externally (laptop mic key, meeting app)
             if (m != MicMuted) { MicMuted = m; System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke()); }
         }
         if (app == App) return;
@@ -70,7 +70,7 @@ public sealed class MeetingService
         {
             if (_pausedMusic && !ms.Playing) ms.PlayPause();
             _pausedMusic = false;
-            if (!Settings.Cur.MeetHold) IslandWindow.Instance?.Alert(L.T("Rapat selesai"), 3, null, false);   // bila notifikasi ditahan, FocusService yang mengumumkan beserta jumlahnya
+            if (!Settings.Cur.MeetHold) IslandWindow.Instance?.Alert(L.T("Rapat selesai"), 3, null, false);   // when notifications are held, FocusService announces it with the count
         }
         Changed?.Invoke();
     }

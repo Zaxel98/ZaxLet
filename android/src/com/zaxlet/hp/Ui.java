@@ -8,7 +8,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
 
-/** Gaya bersama layar HP: gelap, kartu membulat, aksen teal (selaras dengan pulau di PC). */
+/** Shared phone screen styling: dark, rounded cards, teal accent (matching the PC island). */
 final class Ui {
     static final int BG = 0xFF0B0B0D, CARD = 0xFF17171B, FIELD = 0xFF222228, TEXT = 0xFFFFFFFF, DIM = 0xFFA0A0A8,
             ACC = 0xFF2DD4BF, ON_ACC = 0xFF04201C, WARN = 0xFFFBBF24, BAD = 0xFFF87171;
@@ -21,7 +21,7 @@ final class Ui {
         return g;
     }
 
-    /** Halaman gulir bergaya gelap; mengembalikan wadah vertikal tempat isi ditambahkan. */
+    /** Dark-styled scroll page; returns the vertical container where content is added. */
     static LinearLayout page(Activity a, String title) {
         a.getWindow().setStatusBarColor(BG);
         a.getWindow().setNavigationBarColor(BG);
@@ -44,7 +44,7 @@ final class Ui {
         return t;
     }
 
-    /** Kartu: judul kecil di atas, isi ditambahkan ke LinearLayout yang dikembalikan. */
+    /** Card: small title on top, content added to the returned LinearLayout. */
     static LinearLayout card(LinearLayout parent, String heading) {
         Context c = parent.getContext();
         if (heading != null) {
@@ -64,7 +64,7 @@ final class Ui {
         return k;
     }
 
-    /** Tombol lebar (utama = teal) atau tombol sekunder gelap; tinggi minimal 48dp agar mudah diketuk. */
+    /** Wide button (primary = teal) or dark secondary button; minimum height 48dp for easy tapping. */
     static Button button(Context c, String s, boolean primary, View.OnClickListener l) {
         Button b = new Button(c);
         b.setText(s); b.setAllCaps(false); b.setTextSize(15); b.setStateListAnimator(null);

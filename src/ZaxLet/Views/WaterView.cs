@@ -6,7 +6,7 @@ using System.Windows.Shapes;
 
 namespace ZaxLet;
 
-/// <summary>Cincin besar berisi persen (tab Minum).</summary>
+/// <summary>Large ring containing percentage (Hydration tab).</summary>
 sealed class BigRing : Canvas
 {
     readonly Path _arc = new() { StrokeThickness = 8, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };

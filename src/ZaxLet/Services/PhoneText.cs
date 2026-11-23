@@ -5,13 +5,13 @@ using System.Windows;
 
 namespace ZaxLet;
 
-/// <summary>Kirim teks HP &lt;-&gt; laptop lewat kanal kontrol: dari HP langsung masuk clipboard PC, dari PC masuk clipboard HP.</summary>
+/// <summary>Send text phone &lt;-&gt; laptop over the control channel: from phone goes straight to PC clipboard, from PC goes to phone clipboard.</summary>
 public static class PhoneText
 {
-    public const int MaxBytes = 40000;   // bingkai kontrol dibatasi 64 KB; base64 menambah sepertiga
+    public const int MaxBytes = 40000;   // control frame is capped at 64 KB; base64 adds one third
     public const int MaxUrlLength = 2000;
 
-    /// <summary>Mengembalikan Uri absolut http/https jika teks adalah tepat satu URL valid tanpa spasi di dalam, atau null.</summary>
+    /// <summary>Returns an absolute http/https Uri if text is a single valid URL with no internal whitespace, or null.</summary>
     public static Uri TryParseSingleHttpUrl(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
@@ -27,11 +27,11 @@ public static class PhoneText
         return uri;
     }
 
-    /// <summary>Teks dari HP. Masuk clipboard PC; pill memberi tahu.</summary>
+    /// <summary>Text from phone. Goes to PC clipboard; pill notifies.</summary>
     public static void FromPhone(string text, string device)
     {
         if (string.IsNullOrEmpty(text)) return;
-        // Clipboard WPF butuh thread UI/STA; ShareServer memanggil dari threadpool.
+        // WPF Clipboard requires UI/STA thread; ShareServer calls from threadpool.
         Application.Current?.Dispatcher.BeginInvoke(() =>
         {
             try { Clipboard.SetText(text); }
@@ -48,7 +48,7 @@ public static class PhoneText
         });
     }
 
-    /// <summary>Kirim teks clipboard PC ke HP. Hasil: jumlah HP yang menerima, atau -1 bila clipboard bukan teks / terlalu besar.</summary>
+    /// <summary>Send PC clipboard text to phone. Returns number of phones that received it, or -1 if clipboard is not text / too large.</summary>
     public static int SendClipboard()
     {
         string t = null;

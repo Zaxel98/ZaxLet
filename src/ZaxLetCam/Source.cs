@@ -9,8 +9,8 @@ using System.Threading;
 namespace ZaxLetCam;
 
 /// <summary>
-/// Pembaca bingkai NV12 dari berkas bersama yang ditulis ZaxLet (header 64 byte: magic, lebar, tinggi, seq, waktu; lalu piksel).
-/// Seq ganjil = sedang ditulis. Berkas biasa (bukan objek Global\) agar bisa dibaca akun LocalService milik Frame Server.
+/// NV12 frame reader from the shared file written by ZaxLet (64-byte header: magic, width, height, seq, timestamp; then pixels).
+/// Odd seq = write in progress. Regular file (not Global\ object) so Frame Server's LocalService account can read it.
 /// </summary>
 unsafe static class Frames
 {
@@ -37,7 +37,7 @@ unsafe static class Frames
         catch (Exception e) { Log.W("open frame: " + e.Message); return false; }
     }
 
-    /// <summary>Salin bingkai terbaru ke dst; bila ZaxLet tidak mengirim (belum jalan / HP putus) isi bingkai abu-abu.</summary>
+    /// <summary>Copy latest frame to dst; if ZaxLet is not sending (not running / phone disconnected), fill a gray frame.</summary>
     public static void Read(IntPtr dst)
     {
         if (Open())
@@ -47,7 +47,7 @@ unsafe static class Frames
                 long s1 = Volatile.Read(ref *(long*)(_p + 16));
                 if ((s1 & 1) != 0) { Thread.Yield(); continue; }
                 if (*(int*)_p != Magic || *(int*)(_p + 4) != K.Width || *(int*)(_p + 8) != K.Height) break;
-                if (DateTime.UtcNow.ToFileTimeUtc() - *(long*)(_p + 24) > 15_000_000) break; // > 1,5 dtk tanpa bingkai baru
+                if (DateTime.UtcNow.ToFileTimeUtc() - *(long*)(_p + 24) > 15_000_000) break; // > 1.5 s without a new frame
                 Buffer.MemoryCopy(_p + 64, (void*)dst, K.FrameBytes, K.FrameBytes);
                 if (Volatile.Read(ref *(long*)(_p + 16)) == s1) return;
             }
@@ -58,7 +58,7 @@ unsafe static class Frames
     }
 }
 
-/// <summary>CLSID yang didaftarkan; Frame Server membuat ini lalu memanggil ActivateObject untuk mendapat media source.</summary>
+/// <summary>Registered CLSID; Frame Server creates this and calls ActivateObject to obtain the media source.</summary>
 [ComVisible(true), Guid(K.Clsid), ClassInterface(ClassInterfaceType.None)]
 public sealed class Activator : AttrBase, IMFActivate
 {
@@ -217,7 +217,7 @@ public sealed class MediaStream : AttrBase, IMFMediaStream2, IMFMediaStream, IMF
         mt.U64(K.FrameSize, ((ulong)K.Width << 32) | (uint)K.Height);
         mt.U64(K.FrameRate, ((ulong)K.Fps << 32) | 1u);
         mt.U64(K.Par, (1UL << 32) | 1u);
-        mt.U32(K.Interlace, 2); // progresif
+        mt.U32(K.Interlace, 2); // progressive
         mt.U32(K.AllIndep, 1);
         mt.U32(K.FixedSize, 1);
         mt.U32(K.Stride, K.Width);
@@ -292,7 +292,7 @@ public sealed class MediaStream : AttrBase, IMFMediaStream2, IMFMediaStream, IMF
     public int KsMethod(IntPtr m, uint mLen, IntPtr data, uint dataLen, out uint ret) { ret = 0; return K.SET_NOT_FOUND; }
     public int KsEvent(IntPtr e, uint eLen, IntPtr data, uint dataLen, out uint ret) { ret = 0; return K.SET_NOT_FOUND; }
 
-    // Satu bingkai tiap 1/30 dtk untuk satu permintaan; tanpa permintaan, bingkai dilewati.
+    // One frame every 1/30 s per request; without a request, frames are skipped.
     void Pump()
     {
         var sw = Stopwatch.StartNew();
@@ -303,7 +303,7 @@ public sealed class MediaStream : AttrBase, IMFMediaStream2, IMFMediaStream, IMF
             double wait = next - sw.Elapsed.TotalMilliseconds;
             if (wait > 1) { Thread.Sleep((int)wait); continue; }
             next += step;
-            if (next < sw.Elapsed.TotalMilliseconds - 100) next = sw.Elapsed.TotalMilliseconds + step; // tertinggal jauh: sinkron ulang
+            if (next < sw.Elapsed.TotalMilliseconds - 100) next = sw.Elapsed.TotalMilliseconds + step; // fell far behind: resync
             if (!_run || !_tokens.TryDequeue(out var token)) continue;
             try { Deliver(token); if (++n == 1) Log.W("first sample delivered"); }
             catch (Exception e) { Log.W("Deliver: " + e.Message); }

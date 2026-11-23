@@ -7,9 +7,9 @@ using System.Windows.Automation;
 namespace ZaxLet;
 
 /// <summary>
-/// Island menyingkir bila menutupi tombol aplikasi lain. Tiap detik: bila jendela depan beririsan dengan area island, tombol, tab, kolom
-/// teks, atau menu miliknya diperiksa lewat UI Automation (hasil di-cache per jendela dan posisi, diulang tiap ±6 detik). Ada elemen interaktif
-/// yang tertutup island = <see cref="Blocked"/>; island lalu bersikap seperti saat fullscreen (hanya mengintip di tepi atas layar).
+/// Island yields if it covers another app's buttons. Every second: if the foreground window overlaps the island area, its buttons, tabs, text
+/// fields, or menus are checked via UI Automation (result cached per window and position, refreshed every ~6 s). Any interactive element
+/// covered by the island = <see cref="Blocked"/>; the island then behaves like in fullscreen (only peeks at the top edge of the screen).
 /// </summary>
 public sealed class YieldService
 {
@@ -24,10 +24,10 @@ public sealed class YieldService
     string _sig = "";
     DateTime _at = DateTime.MinValue;
 
-    /// <summary>islandPx mengembalikan persegi island (kiri, atas, kanan, bawah) dalam piksel layar.</summary>
+    /// <summary>islandPx returns the island rectangle (left, top, right, bottom) in screen pixels.</summary>
     public void Start(Func<(int L, int T, int R, int B)> islandPx) => _t = new Timer(_ => Poll(islandPx()), null, Timeout.Infinite, Timeout.Infinite);
 
-    /// <summary>Timer hanya jalan selama fiturnya menyala.</summary>
+    /// <summary>Timer only runs while the feature is enabled.</summary>
     public void Enable(bool on)
     {
         if (on == _on || _t == null) return;
@@ -50,11 +50,11 @@ public sealed class YieldService
             if (h == IntPtr.Zero || GetWindowThreadProcessId(h, out var pid) == 0 || pid == Environment.ProcessId || !GetWindowRect(h, out var wr)) { Blocked = false; return; }
             if (!Overlaps((wr.L, wr.T, wr.R2, wr.B), island, 1)) { Blocked = false; return; }
             var sig = $"{h}|{wr.L},{wr.T},{wr.R2},{wr.B}|{island}";
-            if (sig == _sig && (DateTime.Now - _at).TotalSeconds < 6) return;   // hasil sebelumnya masih berlaku
+            if (sig == _sig && (DateTime.Now - _at).TotalSeconds < 6) return;   // previous result is still valid
             _sig = sig; _at = DateTime.Now; _hwnd = h;
-            Blocked = !IsOffice(pid) && BlocksControls(h, island);   // Word, Excel, PowerPoint: island tetap tampil penuh (slide show tetap menyembunyikannya lewat deteksi layar penuh)
+            Blocked = !IsOffice(pid) && BlocksControls(h, island);   // Word, Excel, PowerPoint: island stays fully visible (slide show still hides it via fullscreen detection)
         }
-        catch { /* jendela menutup / pohon aksesibilitas belum siap: putaran berikut */ }
+        catch { /* window closing / accessibility tree not ready: retry next tick */ }
         finally { Volatile.Write(ref _busy, 0); }
     }
 
@@ -68,7 +68,7 @@ public sealed class YieldService
     {
         var root = AutomationElement.FromHandle(h);
         var cls = root.Current.ClassName ?? "";
-        if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;   // desktop dan taskbar bukan aplikasi yang tertutup
+        if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;   // desktop and taskbar are not obscured apps
         var types = new[] { ControlType.Button, ControlType.TabItem, ControlType.Edit, ControlType.ComboBox, ControlType.MenuItem, ControlType.Hyperlink, ControlType.SplitButton, ControlType.CheckBox };
         Condition c = new OrCondition(types.Select(t => (Condition)new PropertyCondition(AutomationElement.ControlTypeProperty, t)).ToArray());
         var cr = new CacheRequest { TreeScope = TreeScope.Element };

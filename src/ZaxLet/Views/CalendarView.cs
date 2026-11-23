@@ -21,7 +21,7 @@ public sealed class CalendarView : TabView
     static readonly string[] Months = L.English ? new[] { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" }
         : new[] { "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember" };
 
-    static readonly Brush TaskRed = UI.B("#CCFF6161"), DoneRed = UI.B("#55FF6161");   // tugas belum selesai = merah pekat, semua selesai = merah redup
+    static readonly Brush TaskRed = UI.B("#CCFF6161"), DoneRed = UI.B("#55FF6161");   // incomplete tasks = bright red, all done = dim red
     readonly CalendarService _c = CalendarService.I;
     readonly TextBlock _head = UI.T("", 13, null, true), _city = UI.T("", 11.5, UI.Dim), _month = UI.T("", 13, null, true);
     readonly Grid _grid = new();
@@ -35,7 +35,7 @@ public sealed class CalendarView : TabView
     {
         var body = UI.Cols(250, 1, -1);
 
-        // kiri: navigasi bulan + kisi tanggal (padat: 6 baris x 23 px)
+        // left: month navigation + date grid (compact: 6 rows x 23 px)
         var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var nav = UI.Cols(0, -1, 0);
         nav.Children.Add(UI.IconBtn("", () => Move(-1), 11));
@@ -48,7 +48,7 @@ public sealed class CalendarView : TabView
         body.Children.Add(left);
         body.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(0, 2, 0, 2) }.At(0, 1));
 
-        // kanan: tanggal terpilih + kota, info libur, daftar tugas, kolom tambah
+        // right: selected date + city, holiday info, task list, add input
         var right = UI.Rows(0, 0, -1, 0);
         right.Margin = new Thickness(14, 0, 0, 0);
         var top = new StackPanel { Orientation = Orientation.Horizontal };
@@ -64,7 +64,7 @@ public sealed class CalendarView : TabView
 
         void Commit() { _c.Add(_sel, _input.Text); _input.Text = ""; }
         _input.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) Commit(); };
-        _input.LostFocus += (_, _) => Commit();   // catatan yang sudah diketik tapi belum Enter (island menutup, pindah tab) tidak hilang
+        _input.LostFocus += (_, _) => Commit();   // typed notes not yet submitted with Enter (island closed, tab switched) are preserved
         var hint = UI.Rows(0);
         var ph = new TextBlock { Text = L.T("Tambah tugas…"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         _input.TextChanged += (_, _) => ph.Visibility = _input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -110,7 +110,7 @@ public sealed class CalendarView : TabView
             Grid.SetColumn(h, i);
             _grid.Children.Add(h);
         }
-        int firstDow = st.WeekMonday ? 1 : 0;   // DayOfWeek kolom pertama
+        int firstDow = st.WeekMonday ? 1 : 0;   // DayOfWeek of first column
         var start = _first.AddDays(-(((int)_first.DayOfWeek - firstDow + 7) % 7));
         for (int k = 0; k < 42; k++)
         {
@@ -122,7 +122,7 @@ public sealed class CalendarView : TabView
             var cell = new Border
             {
                 Width = 28, Height = 21, CornerRadius = new CornerRadius(7), Cursor = Cursors.Hand,
-                Background = _c.HasTasks(d) ? (_c.On(d).All(t => t.Done) ? DoneRed : TaskRed) : d == _sel ? UI.CardOn : d == today ? UI.AccentBg : Brushes.Transparent,   // merah = ada catatan/tugas; hari ini = isi aksen + cincin tebal, supaya tidak tertukar dengan tanggal bertugas
+                Background = _c.HasTasks(d) ? (_c.On(d).All(t => t.Done) ? DoneRed : TaskRed) : d == _sel ? UI.CardOn : d == today ? UI.AccentBg : Brushes.Transparent,   // red = has notes/tasks; today = accent fill + thick ring so it isn't confused with task dates
                 BorderBrush = d == today ? UI.Accent : d == _sel ? UI.B("#99FFFFFF") : Brushes.Transparent, BorderThickness = new Thickness(d == today ? 2 : 1.3)
             };
             if (_c.HasTasks(d) && inMonth) label.Foreground = Brushes.White;
@@ -134,7 +134,7 @@ public sealed class CalendarView : TabView
             _grid.Children.Add(cell);
         }
 
-        // panel kanan
+        // right panel
         _head.Text = LongDate(_sel);
         _city.Text = st.City + (WeatherService.I.Summary is { Length: > 0 } wx ? " · " + wx : "");
         bool hol = st.ShowHolidays;

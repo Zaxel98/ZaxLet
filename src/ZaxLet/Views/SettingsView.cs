@@ -9,7 +9,7 @@ using System.Windows.Media;
 
 namespace ZaxLet;
 
-/// <summary>Pengaturan berkategori (gaya BrimDeck): kategori di kiri, baris pengaturan di kanan. Setiap perubahan langsung disimpan dan diterapkan.</summary>
+/// <summary>Categorized settings (BrimDeck style): categories on the left, setting rows on the right. Every change is saved and applied immediately.</summary>
 public sealed class SettingsView : TabView
 {
     public override string Key => "settings";
@@ -31,7 +31,7 @@ public sealed class SettingsView : TabView
     public static string StartPage = "general";
     string _page = Normalize(StartPage);
 
-    /// <summary>Kunci halaman lama (idle, usage, prayer, notif, ...) dipetakan ke halaman baru; dipakai flag --page.</summary>
+    /// <summary>Old page keys (idle, usage, prayer, notif, ...) mapped to new pages; used by --page flag.</summary>
     static string Normalize(string p) => p switch
     {
         "idle" or "tabs" => "content", "keys" or "pintasan" => "shortcuts", "usage" or "monitor" => "system", "prayer" => "calendar", "water" => "remind",
@@ -41,8 +41,8 @@ public sealed class SettingsView : TabView
 
     static readonly Dictionary<string, bool> _secOpen = new();
 
-    static readonly Brush CardBg = UI.WinCard, Sep = UI.WinSep, Fg = UI.Fg, Dim = UI.Dim;   // palet jendela disatukan dengan token UI (dulu #1F1F24/#2C2C33/#E6E6EA/#B4B4BC)
-    const double CaptionMaxW = 520;   // keterangan tidak melebar penuh di jendela lebar: baris ~70 karakter
+    static readonly Brush CardBg = UI.WinCard, Sep = UI.WinSep, Fg = UI.Fg, Dim = UI.Dim;   // window palette unified with UI tokens (formerly #1F1F24/#2C2C33/#E6E6EA/#B4B4BC)
+    const double CaptionMaxW = 520;   // captions do not span full width in wide windows: ~70 chars per line
 
     const double FontLabel = 13.5, FontCaption = 12, FontCat = 13.5, FontSearch = 13, FontCtl = 13, FontSection = 14;
 
@@ -52,7 +52,7 @@ public sealed class SettingsView : TabView
 
     public SettingsView()
     {
-        // kotak cari (Ctrl+F): mencari di semua halaman sekaligus; tetap di atas daftar halaman dan tidak ikut dibangun ulang supaya fokusnya tidak hilang
+        // search box (Ctrl+F): searches across all pages at once; stays above the page list and isn't rebuilt so it keeps focus
         var searchHost = new Border { CornerRadius = new CornerRadius(10), Background = CardBg, Margin = new Thickness(0, 0, 8, 8), ClipToBounds = true };
         var searchGrid = new Grid();
         var ph = new TextBlock { Text = L.T("Cari pengaturan (Ctrl+F)"), Foreground = Dim, FontSize = FontSearch, IsHitTestVisible = false, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -87,7 +87,7 @@ public sealed class SettingsView : TabView
 
     void Render()
     {
-        while (_cats.Children.Count > 1) _cats.Children.RemoveAt(1);   // indeks 0 = kotak cari
+        while (_cats.Children.Count > 1) _cats.Children.RemoveAt(1);   // index 0 = search box
         bool searching = _query.Trim().Length >= 2;
         foreach (var (key, label, glyph) in Pages)
         {
@@ -153,7 +153,7 @@ public sealed class SettingsView : TabView
                 continue;
             }
             bool adv = raw.StartsWith('~'), more = raw.StartsWith('¶');
-            if ((adv || more) && !Settings.Cur.Advanced) continue;   // opsi lanjutan tersembunyi kecuali Mode lanjutan menyala
+            if ((adv || more) && !Settings.Cur.Advanced) continue;   // advanced options hidden unless Advanced mode is on
             if (more)
             {
                 inMore = true;
@@ -164,11 +164,11 @@ public sealed class SettingsView : TabView
             AddRow(Row(adv || more ? raw[1..] : raw, ctl));
         }
         CloseGroup();
-        // pertama kali halaman HP dibuka: panduan sambung HP tampil sendiri (tombol "Buka panduan" membukanya lagi kapan saja)
+        // first time Phone page is opened: phone link guide opens automatically ("Open guide" button reopens it anytime)
         if (_page == "phone" && !_hpGuideShown) { _hpGuideShown = true; PhoneGuide.Show(false); }
     }
 
-    /// <summary>Hasil pencarian: baris dari semua halaman yang labelnya (atau keterangannya, Indonesia atau Inggris) memuat kata yang dicari, dikelompokkan per halaman. Barisnya tetap kontrol asli.</summary>
+    /// <summary>Search results: rows from all pages whose label (or caption, Indonesian or English) contains the query, grouped by page. Rows remain live controls.</summary>
     void RenderSearch(string q)
     {
         bool any = false;
@@ -214,7 +214,7 @@ public sealed class SettingsView : TabView
         ["addons"] = "Unduhan tambahan yang hanya diambil bila kamu memintanya.",
     };
 
-    // ---------- pembaruan dan cadangan (Umum) ----------
+    // ---------- updates and backup (General) ----------
     string _backupMsg = "";
 
     UIElement UpdateRow()
@@ -299,9 +299,9 @@ public sealed class SettingsView : TabView
         return sp;
     }
 
-    // ---------- isi tiap kategori ----------
-    // Konvensi baris: label "§Judul" = subjudul bagian; label diawali "~" = opsi lanjutan (hanya tampil bila Mode lanjutan menyala);
-    // "Label\nKeterangan" = label dengan keterangan kecil di bawahnya.
+    // ---------- contents of each category ----------
+    // Row convention: label "§Title" = section subheading; label starting with "~" = advanced option (only shown when Advanced mode is on);
+    // "Label\nCaption" = label with small caption underneath.
     IEnumerable<(string, UIElement)> PageRows(string page)
     {
         var s = Settings.Cur;
@@ -369,7 +369,7 @@ public sealed class SettingsView : TabView
                 yield return ("Popup OSD (volume, kecerahan, Caps Lock, Bluetooth, mikrofon)", Toggle(() => s.OsdOn, v => s.OsdOn = v));
                 yield return ("Tampilkan aplikasi yang memakai mikrofon/kamera", Toggle(() => s.PrivacyOn, v => s.PrivacyOn = v));
                 yield return ("Notifikasi unduhan selesai", Toggle(() => s.DownloadAlert, v => s.DownloadAlert = v));
-                // "¶" = opsi lanjutan yang jarang disentuh: dilipat di bawah satu kepala "Lainnya"
+                // "¶" = rarely touched advanced option: collapsed under a single "More" header
                 yield return ("¶Kelengkungan sudut\n0 = otomatis; makin besar makin bulat", Num(0, 40, 4, " px", () => s.PillRadius, v => s.PillRadius = v == 0 || v >= 8 ? v : 8));
                 yield return ("¶Lebar tambahan saat idle\nMelebarkan pill saat tertutup supaya lebih lega", Num(0, 160, 10, " px", () => s.IdleExtra, v => s.IdleExtra = v));
                 yield return ("¶Kehalusan animasi\nOtomatis: animasi latar 30 fps, buka/tutup/ganti tab 60 fps. Penuh: semua 60 fps. Berlaku setelah ZaxLet dimulai ulang", Choice(new[] { ("auto", "Otomatis"), ("full", "Penuh (60 fps)") }, () => s.AnimFps, v => s.AnimFps = v));
@@ -610,7 +610,7 @@ public sealed class SettingsView : TabView
         }
     }
 
-    // ---------- addon (unduhan opsional) ----------
+    // ---------- addons (optional downloads) ----------
     UIElement AddonControl(Addon a)
     {
         bool on = a.Installed();
@@ -620,7 +620,7 @@ public sealed class SettingsView : TabView
         var st = UI.T(status, 12.5, a.Error.Length > 0 && !a.Busy ? UI.Bad : on && !a.Busy ? Fg : Dim);
         st.VerticalAlignment = VerticalAlignment.Center; st.TextWrapping = TextWrapping.Wrap; st.MaxWidth = 170;
         top.Children.Add(st);
-        bool removable = on && (a.Detail == null || a.Detail().Length == 0);   // terdeteksi di PATH = bukan milik kita, tidak dihapus
+        bool removable = on && (a.Detail == null || a.Detail().Length == 0);   // detected in PATH = not ours, do not delete
         if (!a.Busy && (!on || removable))
         {
             var b = UI.Btn(UI.T(on ? "Hapus" : "Unduh", 12.5, on ? Dim : Fg, true), () =>
@@ -644,7 +644,7 @@ public sealed class SettingsView : TabView
         return sp;
     }
 
-    // ---------- HP ----------
+    // ---------- Phone ----------
 
     UIElement PhoneDevices()
     {
@@ -670,8 +670,8 @@ public sealed class SettingsView : TabView
     }
 
 
-    // ---------- kontrol ----------
-    // "Label\nKeterangan": keterangan kecil di bawah label; label panjang membungkus, tidak terpotong
+    // ---------- controls ----------
+    // "Label\nCaption": small caption below label; long labels wrap instead of truncating
     static UIElement Row(string label, UIElement ctl)
     {
         string cap = null;
@@ -694,7 +694,7 @@ public sealed class SettingsView : TabView
             || ctl is FrameworkElement { Tag: "wide" };
         if (isWide)
         {
-            // kontrol lebar (pilihan panjang, kotak teks, keterangan panjang, add-on, daftar HP) di bawah label
+            // wide controls (long options, text box, long caption, add-ons, phone list) below label
             left.Margin = new Thickness(0);
             if (ctl is FrameworkElement fe) { fe.HorizontalAlignment = HorizontalAlignment.Left; fe.Margin = new Thickness(0, 8, 0, 0); }
             var col = new StackPanel();
@@ -709,7 +709,7 @@ public sealed class SettingsView : TabView
 
     bool _moreOpen;
 
-    /// <summary>Kepala "Lainnya" yang bisa dibuka-tutup untuk baris bertanda "¶".</summary>
+    /// <summary>Collapsible "More" header for rows marked with "¶".</summary>
     UIElement MoreHeader()
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -755,7 +755,7 @@ public sealed class SettingsView : TabView
         return track;
     }
 
-    /// <summary>Pilihan 4 opsi atau lebih: daftar turun. Kurang dari itu: pemilih "‹ nilai ›" yang berputar.</summary>
+    /// <summary>4 or more options: dropdown. Fewer than that: cycling "‹ value ›" picker.</summary>
     static UIElement Dropdown((string Key, string Label)[] opts, Func<string> get, Action<string> set, Action extra)
     {
         var txt = UI.T("", FontCtl, Fg, true);
@@ -789,7 +789,7 @@ public sealed class SettingsView : TabView
             pop.IsOpen = !pop.IsOpen;
         }, UI.Card, 10, new Thickness(12, 5, 12, 5));
         pop.PlacementTarget = b;
-        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";   // label panjang ("Automatic (follow Windows)") di bawah judul, bukan terpotong di kanan
+        if (opts.Any(o => L.T(o.Label).Length > 14)) b.Tag = "wide";   // long labels ("Automatic (follow Windows)") below title, not truncated on the right
         Paint();
         return b;
     }

@@ -8,10 +8,10 @@ using System.Windows;
 namespace ZaxLet;
 
 /// <summary>
-/// Pembaruan otomatis dari GitHub Releases (repo di Settings.UpdateRepo). Alurnya: cek rilis terbaru -> unduh ZaxLet-update.zip ->
-/// cocokkan SHA-256 -> ekstrak ke folder sementara -> skrip kecil menunggu ZaxLet keluar, menyalin berkasnya ke folder aplikasi, dan
-/// membuka ZaxLet lagi. Data pengguna (%LOCALAPPDATA%\ZaxLet) tidak disentuh. Repo privat tidak bisa diakses tanpa token, jadi
-/// pembaruan baru berfungsi setelah repo publik. ZAXLET_UPDATE_URL mengganti alamat API (uji).
+/// Auto-update from GitHub Releases (repo in Settings.UpdateRepo). Flow: check latest release -> download ZaxLet-update.zip ->
+/// verify SHA-256 -> extract to temp folder -> small script waits for ZaxLet to exit, copies files to app folder, and
+/// reopens ZaxLet. User data (%LOCALAPPDATA%\ZaxLet) is untouched. Private repos cannot be accessed without a token, so
+/// updates only work once the repo is public. ZAXLET_UPDATE_URL overrides the API address (testing).
 /// </summary>
 public static class UpdateService
 {
@@ -35,7 +35,7 @@ public static class UpdateService
 
     static void Set(string s) { Status = s; Changed?.Invoke(); }
 
-    /// <summary>Periksa rilis terbaru. Hasil: <see cref="Available"/> (null bila sudah terbaru) dan <see cref="Status"/>.</summary>
+    /// <summary>Check latest release. Result: <see cref="Available"/> (null if already up to date) and <see cref="Status"/>.</summary>
     public static async Task CheckAsync()
     {
         if (Busy) return;
@@ -60,7 +60,7 @@ public static class UpdateService
         finally { Busy = false; Changed?.Invoke(); }
     }
 
-    /// <summary>Unduh, verifikasi, lalu jalankan skrip penyalin dan keluar. Gagal di tahap mana pun: berkas lama tidak disentuh.</summary>
+    /// <summary>Download, verify, then run copy script and exit. Fails at any stage: existing files are untouched.</summary>
     public static async Task ApplyAsync()
     {
         var rel = Available;
@@ -90,7 +90,7 @@ public static class UpdateService
             var dst = AppContext.BaseDirectory.TrimEnd('\\');
             var exe = Path.Combine(dst, "ZaxLet.exe");
             var script = Path.Combine(work, "apply.cmd");
-            // tunggu ZaxLet keluar (maks ~20 dtk), salin (robocopy mencoba ulang selagi berkas masih terkunci), lalu buka lagi
+            // wait for ZaxLet to exit (max ~20 s), copy (robocopy retries while files are still locked), then reopen
             File.WriteAllText(script, "@echo off\r\n" +
                 "for /l %%i in (1,1,20) do (\r\n" +
                 "  tasklist /FI \"IMAGENAME eq ZaxLet.exe\" /NH | find /I \"ZaxLet.exe\" >nul || goto :go\r\n" +
@@ -99,7 +99,7 @@ public static class UpdateService
                 ":go\r\n" +
                 $"robocopy \"{src}\" \"{dst}\" /E /R:10 /W:1 /NFL /NDL /NJH /NJS /NP >nul\r\n" +
                 $"start \"\" \"{exe}\" --updated\r\n");
-            bool writable;   // folder pemasangan di Program Files dsb. butuh admin untuk menyalin: minta UAC, jangan gagal diam-diam setelah ZaxLet keluar
+            bool writable;   // install folders in Program Files etc. require admin to copy: request UAC, don't fail silently after ZaxLet exits
             try { var probe = Path.Combine(dst, ".zaxlet-write-test"); File.WriteAllText(probe, ""); File.Delete(probe); writable = true; }
             catch { writable = false; }
             Set(L.T(writable ? "Memasang pembaruan…" : "Folder ZaxLet butuh izin admin untuk pembaruan: pilih Ya di jendela Windows."));
@@ -112,7 +112,7 @@ public static class UpdateService
         finally { Busy = false; Changed?.Invoke(); }
     }
 
-    /// <summary>Periksa otomatis paling sering tiap ±20 jam; bila ada versi baru, pill menawarkan pembaruan (klik untuk memasang).</summary>
+    /// <summary>Auto-check at most once every ±20 hours; if a new version exists, the pill offers an update (click to install).</summary>
     public static async Task AutoCheckAsync()
     {
         if (!Settings.Cur.AutoUpdate || (DateTime.Now - Settings.Cur.UpdateCheckedAt).TotalHours < 20) return;

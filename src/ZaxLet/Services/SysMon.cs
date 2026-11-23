@@ -15,7 +15,7 @@ using WF = System.Windows.Forms;
 
 namespace ZaxLet;
 
-/// <summary>Sampling ringan tanpa driver: CPU (ntdll), RAM, jaringan, baterai, GPU NVIDIA via nvidia-smi, suhu CPU opsional via LibreHardwareMonitor.</summary>
+/// <summary>Lightweight driverless sampling: CPU (ntdll), RAM, network, battery, NVIDIA GPU via nvidia-smi, optional CPU temp via LibreHardwareMonitor.</summary>
 public sealed class SysMon
 {
     public double Cpu;
@@ -69,7 +69,7 @@ public sealed class SysMon
                 for (int i = 0; i < n; i++)
                 {
                     double idle = cur[i].Idle - _prev[i].Idle;
-                    double total = (cur[i].Kernel + cur[i].User) - (_prev[i].Kernel + _prev[i].User); // Kernel sudah termasuk Idle
+                    double total = (cur[i].Kernel + cur[i].User) - (_prev[i].Kernel + _prev[i].User); // Kernel already includes Idle
                     busy += total - idle; all += total;
                 }
                 Cpu = all > 0 ? Math.Clamp(busy / all, 0, 1) : 0;
@@ -101,7 +101,7 @@ public sealed class SysMon
     static readonly string[] VirtualKeywords = { "Hyper-V", "vEthernet", "VMware", "WSL" };
     static readonly string[] VpnKeywords = { "Tailscale", "WireGuard", "OpenVPN", "Wintun", "TAP-", "VPN" };
 
-    /// <summary>Keputusan peringatan internet setelah debounce: bacaan pertama tidak memicu; hanya berubah bila status benar-benar berbeda.</summary>
+    /// <summary>Debounced internet alert decision: first reading does not trigger; only changes when status actually differs.</summary>
     public static (bool? NextState, bool? AlertOnline) DecideNetAlert(bool? lastState, bool currentUp)
     {
         if (lastState == null) return (currentUp, null);
@@ -109,7 +109,7 @@ public sealed class SysMon
         return (currentUp, currentUp);
     }
 
-    /// <summary>True bila adapter adalah loopback atau virtual (Hyper-V, VMware, WSL).</summary>
+    /// <summary>True if the adapter is loopback or virtual (Hyper-V, VMware, WSL).</summary>
     public static bool IsVirtualAdapter(NetworkInterfaceType type, string name, string description)
     {
         if (type == NetworkInterfaceType.Loopback) return true;
@@ -118,7 +118,7 @@ public sealed class SysMon
         return false;
     }
 
-    /// <summary>Klasifikasikan adapter aktif ke "VPN/Tailscale", "Wi-Fi", "Ethernet", atau null bila diabaikan.</summary>
+    /// <summary>Classify active adapter as "VPN/Tailscale", "Wi-Fi", "Ethernet", or null if ignored.</summary>
     public static string ClassifyConnection(NetworkInterfaceType type, string name, string description)
     {
         if (type is NetworkInterfaceType.Tunnel or NetworkInterfaceType.Ppp) return "VPN/Tailscale";
@@ -146,7 +146,7 @@ public sealed class SysMon
         return false;
     }
 
-    /// <summary>Jenis koneksi aktif (VPN/Tailscale, Ethernet, Wi-Fi, atau none) dari antarmuka Up yang memiliki gateway.</summary>
+    /// <summary>Active connection type (VPN/Tailscale, Ethernet, Wi-Fi, or none) from Up interfaces that have a gateway.</summary>
     public static string DetectConnectionType()
     {
         try
@@ -175,7 +175,7 @@ public sealed class SysMon
         BatLeft = !Charging && ps.BatteryLifeRemaining > 0 ? UI.Span(TimeSpan.FromSeconds(ps.BatteryLifeRemaining)) + " left" : Charging ? "charging" : "";
     }
 
-    /// <summary>Bagian mahal (proses, GPU, suhu) dipanggil tiap beberapa detik dari thread latar.</summary>
+    /// <summary>Expensive parts (processes, GPU, temps) called every few seconds from a background thread.</summary>
     public async Task SampleSlowAsync()
     {
         if ((DateTime.Now - _slowAt).TotalSeconds < 3) return;
@@ -183,7 +183,7 @@ public sealed class SysMon
         await Task.WhenAll(Task.Run(SampleTop), Task.Run(SampleGpu), SampleCpuTemp());
     }
 
-    /// <summary>Ping Gateway (LAN) dan 1.1.1.1 (Internet) tiap ~3 dtk (atau ~6 dtk saat PowerSaver). Hanya dipanggil saat tab Monitor terlihat.</summary>
+    /// <summary>Ping Gateway (LAN) and 1.1.1.1 (Internet) every ~3s (or ~6s in PowerSaver). Only called while Monitor tab is visible.</summary>
     public async Task<bool> SamplePingAsync()
     {
         var now = DateTime.UtcNow;
@@ -262,7 +262,7 @@ public sealed class SysMon
         catch { return null; }
     }
 
-    /// <summary>Ambil suhu CPU dan GPU saja tanpa daftar proses (dipakai layanan peringatan ringan).</summary>
+    /// <summary>Sample CPU and GPU temperatures only without the process list (used by the lightweight alert service).</summary>
     public async Task SampleTempsAsync()
     {
         await Task.WhenAll(_noNvidia ? Task.CompletedTask : Task.Run(SampleGpu), SampleCpuTemp());
@@ -270,7 +270,7 @@ public sealed class SysMon
 
     void SampleTop()
     {
-        // jumlahkan per nama proses; ingat PID terbesar tiap nama untuk mengambil jalur exe (ikon + nama deskriptif)
+        // sum per process name; remember largest PID per name to fetch exe path (icon + friendly name)
         var map = new Dictionary<string, (long Bytes, int Pid, long Best)>();
         foreach (var p in Process.GetProcesses())
         {
@@ -292,21 +292,21 @@ public sealed class SysMon
     {
         if (Paths.TryGetValue(name, out var cached)) return cached;
         string path = null;
-        try { using var p = Process.GetProcessById(pid); path = p.MainModule?.FileName; } catch { /* proses sistem: tanpa ikon */ }
+        try { using var p = Process.GetProcessById(pid); path = p.MainModule?.FileName; } catch { /* system process: no icon */ }
         return Paths[name] = path;
     }
 
-    bool _noNvidia = Environment.GetEnvironmentVariable("ZAXLET_NO_NVIDIA") == "1";   // uji jalur cadangan (laptop tanpa NVIDIA) di PC ber-NVIDIA
+    bool _noNvidia = Environment.GetEnvironmentVariable("ZAXLET_NO_NVIDIA") == "1";   // test fallback path (laptop without NVIDIA) on an NVIDIA PC
     PdhQuery _gpuQ;
     int _gpuIdx = -2;
 
-    // GPU non-NVIDIA (Intel/AMD) atau tanpa nvidia-smi: beban dari penghitung "GPU Engine" Windows (semua merek); suhu hanya NVIDIA
+    // non-NVIDIA GPU (Intel/AMD) or without nvidia-smi: load from Windows "GPU Engine" counter (all vendors); temp is NVIDIA-only
     void SampleGpuCounters()
     {
         _gpuQ ??= new PdhQuery();
         if (_gpuIdx == -2) _gpuIdx = _gpuQ.Add(@"\GPU Engine(*)\Utilization Percentage");
         if (!_gpuQ.Collect()) return;
-        var perEngine = new Dictionary<string, double>();   // jumlahkan semua proses per mesin (adapter + mesin), seperti Task Manager
+        var perEngine = new Dictionary<string, double>();   // sum all processes per engine (adapter + engine), like Task Manager
         foreach (var (name, v) in _gpuQ.Read(_gpuIdx))
         {
             int a = name.IndexOf("_luid_", StringComparison.Ordinal);
@@ -335,11 +335,11 @@ public sealed class SysMon
                 GpuPower = double.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var w) ? w : null;
             }
         }
-        catch (System.ComponentModel.Win32Exception) { GpuUtil = GpuTemp = GpuPower = null; _noNvidia = true; SampleGpuCounters(); }   // nvidia-smi tidak ada
+        catch (System.ComponentModel.Win32Exception) { GpuUtil = GpuTemp = GpuPower = null; _noNvidia = true; SampleGpuCounters(); }   // nvidia-smi not found
         catch { GpuUtil = GpuTemp = GpuPower = null; }
     }
 
-    // suhu CPU: LibreHardwareMonitor (remote web server port 8085) bila sedang berjalan, selain itu suhu zona termal ACPI dari Windows
+    // CPU temp: LibreHardwareMonitor (remote web server port 8085) when running, otherwise Windows ACPI thermal zone temp
     bool _lhmOk;
     PdhQuery _tzQ;
     int _tzHp = -2, _tzK = -2;
@@ -347,7 +347,7 @@ public sealed class SysMon
     async Task SampleCpuTemp()
     {
         double? t = null;
-        if (!_lhmTried || _lhmOk || (DateTime.Now.Second % 30) == 0)   // LHM yang gagal dicoba lagi tiap ±30 dtk saja
+        if (!_lhmTried || _lhmOk || (DateTime.Now.Second % 30) == 0)   // retry failed LHM only every ~30s
         {
             _lhmTried = true;
             try
@@ -361,14 +361,14 @@ public sealed class SysMon
         CpuTemp = t ?? ThermalZoneC();
     }
 
-    // "Thermal Zone Information" (tanpa admin): suhu zona ACPI tertinggi. Bukan sensor inti CPU, tetapi pada laptop mendekati suhu paket CPU.
+    // "Thermal Zone Information" (no admin): highest ACPI zone temp. Not a CPU core sensor, but on laptops it is close to CPU package temp.
     double? ThermalZoneC()
     {
         _tzQ ??= new PdhQuery();
         if (_tzHp == -2) { _tzHp = _tzQ.Add(@"\Thermal Zone Information(*)\High Precision Temperature"); _tzK = _tzQ.Add(@"\Thermal Zone Information(*)\Temperature"); }
         if (!_tzQ.Collect()) return null;
         double? best = null;
-        foreach (var (_, v) in _tzQ.Read(_tzHp)) { var c = v / 10 - 273.15; if (c is > 15 and < 120 && (best == null || c > best)) best = c; }   // persepuluh Kelvin
+        foreach (var (_, v) in _tzQ.Read(_tzHp)) { var c = v / 10 - 273.15; if (c is > 15 and < 120 && (best == null || c > best)) best = c; }   // tenths of Kelvin
         if (best == null)
             foreach (var (_, v) in _tzQ.Read(_tzK)) { var c = v - 273.15; if (c is > 15 and < 120 && (best == null || c > best)) best = c; }
         return best;
@@ -393,7 +393,7 @@ public sealed class SysMon
     }
 }
 
-/// <summary>Kecepatan unduh/unggah untuk pill idle: murah (hanya statistik NIC), diambil paling cepat tiap 1,5 detik.</summary>
+/// <summary>Download/upload speed for the idle pill: cheap (NIC stats only), sampled at most every 1.5 seconds.</summary>
 public static class NetMeter
 {
     public static double DownKb, UpKb;
@@ -420,6 +420,6 @@ public static class NetMeter
         _rx = rx; _tx = tx; _at = now;
     }
 
-    /// <summary>"3.4M" / "420K" seperti BrimDeck.</summary>
+    /// <summary>"3.4M" / "420K" like BrimDeck.</summary>
     public static string Fmt(double kb) => kb >= 1024 ? $"{kb / 1024:0.0}M" : $"{kb:0}K";
 }

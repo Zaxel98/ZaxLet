@@ -11,10 +11,10 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Jembatan ke ekstensi browser (src/BrowserExtension): ekstensi membaca halaman produk di browser pemilik (sesinya sendiri, jadi toko yang
-/// memblokir klien otomatis pun terbaca) lalu mengirim judul, harga, dan gambarnya ke sini. Mendengarkan hanya di 127.0.0.1, menolak asal
-/// selain ekstensi browser, dan memerlukan token (Settings.WishToken). Isinya disimpan di memori saja (maks. 60 halaman, 6 jam) dan baru
-/// menjadi item Wishlist bila pemilik menekan Tempel link atau menyetujui saran di pill. Tidak ada polling: hanya bekerja bila ekstensi mengirim.
+/// Bridge to the browser extension (src/BrowserExtension): the extension reads product pages in the owner's browser (their own session, so even stores that
+/// block automated clients can be read) and sends the title, price, and image here. Listens only on 127.0.0.1, rejects origins
+/// other than browser extensions, and requires a token (Settings.WishToken). Stored in memory only (max 60 pages, 6 hours) and only
+/// becomes a Wishlist item when the owner clicks Paste link or accepts the pill suggestion. No polling: only runs when the extension sends data.
 /// </summary>
 public static class WishBridge
 {
@@ -24,7 +24,7 @@ public static class WishBridge
     static string _suggested = "";
     public static DateTime LastContact = DateTime.MinValue;
     public static int Received;
-    public static event Action Changed;   // UI thread: kontak baru dari ekstensi
+    public static event Action Changed;   // UI thread: new contact from extension
 
     public static string Token
     {
@@ -39,7 +39,7 @@ public static class WishBridge
     public static bool Listening => _l != null;
     public static bool Connected => DateTime.Now - LastContact < TimeSpan.FromMinutes(10);
 
-    /// <summary>Dipanggil saat mulai dan tiap Pengaturan berubah.</summary>
+    /// <summary>Called on startup and whenever Settings change.</summary>
     public static void Apply()
     {
         if (Settings.Cur.WishBridgeOn && _l == null) Start();
@@ -54,7 +54,7 @@ public static class WishBridge
             _l.Start();
             _ = Task.Run(AcceptLoop);
         }
-        catch (Exception ex) { _l = null; App.Log(ex); }   // port dipakai aplikasi lain: ekstensi tidak tersambung, link tetap bisa ditempel manual
+        catch (Exception ex) { _l = null; App.Log(ex); }   // port used by another app: extension not connected, links can still be pasted manually
     }
 
     static void Stop()
@@ -70,7 +70,7 @@ public static class WishBridge
         while (l != null && ReferenceEquals(l, _l))
         {
             try { var c = await l.AcceptTcpClientAsync(); _ = Task.Run(() => Handle(c)); }
-            catch { return; }   // pendengar dihentikan
+            catch { return; }   // listener stopped
         }
     }
 
@@ -86,7 +86,7 @@ public static class WishBridge
                 headers.TryGetValue("origin", out var origin);
                 bool allowed = WishBridgeCore.OriginAllowed(origin);
                 if (method == "OPTIONS") { await Reply(ns, allowed ? 204 : 403, "", origin, allowed); return; }
-                bool hook = path == "/notify";   // webhook lokal: skrip di PC ini (tanpa Origin); halaman web (Origin http/https) tetap ditolak
+                bool hook = path == "/notify";   // local webhook: scripts on this PC (no Origin); web pages (http/https Origin) are still rejected
                 if (method != "POST" || !(allowed || hook && origin == null)) { await Reply(ns, 403, "{\"ok\":false,\"error\":\"origin\"}", origin, false); return; }
                 headers.TryGetValue("x-zaxlet-token", out var tok);
                 if (!WishBridgeCore.TokenOk(tok, Token)) { await Reply(ns, 401, "{\"ok\":false,\"error\":\"token\"}", origin, true); return; }
@@ -111,7 +111,7 @@ public static class WishBridge
                 }
                 await Reply(ns, 404, "{\"ok\":false}", origin, true);
             }
-            catch { /* sambungan terputus atau permintaan rusak: abaikan */ }
+            catch { /* connection dropped or malformed request: ignore */ }
         }
     }
 
@@ -167,7 +167,7 @@ public static class WishBridge
         Ui(() => { Wishlist.OnPageSeen(p); Changed?.Invoke(); });
     }
 
-    /// <summary>Info halaman yang pernah dikirim ekstensi untuk link ini (cocok persis, atau satu-satunya halaman dengan host dan path yang sama).</summary>
+    /// <summary>Page info previously sent by the extension for this link (exact match, or the only page with the same host and path).</summary>
     public static WishBridgeCore.Page TryGet(string url)
     {
         var key = WishBridgeCore.Key(url);
@@ -181,11 +181,11 @@ public static class WishBridge
         }
     }
 
-    /// <summary>Dari hook clipboard (UI thread): link produk yang baru dikenali ekstensi ditawarkan sekali ke Wishlist, tidak disimpan sendiri.</summary>
+    /// <summary>From clipboard hook (UI thread): product link newly recognized by the extension is offered once to Wishlist, not auto-saved.</summary>
     public static void OnClipboard()
     {
         if (!Settings.Cur.WishSuggest) return;
-        lock (Seen) if (Seen.Count == 0) return;   // tidak ada yang dikenali: jangan menyentuh clipboard
+        lock (Seen) if (Seen.Count == 0) return;   // nothing recognized: do not touch clipboard
         string t = null;
         try { if (System.Windows.Clipboard.ContainsText()) t = System.Windows.Clipboard.GetText()?.Trim(); } catch { return; }
         if (string.IsNullOrEmpty(t) || t.Length > 2000 || t.Any(char.IsWhiteSpace) || TryGet(t) is not { } p) return;

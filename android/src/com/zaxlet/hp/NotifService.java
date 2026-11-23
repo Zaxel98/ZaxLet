@@ -21,23 +21,23 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 /**
- * Meneruskan notifikasi HP ke PC lewat kanal kontrol (ConnService). Notifikasi yang sama (Key sama) yang diperbarui
- * (mis. status pengiriman Gojek) dikirim ulang sebagai pembaruan. Aksi balas (RemoteInput) disimpan agar PC bisa membalas chat.
- * Butuh izin "Akses notifikasi" yang diberikan pengguna di Pengaturan Android.
+ * Forwards phone notifications to the PC via the control channel (ConnService). Updates to an existing notification (same Key)
+ * (e.g., Gojek delivery status) are re-sent as updates. Reply actions (RemoteInput) are stored so the PC can reply to chats.
+ * Requires "Notification access" permission granted by the user in Android Settings.
  */
 public class NotifService extends NotificationListenerService {
     static volatile NotifService inst;
-    static volatile int seen, sent;           // diagnosis: notifikasi yang dilihat / yang berhasil dikirim ke PC
+    static volatile int seen, sent;           // diagnostics: notifications seen / successfully sent to PC
     static volatile String lastErr = "";
     static final Map<String, Notification.Action> replies = new ConcurrentHashMap<>();
     static final Set<String> iconSent = ConcurrentHashMap.newKeySet();
-    static final Set<String> calls = ConcurrentHashMap.newKeySet();   // kunci notifikasi panggilan aktif agar tidak memicu berulang
-    private static final ExecutorService io = Executors.newSingleThreadExecutor();   // jaringan tidak boleh di main thread
+    static final Set<String> calls = ConcurrentHashMap.newKeySet();   // active call notification keys to avoid repeated triggers
+    private static final ExecutorService io = Executors.newSingleThreadExecutor();   // networking must not run on the main thread
 
     @Override public void onListenerConnected() {
-        Net.init(this);   // proses bisa dimulai sistem tanpa lewat aplikasi: pastikan pengaturan pasangan terbaca
+        Net.init(this);   // process can be started by the system without opening the app: ensure pairing settings are loaded
         inst = this;
-        ConnService.ensure(this);   // sistem yang mengikat layanan ini: jangkar untuk menghidupkan ConnService bila mati
+        ConnService.ensure(this);   // system binds this service: anchor to start ConnService if it is down
         resync();
     }
 
@@ -47,7 +47,7 @@ public class NotifService extends NotificationListenerService {
         try { requestRebind(new android.content.ComponentName(this, NotifService.class)); } catch (Exception e) { }
     }
 
-    /** Kirim ulang semua notifikasi aktif (dipanggil saat sambungan ke PC baru terbentuk). */
+    /** Re-send all active notifications (called when a PC connection is newly established). */
     static void resync() {
         final NotifService s = inst;
         if (s == null) return;
@@ -87,19 +87,19 @@ public class NotifService extends NotificationListenerService {
                     }
                 }
             }
-            if (Notification.CATEGORY_TRANSPORT.equals(n.category)) return;   // pemutar musik: sudah ditangani ZaxLet lewat SMTC di PC
+            if (Notification.CATEGORY_TRANSPORT.equals(n.category)) return;   // music player: already handled by ZaxLet via SMTC on PC
             Bundle e = n.extras;
             String title = str(e.getCharSequence(Notification.EXTRA_TITLE));
             String text = str(e.getCharSequence(Notification.EXTRA_BIG_TEXT));
             if (text.isEmpty()) text = str(e.getCharSequence(Notification.EXTRA_TEXT));
-            Parcelable[] msgs = e.getParcelableArray(Notification.EXTRA_MESSAGES);   // chat: ambil pesan terakhir
+            Parcelable[] msgs = e.getParcelableArray(Notification.EXTRA_MESSAGES);   // chat: take the last message
             if (msgs != null && msgs.length > 0 && msgs[msgs.length - 1] instanceof Bundle) {
                 Bundle last = (Bundle) msgs[msgs.length - 1];
                 String t = str(last.getCharSequence("text"));
                 if (!t.isEmpty()) text = t;
             }
             if (title.isEmpty() && text.isEmpty()) return;
-            org.json.JSONArray ma = new org.json.JSONArray();   // beberapa pesan terakhir percakapan (PC menampilkannya sebagai baris)
+            org.json.JSONArray ma = new org.json.JSONArray();   // last few messages of the conversation (PC displays them as lines)
             if (msgs != null)
                 for (int q = Math.max(0, msgs.length - 8); q < msgs.length; q++) {
                     if (!(msgs[q] instanceof Bundle)) continue;
@@ -109,7 +109,7 @@ public class NotifService extends NotificationListenerService {
                 }
 
             String pkg = sbn.getPackageName();
-            if (!Net.allowed().contains(pkg)) return;   // bawaan semua mati; dinyalakan manual di Setelan > Pilih aplikasi notifikasi
+            if (!Net.allowed().contains(pkg)) return;   // all off by default; enabled manually in Settings > Choose notification apps
             PackageManager pm = getPackageManager();
             String app = pkg;
             try { app = str(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0))); } catch (Exception ex) { }
@@ -143,7 +143,7 @@ public class NotifService extends NotificationListenerService {
         } catch (Exception ex) { }
     }
 
-    /** Balas chat: jalankan aksi RemoteInput milik notifikasi itu seolah pengguna mengetik di bayangan notifikasi. */
+    /** Reply to chat: trigger the notification's RemoteInput action as if the user typed in the notification shade. */
     static void reply(final String key, final String text) {
         final NotifService s = inst;
         final Notification.Action a = replies.get(key);

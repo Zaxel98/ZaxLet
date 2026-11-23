@@ -11,8 +11,8 @@ using System.Windows.Media.Imaging;
 namespace ZaxLet;
 
 /// <summary>
-/// Sesi layar HP aktif dari /scr/ws: mendekode bingkai JPEG terbaru di thread latar,
-/// menyimpan status resolusi/galat, dan mengirim perintah kontrol kembali ke HP.
+/// Active phone screen session from /scr/ws: decodes latest JPEG frames on a background thread,
+/// stores resolution/error state, and sends control commands back to the phone.
 /// </summary>
 public static class PhoneScreen
 {
@@ -41,7 +41,7 @@ public static class PhoneScreen
     public static BitmapSource LatestFrame { get; private set; }
     public static long ConnId => Volatile.Read(ref _connId);
 
-    /// <summary>Daftarkan soket /scr/ws baru. Koneksi lama (jika ada) ditutup.</summary>
+    /// <summary>Register a new /scr/ws socket. Old connection (if any) is closed.</summary>
     public static SemaphoreSlim Attach(Stream ns)
     {
         Stream oldStream;
@@ -72,7 +72,7 @@ public static class PhoneScreen
         return writeLock;
     }
 
-    /// <summary>Lepaskan soket saat loop baca selesai; abaikan jika sudah diganti koneksi baru.</summary>
+    /// <summary>Detach socket when read loop ends; ignore if already replaced by a new connection.</summary>
     public static void Detach(Stream ns)
     {
         bool closedActive = false;
@@ -91,7 +91,7 @@ public static class PhoneScreen
             Application.Current?.Dispatcher.BeginInvoke(ScreenWindow.OnDisconnected);
     }
 
-    /// <summary>Tutup koneksi aktif dari sisi PC (mis. saat jendela ditutup manual).</summary>
+    /// <summary>Close active connection from the PC side (e.g., when window is closed manually).</summary>
     public static void Disconnect()
     {
         Stream s;
@@ -109,7 +109,7 @@ public static class PhoneScreen
         }
     }
 
-    /// <summary>Kirim bingkai teks WebSocket (server->client, unmasked, FIN+text) ke HP. Tidak pernah melempar exception.</summary>
+    /// <summary>Send a WebSocket text frame (server->client, unmasked, FIN+text) to the phone. Never throws.</summary>
     public static void Send(string json)
     {
         if (string.IsNullOrEmpty(json)) return;

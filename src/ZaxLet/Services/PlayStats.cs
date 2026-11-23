@@ -4,13 +4,13 @@ using System.Linq;
 
 namespace ZaxLet;
 
-/// <summary>Satu lagu yang didengarkan sedikitnya 30 detik. T = detik Unix saat selesai.</summary>
+/// <summary>A song listened to for at least 30 seconds. T = Unix seconds when finished.</summary>
 public sealed record PlayEntry(long T, string Title, string Artist, int Sec);
 
-/// <summary>Rekap mendengarkan ala Spotify: lagu dan artis teratas dalam N hari. Murni (tanpa berkas dan WPF), jadi bisa dites.</summary>
+/// <summary>Spotify-style listening recap: top songs and artists over N days. Pure (no files or WPF), so it is testable.</summary>
 public static class PlayStats
 {
-    public const int MinSec = 30;   // sama dengan aturan hitung putar Spotify
+    public const int MinSec = 30;   // matches Spotify's play-count threshold
 
     public sealed record Row(string Name, string Sub, int Plays, int Sec);
 
@@ -30,7 +30,7 @@ public static class PlayStats
             .Select(g => new Row(g.First().Artist, "", g.Count(), g.Sum(x => x.Sec)))
             .OrderByDescending(r => r.Plays).ThenByDescending(r => r.Sec).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).Take(n).ToList();
 
-    /// <summary>Satu baris berkas: "detik\tdurasi\tartis\tjudul" (tab dan baris baru di nama diganti spasi).</summary>
+    /// <summary>One file line: "epoch\tduration\tartist\ttitle" (tabs and newlines in names replaced with spaces).</summary>
     public static string ToLine(PlayEntry e) => $"{e.T}\t{e.Sec}\t{Clean(e.Artist)}\t{Clean(e.Title)}";
 
     public static PlayEntry FromLine(string line)

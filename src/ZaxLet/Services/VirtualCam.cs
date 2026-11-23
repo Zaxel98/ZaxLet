@@ -9,9 +9,9 @@ using System.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Kamera virtual DirectShow ("DirectShow Softcam", proyek softcam, MIT) yang terlihat di Discord, Zoom, Chrome, dll.
-/// softcam.dll didaftarkan sekali (regsvr32, butuh admin); ZaxLet mengirim bingkai kamera HP ke dalamnya lewat shared memory.
-/// Saat ada aplikasi yang membuka kamera virtual, kamera HP otomatis dinyalakan; saat ditutup, dimatikan lagi.
+/// DirectShow virtual camera ("DirectShow Softcam", softcam project, MIT) visible in Discord, Zoom, Chrome, etc.
+/// softcam.dll is registered once (regsvr32, requires admin); ZaxLet sends phone camera frames into it via shared memory.
+/// When an app opens the virtual camera, the phone camera is turned on automatically; when closed, it turns off again.
 /// </summary>
 public static class VirtualCam
 {
@@ -40,7 +40,7 @@ public static class VirtualCam
     public static bool Running => _run;
     public static bool Paused { get => _paused; set => _paused = value; }
 
-    /// <summary>Apakah softcam.dll sudah terdaftar di Windows (muncul sebagai kamera)?</summary>
+    /// <summary>Is softcam.dll registered in Windows (appears as a camera)?</summary>
     public static bool Registered
     {
         get
@@ -51,9 +51,9 @@ public static class VirtualCam
     }
 
     static bool? _fw;
-    static bool _tried;   // izin sudah ditanyakan sekali pada sesi ini (batal = tidak diulang sampai ZaxLet dimulai lagi)
+    static bool _tried;   // permission already requested once this session (cancel = don't repeat until ZaxLet restarts)
 
-    /// <summary>Aturan firewall "ZaxLet HP" untuk port server HP sudah ada? (netsh show rule tidak butuh admin)</summary>
+    /// <summary>Does the "ZaxLet HP" firewall rule for the phone server port already exist? (netsh show rule doesn't require admin)</summary>
     public static bool FirewallOk
     {
         get
@@ -73,8 +73,8 @@ public static class VirtualCam
     public static bool NeedsSetup => !_tried && (!FirewallOk || (Available && !Registered));
 
     /// <summary>
-    /// Izin sistem sekali jalan saat kamera pertama dinyalakan: daftarkan kamera virtual dan buka port firewall, dalam satu UAC.
-    /// Dipanggil hanya dari aksi pengguna (menyalakan kamera).
+    /// One-time system permission when the camera is first turned on: register virtual camera and open firewall port, in a single UAC prompt.
+    /// Called only from user action (turning on camera).
     /// </summary>
     public static void EnsureSetup(Action done)
     {
@@ -83,14 +83,14 @@ public static class VirtualCam
         Elevate(Available && !Registered, !FirewallOk, ok =>
         {
             if (ok) { done?.Invoke(); return; }
-            _tried = false;   // UAC dibatalkan atau pendaftaran gagal: tombol berikutnya meminta lagi, dan kamera tidak "aktif" tanpa terdaftar
+            _tried = false;   // UAC canceled or registration failed: next button press asks again, and camera isn't "active" without registration
             IslandWindow.Instance?.Alert(L.T("Kamera virtual butuh izin sekali. Nyalakan lagi dan pilih Ya di jendela Windows."), 8, null, false);
         });
     }
 
     static bool _fwAsked;
 
-    /// <summary>Buka port firewall untuk server HP dengan satu UAC, dari aksi pengguna (menyalakan server). Batal = dicoba lagi pada penyalaan berikutnya; server tetap dinyalakan (done dipanggil).</summary>
+    /// <summary>Open firewall port for the phone server with a single UAC prompt, from user action (starting server). Cancel = retried on next start; server still starts (done is invoked).</summary>
     public static void EnsureFirewall(Action done)
     {
         if (_fwAsked || FirewallOk) { done?.Invoke(); return; }
@@ -106,7 +106,7 @@ public static class VirtualCam
         });
     }
 
-    /// <summary>Satu UAC untuk pendaftaran kamera dan/atau aturan firewall; callback di UI thread, ok = yang diminta kamera sudah terdaftar.</summary>
+    /// <summary>Single UAC for camera registration and/or firewall rule; callback on UI thread, ok = requested camera is registered.</summary>
     static void Elevate(bool cam, bool fw, Action<bool> done)
     {
         var cmds = new System.Collections.Generic.List<string>();
@@ -119,7 +119,7 @@ public static class VirtualCam
             var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c " + string.Join(" & ", cmds)) { Verb = "runas", UseShellExecute = true, WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden });
             System.Threading.Tasks.Task.Run(() => { proc?.WaitForExit(); Finish(); });
         }
-        catch (Exception ex) { if (ex is not System.ComponentModel.Win32Exception) App.Log(ex); Finish(); }   // 1223 = UAC ditolak
+        catch (Exception ex) { if (ex is not System.ComponentModel.Win32Exception) App.Log(ex); Finish(); }   // 1223 = UAC declined
     }
 
     public static void Start()
@@ -150,13 +150,13 @@ public static class VirtualCam
         _run = false;
         _paused = false;
         _cts?.Cancel();
-        _t?.Join(1500);   // kamera dihapus oleh Loop saat keluar agar tidak use-after-free bila Join habis waktu
+        _t?.Join(1500);   // camera is deleted by Loop on exit to avoid use-after-free if Join times out
         if (_phoneOn) { ShareServer.I.Command("cam off"); _phoneOn = false; }
         Status = "Mati";
     }
 
-    // Satu thread: susun bingkai terbaru ke kanvas (ukuran mengikuti rasio) dan kirim 30 fps. scSendFrame mengatur ritme sendiri.
-    // Rasio berganti (pengaturan, atau HP dimiringkan = landscape) bila bertahan >1,5 dtk: kamera dibuat ulang dengan ukuran baru.
+    // Single thread: composite latest frame onto canvas (size follows aspect ratio) and send at 30 fps. scSendFrame paces itself.
+    // Aspect ratio switches (settings, or phone rotated = landscape) if held >1.5s: camera is recreated with the new size.
     static void Loop(IntPtr cam, CancellationToken ct)
     {
         Bitmap canvas = null; Graphics g = null;
@@ -223,7 +223,7 @@ public static class VirtualCam
                     var bd = canvas.LockBits(new Rectangle(0, 0, W, H), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
                     try { scSendFrame(cam, bd.Scan0); } finally { canvas.UnlockBits(bd); }
 
-                    // tiap ~0,5 dtk: cek apakah ada aplikasi yang memakai kamera virtual, nyalakan/matikan kamera HP
+                    // every ~0.5s: check if any app is using the virtual camera, toggle phone camera
                     if (++tick % (Fps / 2) == 0) Follow(scIsConnected(cam));
                 }
                 catch (Exception ex) { App.Log(ex); Thread.Sleep(200); }
@@ -243,7 +243,7 @@ public static class VirtualCam
             _idleTicks = 0;
             if (!PhoneCam.Active && ShareServer.I.AppCount > 0 && (!_phoneOn || (++_retry % 10 == 0))) { CamOn(); _phoneOn = true; }
         }
-        else if (_phoneOn && ++_idleTicks > 8)   // ~4 dtk tanpa pemakai: matikan kamera HP (hemat baterai)
+        else if (_phoneOn && ++_idleTicks > 8)   // ~4s with no consumer: turn off phone camera (save battery)
         {
             ShareServer.I.Command("cam off"); _phoneOn = false; _idleTicks = 0;
         }
@@ -266,7 +266,7 @@ public static class VirtualCam
             if (s.VCamMirror) rf = rf switch { RotateFlipType.RotateNoneFlipNone => RotateFlipType.RotateNoneFlipX, RotateFlipType.Rotate90FlipNone => RotateFlipType.Rotate90FlipX, RotateFlipType.Rotate180FlipNone => RotateFlipType.Rotate180FlipX, _ => RotateFlipType.Rotate270FlipX };
             if (rf != RotateFlipType.RotateNoneFlipNone) img.RotateFlip(rf);
             double sx = (double)W / img.Width, sy = (double)H / img.Height;
-            double k = s.VCamFit == "crop" ? Math.Max(sx, sy) : Math.Min(sx, sy);   // crop = isi penuh, fit = utuh dengan bar hitam
+            double k = s.VCamFit == "crop" ? Math.Max(sx, sy) : Math.Min(sx, sy);   // crop = fill, fit = full image with black bars
             float w = (float)(img.Width * k), h = (float)(img.Height * k);
             g.DrawImage(img, (W - w) / 2, (H - h) / 2, w, h);
         }

@@ -12,7 +12,7 @@ using WF = System.Windows.Forms;
 
 namespace ZaxLet;
 
-/// <summary>Jendela mengambang tanpa bingkai untuk menyematkan tangkapan layar area di RAM.</summary>
+/// <summary>Frameless floating window for pinning an area screenshot in RAM.</summary>
 public sealed class PinWindow : Window
 {
     const int MaxPins = 5;

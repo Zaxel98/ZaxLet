@@ -27,16 +27,16 @@ public sealed class MusicView : TabView
     readonly TextBlock _pos = UI.T("0:00", 12), _rem = UI.T("-0:00", 12), _play = UI.Icon("", 20, Brushes.Black), _off = UI.T("", 11.5, UI.Dim);
     readonly Bar _bar = new(5) { Cursor = Cursors.Hand, Margin = new Thickness(8, 0, 8, 0) };
     readonly StackPanel _lyrics = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 0, 26) };
-    readonly Grid _zone = new();   // zona lirik: baris lirik di tengah, tombol sinkron di sudut kiri bawah
+    readonly Grid _zone = new();   // lyrics zone: lyric lines in the center, sync button in the bottom-left corner
     readonly LyricRow _prev = new(13, .35), _cur = new(18, .45), _next = new(13, .35);
-    readonly TextBlock _rom = new() { Foreground = UI.Dim, FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 5), Visibility = Visibility.Collapsed };   // romaji baris yang sedang dinyanyikan
+    readonly TextBlock _rom = new() { Foreground = UI.Dim, FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 5), Visibility = Visibility.Collapsed };   // romaji of the currently sung line
     readonly TranslateTransform _slide = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    readonly Grid _recap = new() { Visibility = Visibility.Collapsed };   // rekap lagu dan artis teratas (ala Spotify Wrapped mingguan)
+    readonly Grid _recap = new() { Visibility = Visibility.Collapsed };   // top songs and artists recap (weekly Spotify Wrapped style)
     bool _recapOn, _recapDirty = true, _recapHasData;
     int _recapDays = 7;
     TextBlock _wrongT;
-    StackPanel _syncRow;   // sinkron + cari ulang: tidak berlaku untuk iklan
+    StackPanel _syncRow;   // sync + re-search: not applicable to ads
     Border _shufBtn;
     readonly Bar _vol = new(4);
     readonly TextBlock _volPct = UI.T("", 11, UI.Dim);
@@ -49,8 +49,8 @@ public sealed class MusicView : TabView
 
     public MusicView()
     {
-        // kiri: sampul + judul, progres, kontrol
-        _left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 18, 0) };   // jarak ke pembatas lirik
+        // left: cover + title, progress, controls
+        _left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 18, 0) };   // gap to lyrics divider
         var left = _left;
         var head = UI.Cols(72, -1, 0);
         var coverBox = new Border { Width = 58, Height = 58, CornerRadius = new CornerRadius(11), Background = UI.Card, ClipToBounds = true, HorizontalAlignment = HorizontalAlignment.Left, Child = _cover };
@@ -64,7 +64,7 @@ public sealed class MusicView : TabView
         var prog = UI.Cols(0, -1, 0);
         prog.Margin = new Thickness(0, 10, 0, 0);
         prog.Children.Add(_pos);
-        // area sentuh lebih tinggi dari bar 5 px supaya mudah diklik; klik atau seret untuk maju/mundur (YouTube di peramban juga)
+        // hit area taller than the 5 px bar for easy clicking; click or drag to seek forward/backward (works for YouTube in browser too)
         var hit = new Grid { Background = Brushes.Transparent, Cursor = Cursors.Hand, Margin = new Thickness(8, 0, 8, 0) };
         _bar.Margin = new Thickness(0, 9, 0, 9);
         hit.Children.Add(_bar);
@@ -73,8 +73,8 @@ public sealed class MusicView : TabView
         var lastDragSeek = DateTime.MinValue;
         void SeekFrom(MouseEventArgs e, bool force)
         {
-            if (!_m.CanSeek || _bar.ActualWidth <= 0) return;   // CanSeek = ada durasi lagu (pada video bersegmen: durasi segmen)
-            if (!force && (DateTime.Now - lastDragSeek).TotalMilliseconds < 120) return;   // jangan membanjiri peramban saat menyeret
+            if (!_m.CanSeek || _bar.ActualWidth <= 0) return;   // CanSeek = song has duration (for segmented video: segment duration)
+            if (!force && (DateTime.Now - lastDragSeek).TotalMilliseconds < 120) return;   // don't flood the browser while dragging
             lastDragSeek = DateTime.Now;
             double f = Math.Clamp(e.GetPosition(_bar).X / _bar.ActualWidth, 0, 1);
             _m.Seek(TimeSpan.FromSeconds(_m.Duration.TotalSeconds * f));
@@ -92,7 +92,7 @@ public sealed class MusicView : TabView
         playBtn.Margin = new Thickness(6, 0, 6, 0);
         ctl.Children.Add(playBtn);
         ctl.Children.Add(UI.IconBtn("", _m.Next, 18));
-        // tombol transport (sebelumnya, putar, berikutnya) dipusatkan tepat di bawah bar progres; tombol lirik di tepi kiri, bukan ikut menggeser grup
+        // transport buttons (previous, play, next) centered right below the progress bar; lyrics button at the left edge, not shifting the group
         var kids = ctl.Children.Cast<UIElement>().ToList();
         ctl.Children.Clear();
         var ctlRow = UI.Cols(-1, 0, -1);
@@ -101,7 +101,7 @@ public sealed class MusicView : TabView
         for (int k = 1; k < kids.Count; k++) trio.Children.Add(kids[k]);
         Grid.SetColumn(trio, 1);
         if (kids[0] is FrameworkElement lyrBtn) { lyrBtn.HorizontalAlignment = HorizontalAlignment.Left; lyrBtn.VerticalAlignment = VerticalAlignment.Center; }
-        // kiri: lirik; kanan: acak, seimbang di kedua sisi trio
+        // left: lyrics; right: shuffle, balanced on both sides of the trio
         _shufBtn = UI.IconBtn("", _m.ToggleShuffle, 15); _shufBtn.ToolTip = L.T("Acak");
         ctlRow.Children.Add(kids[0]);
         ctlRow.Children.Add(trio);
@@ -109,9 +109,9 @@ public sealed class MusicView : TabView
         ctlRow.Children.Add(_shufBtn.At(0, 2));
         left.Children.Add(ctlRow);
 
-        // volume: volume utama Windows (perangkat keluaran bawaan); klik ikon = bisukan, klik atau seret bar = atur
+        // volume: Windows master volume (default output device); click icon = mute, click or drag bar = adjust
         var volRow = UI.Cols(0, 0, 0);
-        volRow.HorizontalAlignment = HorizontalAlignment.Left; volRow.Margin = new Thickness(0, 9, 0, 0);   // sepertiga lebar bar lagu, tetap di kiri; margin atas meratakan jarak ke tombol transport (atas) dan garis tab (bawah)
+        volRow.HorizontalAlignment = HorizontalAlignment.Left; volRow.Margin = new Thickness(0, 9, 0, 0);   // one-third of song bar width, aligned left; top margin balances gap to transport buttons (top) and tab line (bottom)
         _volIcon = UI.Icon("", 13, UI.Dim);
         var volBtn = UI.Btn(_volIcon, () => { AudioEndpoint.SetMuted(!(AudioEndpoint.Muted() ?? false)); PollVolume(); }, Brushes.Transparent, 999, new Thickness(4));
         volBtn.ToolTip = L.T("Bisukan");
@@ -143,9 +143,9 @@ public sealed class MusicView : TabView
         bottomRow.Children.Add(_sleepBtn.At(0, 1));
         left.Children.Add(bottomRow);
 
-        // kanan: lirik karaoke (tadi, sekarang, berikutnya) + sinkron cepat
+        // right: karaoke lyrics (prev, current, next) + quick sync
         _lyrics.RenderTransform = _slide;
-        // klik baris lirik = loncat ke baris itu (berguna saat bernyanyi / mengulang bagian)
+        // click lyric line = jump to that line (useful when singing along / repeating a section)
         foreach (var (row, delta) in new[] { (_prev, -1), (_cur, 0), (_next, 1) })
         {
             var d = delta;
@@ -158,7 +158,7 @@ public sealed class MusicView : TabView
         _lyrics.Children.Add(_cur);
         _lyrics.Children.Add(_rom);
         _lyrics.Children.Add(_next);
-        // sinkron: tetap di sudut kiri bawah zona lirik (tidak ikut bergeser mengikuti tinggi baris lirik)
+        // sync: fixed at the bottom-left corner of the lyrics zone (does not shift with lyric line height)
         var sync = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(22, 0, 0, 2) };
         sync.Children.Add(UI.T("Sinkron", 11.5, UI.Faint));
         var minus = UI.Btn(UI.T("−", 13), () => Nudge(-200), UI.Card, 9, new Thickness(9, 1, 9, 2));
@@ -180,7 +180,7 @@ public sealed class MusicView : TabView
         _player.Children.Add(left);
         _player.Children.Add(_divider.At(0, 1));
         _player.Children.Add(_zone.At(0, 2));
-        // Rekap di pojok kanan atas seluruh pemutar (area lirik; saat lirik mati tetap di pojok), supaya tidak memakan ruang judul lagu
+        // Recap at the top-right corner of the whole player (lyrics area; stays in corner when lyrics are off), so it doesn't take space from the song title
         var recapBtn = UI.Btn(UI.T("Rekap", 11, UI.Dim), () => { _recapOn = true; _recapDirty = true; Render(); }, UI.Card, 9, new Thickness(8, 2, 8, 3));
         recapBtn.HorizontalAlignment = HorizontalAlignment.Right; recapBtn.VerticalAlignment = VerticalAlignment.Top; recapBtn.Margin = new Thickness(0, 2, 2, 0);
         Grid.SetColumnSpan(recapBtn, 3);
@@ -191,7 +191,7 @@ public sealed class MusicView : TabView
         _t.Tick += (_, _) => OnTick();
     }
 
-    // volume bisa diubah dari luar (tombol keyboard, mixer): dibaca tiap detik selama tab terbuka, kecuali sedang diseret
+    // volume can be changed externally (keyboard keys, mixer): read every second while the tab is open, unless being dragged
     void PollVolume()
     {
         if (_volDrag) return;
@@ -203,7 +203,7 @@ public sealed class MusicView : TabView
 
     void Nudge(int deltaMs)
     {
-        _m.Offset += deltaMs;   // tersimpan per lagu
+        _m.Offset += deltaMs;   // saved per song
         UpdateOffsetLabel();
     }
 
@@ -217,9 +217,9 @@ public sealed class MusicView : TabView
 
     static bool RomajiOnly => Settings.Cur.LyricRomaji && Settings.Cur.RomajiOnly;
 
-    void OnRomajiReady() => Dispatcher.BeginInvoke(() => _lastIdx = -2);   // hasil romaji kanji siap / pengaturan berubah: gambar ulang baris sekarang
+    void OnRomajiReady() => Dispatcher.BeginInvoke(() => _lastIdx = -2);   // kanji romaji ready / settings changed: redraw current line
 
-    // capture audio hanya selama tab Musik terbuka, lagu main, dan lirik bersinkron ada (beban nol di luar itu)
+    // audio capture only while Music tab is open, song is playing, and synced lyrics exist (zero load otherwise)
     bool _flowOn;
     void SyncFlow(bool visible)
     {
@@ -234,13 +234,13 @@ public sealed class MusicView : TabView
         _recap.Children.Clear();
         var all = Settings.Cur.PlayLogOn ? PlayLog.Load() : new List<PlayEntry>();
         var now = DateTime.Now;
-        var songs = PlayStats.TopSongs(all, now, _recapDays, 4);   // baris lagu dua tingkat: 4 muat di tinggi tab
+        var songs = PlayStats.TopSongs(all, now, _recapDays, 4);   // two-line song rows: 4 fit in the tab height
         var artists = PlayStats.TopArtists(all, now, _recapDays, 5);
         _recapHasData = songs.Count > 0;
 
         var root = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
         var head = UI.Cols(-1, 0, 0, 0);
-        bool idle = !_m.HasSession;   // tidak ada pemutar: tab ini menjadi layar kosong yang berguna (lagu terakhir, rekap, tombol buka pemutar)
+        bool idle = !_m.HasSession;   // no player: this tab becomes a useful empty state (last song, recap, launch player button)
         head.Children.Add(UI.T(idle ? "Tidak ada musik yang diputar" : _recapDays == 7 ? "Rekap 7 hari terakhir" : "Rekap 30 hari terakhir", 15, null, true));
         var span = UI.Btn(UI.T(_recapDays == 7 ? "30 hari" : "7 hari", 11.5, UI.Dim), () => { _recapDays = _recapDays == 7 ? 30 : 7; _recapDirty = true; Render(); }, UI.Card, 9, new Thickness(9, 3, 9, 3));
         span.Margin = new Thickness(0, 0, 6, 0);
@@ -281,7 +281,7 @@ public sealed class MusicView : TabView
         _recap.Children.Add(root);
     }
 
-    /// <summary>Buka Spotify (tautan spotify:) bila terpasang; kalau tidak, YouTube Music di peramban bawaan.</summary>
+    /// <summary>Open Spotify (spotify: URI) if installed; otherwise YouTube Music in the default browser.</summary>
     static void OpenPlayer()
     {
         foreach (var uri in new[] { "spotify:", "https://music.youtube.com" })
@@ -317,8 +317,8 @@ public sealed class MusicView : TabView
 
     void OnTick()
     {
-        // 30 fps saat lirik karaoke berjalan, selain itu 4 fps
-        bool fast = Settings.Cur.LyricKaraoke && Settings.Cur.MusicLyrics && _m.Playing && _m.Lyrics.Count > 0 && !PowerSaver.On;   // hemat baterai: karaoke 4 kali/dtk
+        // 30 fps when karaoke lyrics are running, otherwise 4 fps
+        bool fast = Settings.Cur.LyricKaraoke && Settings.Cur.MusicLyrics && _m.Playing && _m.Lyrics.Count > 0 && !PowerSaver.On;   // battery saver: karaoke 4 times/sec
         var want = TimeSpan.FromMilliseconds(fast ? 33 : 250);
         if (_t.Interval != want) _t.Interval = want;
         SyncFlow(true);
@@ -337,7 +337,7 @@ public sealed class MusicView : TabView
         if (!has || _recapOn) return;
 
         _title.Text = string.IsNullOrEmpty(_m.Title) ? "—" : _m.Title;
-        // album yang sama dengan judul (single) tidak ditampilkan: sudah ada di baris judul
+        // album matching title (single) is hidden: already on the title line
         bool albumNew = !string.IsNullOrWhiteSpace(_m.Album) && !string.Equals(_m.Album.Trim(), _m.Title.Trim(), StringComparison.OrdinalIgnoreCase);
         _artist.Text = albumNew ? $"{_m.Artist} - {_m.Album}" : _m.Artist;
         if (!ReferenceEquals(_cover.Source, _m.Cover)) _cover.Source = _m.Cover;
@@ -384,10 +384,10 @@ public sealed class MusicView : TabView
 
     void PaintLyrics()
     {
-        // lirik dimatikan: kolom lirik hilang dan player memenuhi lebar
+        // lyrics turned off: lyrics column disappears and player fills width
         bool on = Settings.Cur.MusicLyrics && _m.HasSession;
         _player.ColumnDefinitions[0].Width = on ? new GridLength(300) : new GridLength(1, GridUnitType.Star);
-        _player.ColumnDefinitions[2].Width = on ? new GridLength(1, GridUnitType.Star) : new GridLength(0);   // kolom lirik tidak boleh memakan lebar
+        _player.ColumnDefinitions[2].Width = on ? new GridLength(1, GridUnitType.Star) : new GridLength(0);   // lyrics column must not take width
         _left.Width = on ? double.NaN : 400;
         _left.HorizontalAlignment = on ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
         _divider.Visibility = _zone.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
@@ -402,7 +402,7 @@ public sealed class MusicView : TabView
             {
                 "loading" => "Mencari lirik…", "retry" => "Server lirik sibuk, mencoba lagi…", "listen" => "Mendengarkan…",
                 "ad" => "Iklan sedang diputar", "norec" => "Lagu tidak dikenali", "notoken" => "Isi token pengenal lagu di Pengaturan > Musik", _ => "Lirik tidak tersedia"
-            }));   // L = daftar lirik di metode ini
+            }));   // L = lyrics list in this method
             _cur.Paint(-1);
             _lastIdx = -2;
             return;
@@ -412,12 +412,12 @@ public sealed class MusicView : TabView
         if (i != _lastIdx)
         {
             _lastIdx = i;
-            // "hanya romaji": baris Jepang diganti romajinya; baris/lagu non-Jepang (Romaji.Of = null) tetap tampil apa adanya
+            // "romaji only": Japanese lines replaced with romaji; non-Japanese lines/songs (Romaji.Of = null) stay as-is
             string T(int k) => k >= 0 && k < L.Count ? (string.IsNullOrWhiteSpace(L[k].Text) ? "♪" : RomajiOnly ? Translit.Of(L[k].Text) ?? L[k].Text : L[k].Text) : "";
             if (i < 0) { _prev.Set(""); _cur.Set("♪"); _next.Set(T(0)); SetRomaji(""); }
             else { _prev.Set(T(i - 1)); _cur.Set(T(i)); _next.Set(T(i + 1)); SetRomaji(L[i].Text); }
             _prev.Paint(-1); _next.Paint(-1);
-            // baris baru naik dari bawah
+            // new line rises from below
             var ease = new QuinticEase { EasingMode = EasingMode.EaseOut };
             _slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
             _cur.BeginAnimation(OpacityProperty, new DoubleAnimation(.35, 1, TimeSpan.FromMilliseconds(240)));
@@ -427,7 +427,7 @@ public sealed class MusicView : TabView
 
     void SetRomaji(string line)
     {
-        var r = Settings.Cur.LyricRomaji && !RomajiOnly ? Translit.Of(line) : null;   // mode hanya romaji: teks utama sudah romaji
+        var r = Settings.Cur.LyricRomaji && !RomajiOnly ? Translit.Of(line) : null;   // romaji-only mode: main text is already romaji
         _rom.Text = r ?? "";
         _rom.Visibility = string.IsNullOrEmpty(r) ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -436,9 +436,9 @@ public sealed class MusicView : TabView
 }
 
 /// <summary>
-/// Satu baris lirik berupa kumpulan kata (WrapPanel: kata yang tidak muat pindah ke baris bawah, tidak pernah terpotong).
-/// Paint(p) mengisi kata dari kiri ke kanan: kata yang sudah dinyanyikan putih, kata yang sedang dinyanyikan terisi sebagian
-/// (gradasi), sisanya redup. Waktu per kata dibagi sesuai panjang huruf.
+/// A single lyric line as a collection of words (WrapPanel: words that don't fit wrap to the next line, never mid-word).
+/// Paint(p) fills words left-to-right: sung words are white, the currently sung word is partially filled
+/// (gradient), the rest are dim. Time per word is divided by character length.
 /// </summary>
 sealed class LyricRow : WrapPanel
 {
@@ -455,7 +455,7 @@ sealed class LyricRow : WrapPanel
     {
         _size = size;
         Orientation = Orientation.Horizontal;
-        Background = Brushes.Transparent;   // agar seluruh baris bisa diklik, bukan hanya huruf
+        Background = Brushes.Transparent;   // so the whole line is clickable, not just the letters
         var t = new SolidColorBrush(Color.FromArgb((byte)(255 * dimAlpha), 255, 255, 255));
         t.Freeze();
         _todo = t;
@@ -488,7 +488,7 @@ sealed class LyricRow : WrapPanel
         }
     }
 
-    /// <param name="progress">&lt;0: semua redup; 0..1: bagian baris yang sudah dinyanyikan.</param>
+    /// <param name="progress">&lt;0: all dim; 0..1: fraction of the line already sung.</param>
     public void Paint(double progress)
     {
         for (int i = 0; i < _w.Count; i++)

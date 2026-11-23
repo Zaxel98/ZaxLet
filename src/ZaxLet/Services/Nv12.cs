@@ -2,7 +2,7 @@ using System;
 
 namespace ZaxLet;
 
-/// <summary>BGRA -> NV12 (BT.601, rentang terbatas), diletakkan di tengah kanvas W×H; sisanya hitam.</summary>
+/// <summary>BGRA -> NV12 (BT.601, limited range), centered on a W×H canvas; remainder is black.</summary>
 public static class Nv12
 {
     public static void Compose(byte[] bgra, int tw, int th, byte[] dst, int W, int H)

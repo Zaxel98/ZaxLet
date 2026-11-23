@@ -10,7 +10,7 @@ using Windows.Devices.Enumeration;
 
 namespace ZaxLet;
 
-/// <summary>Volume dan bisu perangkat suara bawaan (Core Audio, tanpa paket tambahan). flow: 0 keluaran (speaker), 1 masukan (mikrofon).</summary>
+/// <summary>Default audio device volume and mute (Core Audio, no extra packages). flow: 0 output (speaker), 1 input (microphone).</summary>
 public static class AudioEndpoint
 {
     public const int Render = 0, Capture = 1;
@@ -84,7 +84,7 @@ public static class AudioEndpoint
     }
 }
 
-/// <summary>Kecerahan layar internal lewat WMI (late-bound, tanpa System.Management). Null di PC tanpa layar internal.</summary>
+/// <summary>Internal screen brightness via WMI (late-bound, without System.Management). Null on PCs without an internal display.</summary>
 public static class Brightness
 {
     static dynamic _svc;
@@ -105,22 +105,22 @@ public static class Brightness
                 _fails = 0;
                 return Convert.ToInt32(o.CurrentBrightness);
             }
-            _fails++;   // tidak ada layar yang bisa diatur (PC desktop)
+            _fails++;   // no controllable display (desktop PC)
         }
         catch { _fails++; _svc = null; }
         return null;
     }
 }
 
-/// <summary>Perangkat Bluetooth yang tersambung/terputus (WinRT DeviceWatcher). Perangkat yang sudah tersambung saat mulai tidak dilaporkan.</summary>
+/// <summary>Connected/disconnected Bluetooth devices (WinRT DeviceWatcher). Devices already connected at startup are not reported.</summary>
 public sealed class BluetoothWatch
 {
     readonly Dictionary<string, string> _names = new();
     readonly HashSet<string> _checked = new();
-    readonly HashSet<string> _stale = new();   // id yang masih ada di daftar DeviceWatcher tetapi Windows bilang sudah putus
+    readonly HashSet<string> _stale = new();   // id still in DeviceWatcher list but Windows reports disconnected
     readonly List<DeviceWatcher> _w = new();
     System.Threading.Timer _poll;
-    public event Action<string, bool> Changed;   // nama, tersambung?
+    public event Action<string, bool> Changed;   // name, connected?
     public List<string> Connected() { lock (_names) return _names.Where(p => !_stale.Contains(p.Key)).Select(p => p.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList(); }
 
     public void Start()
@@ -134,7 +134,7 @@ public sealed class BluetoothWatch
         catch (Exception ex) { App.Log(ex); }
     }
 
-    /// <summary>Event Removed milik DeviceWatcher sering tidak datang untuk headset klasik: cocokkan daftar dengan status Windows tiap 4 detik, di kedua arah.</summary>
+    /// <summary>DeviceWatcher's Removed event often never fires for classic headsets: reconcile list against Windows status every 4 seconds, both ways.</summary>
     void Reconcile()
     {
         try
@@ -147,7 +147,7 @@ public sealed class BluetoothWatch
                 bool fire;
                 lock (_names)
                 {
-                    bool first = _checked.Add(id);   // entri basi sejak awal (headset sudah mati saat ZaxLet mulai): sembunyikan tanpa peringatan atau jeda musik
+                    bool first = _checked.Add(id);   // stale entry from startup (headset already off when ZaxLet started): hide without warning or pausing music
                     fire = on ? _stale.Remove(id) : _stale.Add(id);
                     if (first && !on) fire = false;
                 }
@@ -165,7 +165,7 @@ public sealed class BluetoothWatch
         w.Removed += (_, u) =>
         {
             string n; bool was;
-            lock (_names) { if (!_names.Remove(u.Id, out n)) return; was = !_stale.Remove(u.Id); }   // sudah dilaporkan putus oleh Reconcile: jangan dobel
+            lock (_names) { if (!_names.Remove(u.Id, out n)) return; was = !_stale.Remove(u.Id); }   // already reported disconnected by Reconcile: don't double-fire
             if (ready && was) Changed?.Invoke(n, false);
         };
         w.EnumerationCompleted += (_, _) => ready = true;
@@ -175,9 +175,9 @@ public sealed class BluetoothWatch
 }
 
 /// <summary>
-/// Baterai perangkat Bluetooth klasik yang melaporkannya ke Windows (headset lewat Hands-Free, sama seperti angka di Pengaturan Windows): properti
-/// perangkat {104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2 pada node "Hands-Free AG". Lewat Configuration Manager, tanpa admin dan tanpa proses baru.
-/// Perangkat yang tidak melaporkan baterai (mis. stik game) tidak muncul; itu keterbatasan Windows, bukan bug.
+/// Battery level of classic Bluetooth devices that report it to Windows (headsets via Hands-Free, matching Windows Settings): device property
+/// {104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2 on the "Hands-Free AG" node. Via Configuration Manager, without admin or spawning processes.
+/// Devices that do not report battery (e.g. game controllers) won't appear; that is a Windows limitation, not a bug.
 /// </summary>
 public static class BtBattery
 {
@@ -195,8 +195,8 @@ public static class BtBattery
     static DevKey IsConn = new() { Id = new Guid("83DA6326-97A6-4088-9453-A1923F573B29"), Pid = 15 };   // DEVPKEY_Device_IsConnected
 
     /// <summary>
-    /// Status sambung sebenarnya dari Windows untuk id WinRT ("Bluetooth#Bluetooth{adaptor}-{mac}"). null = tidak diketahui (node tidak ditemukan): jangan dianggap putus.
-    /// Daftar "Connected" milik DeviceWatcher bisa basi (headset sudah mati tapi tidak pernah dikirim Removed), jadi ini dipakai sebagai kebenaran.
+    /// Actual Windows connection status for a WinRT id ("Bluetooth#Bluetooth{adapter}-{mac}"). null = unknown (node not found): do not treat as disconnected.
+    /// DeviceWatcher's "Connected" list can go stale (headset powered off without Removed ever firing), so this is used as the source of truth.
     /// </summary>
     public static bool? IsConnected(string winrtId)
     {
@@ -213,7 +213,7 @@ public static class BtBattery
                 if (CM_Get_Device_ID_ListW(enumerator, buf, len, FilterEnumerator) != 0) continue;
                 foreach (var id in new string(buf).Split('\0', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (!id.StartsWith(enumerator + @"\DEV_" + mac, StringComparison.OrdinalIgnoreCase) || CM_Locate_DevNodeW(out var inst, id, 1) != 0) continue;   // 1 = PHANTOM: node perangkat yang sedang putus tidak "hadir"
+                    if (!id.StartsWith(enumerator + @"\DEV_" + mac, StringComparison.OrdinalIgnoreCase) || CM_Locate_DevNodeW(out var inst, id, 1) != 0) continue;   // 1 = PHANTOM: disconnected device node is not "present"
                     var b = new byte[1]; uint sz = 1;
                     if (CM_Get_DevNode_PropertyW(inst, ref IsConn, out _, b, ref sz, 0) == 0) return b[0] != 0;
                 }
@@ -226,7 +226,7 @@ public static class BtBattery
     /// <summary>"soundcore R50i NC Hands-Free AG" -> "soundcore R50i NC".</summary>
     public static string Clean(string n) => System.Text.RegularExpressions.Regex.Replace(n ?? "", @"\s+Hands-Free( AG)?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
 
-    /// <summary>Nama perangkat dan persen baterainya untuk semua perangkat yang melaporkan; kosong bila tidak ada.</summary>
+    /// <summary>Device names and battery percentages for all reporting devices; empty if none.</summary>
     public static Dictionary<string, int> Read()
     {
         var r = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -250,7 +250,7 @@ public static class BtBattery
     }
 }
 
-/// <summary>Aplikasi yang sedang memakai mikrofon/kamera, dari catatan izin Windows (CapabilityAccessManager): LastUsedTimeStart > LastUsedTimeStop berarti sedang dipakai.</summary>
+/// <summary>Apps currently using microphone/camera, from Windows permission logs (CapabilityAccessManager): LastUsedTimeStart > LastUsedTimeStop means currently in use.</summary>
 public static class PrivacyWatch
 {
     const string Root = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\";
@@ -278,7 +278,7 @@ public static class PrivacyWatch
         if (k?.GetValue("LastUsedTimeStart") is not long start || start <= 0) return false;
         long stop = k.GetValue("LastUsedTimeStop") is long x ? x : 0;
         if (start <= stop) return false;
-        return DateTime.UtcNow - DateTime.FromFileTimeUtc(start) < TimeSpan.FromHours(12);   // catatan yang tak pernah ditutup (aplikasi mati mendadak) dianggap basi
+        return DateTime.UtcNow - DateTime.FromFileTimeUtc(start) < TimeSpan.FromHours(12);   // unclosed records (app crashed) are considered stale
     }
 
     /// <summary>"C:#Program Files#Google#Chrome#Application#chrome.exe" -> "chrome"; "Microsoft.WindowsCamera_8wekyb3d8bbwe" -> "Microsoft.WindowsCamera".</summary>
@@ -291,7 +291,7 @@ public static class PrivacyWatch
     }
 }
 
-/// <summary>Nama dan jenis jaringan aktif (0 Publik, 1 Pribadi, 2 Domain), dan apakah aturan firewall ZaxLet HP mencakup jaringan Publik.</summary>
+/// <summary>Active network name and type (0 Public, 1 Private, 2 Domain), and whether the ZaxLet HP firewall rule covers Public networks.</summary>
 public static class NetInfo
 {
     public sealed record Net(string Name, int Category)
@@ -303,7 +303,7 @@ public static class NetInfo
     {
         try
         {
-            // NetworkListManager (COM, late-bound): boleh dibaca pengguna biasa, tidak seperti registri NetworkList di HKLM
+            // NetworkListManager (COM, late-bound): readable by standard users, unlike NetworkList registry under HKLM
             dynamic nlm = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("DCB00C01-570F-4A9B-8D69-199FDBA5723B")));
             foreach (dynamic c in (System.Collections.IEnumerable)nlm.GetNetworkConnections())
             {
@@ -316,7 +316,7 @@ public static class NetInfo
         return null;
     }
 
-    /// <summary>Aturan "ZaxLet HP" ada, aktif, dan berlaku untuk profil Publik (tanpa batasan Profile= berarti semua profil).</summary>
+    /// <summary>The "ZaxLet HP" rule exists, is active, and applies to the Public profile (no Profile= restriction means all profiles).</summary>
     public static bool FirewallOpenToPublic()
     {
         try

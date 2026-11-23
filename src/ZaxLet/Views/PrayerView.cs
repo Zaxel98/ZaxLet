@@ -27,7 +27,7 @@ public sealed class PrayerView : TabView
 
     public PrayerView()
     {
-        _skyBox = new Border { CornerRadius = new CornerRadius(14), ClipToBounds = true, Child = _sky, Height = 92 };   // kurva kecil agar tab padat
+        _skyBox = new Border { CornerRadius = new CornerRadius(14), ClipToBounds = true, Child = _sky, Height = 92 };   // small arc so the tab stays compact
         var root = UI.Rows(-1, 0);
         var skyGrid = new Grid();
         skyGrid.Children.Add(_skyBox);
@@ -99,7 +99,7 @@ public sealed class PrayerView : TabView
     }
 
 
-    // Siang: matahari menempuh terbit -> Maghrib. Malam: bulan menempuh Maghrib -> terbit berikutnya (juga setelah tengah malam).
+    // Day: sun travels sunrise -> Maghrib. Night: moon travels Maghrib -> next sunrise (including after midnight).
     void DrawSky()
     {
         if (_times == null || _sky.ActualWidth < 10) return;
@@ -127,7 +127,7 @@ public sealed class PrayerView : TabView
         }
         _skyBox.Background = bg;
         _sky.Children.Clear();
-        if (!day)   // bintang tetap (posisi pseudo-acak yang sama tiap gambar)
+        if (!day)   // fixed stars (same pseudo-random positions every redraw)
             for (int i = 0; i < 16; i++)
             {
                 double fx = (i * 0.6180339 + .13) % 1, fy = (i * 0.3819660 + .21) % 1;
@@ -166,7 +166,7 @@ public sealed class PrayerView : TabView
         }
         else
         {
-            // bulan sabit: lingkaran terang dikurangi lingkaran yang digeser
+            // crescent moon: bright circle minus shifted circle
             var crescent = new CombinedGeometry(GeometryCombineMode.Exclude, new EllipseGeometry(new Point(0, 0), 9, 9), new EllipseGeometry(new Point(4.5, -3), 8, 8));
             body = new System.Windows.Shapes.Path { Data = crescent, Fill = new SolidColorBrush(Color.FromRgb(0xE6, 0xEC, 0xFF)), RenderTransform = new TranslateTransform(sp.X, sp.Y) };
         }

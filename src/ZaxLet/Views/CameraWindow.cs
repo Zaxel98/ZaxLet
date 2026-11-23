@@ -11,8 +11,8 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Pratinjau kamera HP di PC. Bingkai datang lewat WebSocket (ShareServer). Untuk dipakai di Zoom/Discord, nyalakan kamera virtual
-/// (Pengaturan > Perangkat HP) atau arahkan OBS ke jendela ini / tautan MJPEG.
+/// Phone camera preview on PC. Frames arrive via WebSocket (ShareServer). To use in Zoom/Discord, enable the virtual camera
+/// (Settings > Phone) or point OBS to this window / MJPEG link.
 /// </summary>
 public sealed class CameraWindow : Window
 {
@@ -34,10 +34,10 @@ public sealed class CameraWindow : Window
         _i.Activate();
     }
 
-    /// <summary>Minta aplikasi HP yang tersambung menyalakan kamera sesuai pengaturan (jumlah penerima ditampilkan di status).</summary>
+    /// <summary>Ask the connected phone app to start the camera according to settings (receiver count shown in status).</summary>
     public static void CamOn()
     {
-        if (VirtualCam.NeedsSetup) { VirtualCam.EnsureSetup(CamOn); return; }   // izin sistem diminta sekali, saat kamera pertama dinyalakan
+        if (VirtualCam.NeedsSetup) { VirtualCam.EnsureSetup(CamOn); return; }   // system permission requested once, when the camera is first turned on
         var s = Settings.Cur;
         int n = ShareServer.I.Command($"cam on {s.CamRes} {s.CamFps} {(s.CamFront ? "front" : "back")}");
         if (n == 0) IslandWindow.Instance?.Alert(L.T("Tidak ada aplikasi HP yang tersambung"), 5);
@@ -118,7 +118,7 @@ public sealed class CameraWindow : Window
             frame.Freeze();
             _img.Source = frame;
         }
-        catch { /* bingkai rusak: lewati */ }
+        catch { /* corrupt frame: skip */ }
     }
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);

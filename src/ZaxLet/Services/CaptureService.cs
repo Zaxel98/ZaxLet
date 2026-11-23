@@ -14,7 +14,7 @@ using SDI = System.Drawing.Imaging;
 
 namespace ZaxLet;
 
-/// <summary>Tangkap layar via GDI (layar penuh / area / jendela terakhir) + rekam layar lewat ffmpeg bila terpasang.</summary>
+/// <summary>Screen capture via GDI (fullscreen / area / last window) + screen recording via ffmpeg if installed.</summary>
 public static class CaptureService
 {
     const int FfmpegListTimeoutMs = 3000, FfmpegStartCheckMs = 150, FfmpegStopTimeoutMs = 4000;
@@ -29,7 +29,7 @@ public static class CaptureService
         if (special == "p" && !string.IsNullOrWhiteSpace(Settings.Cur.CapDir))
         {
             try { Directory.CreateDirectory(Settings.Cur.CapDir); return Settings.Cur.CapDir; }
-            catch { /* folder tidak valid: pakai bawaan */ }
+            catch { /* invalid folder: use default */ }
         }
         var d = Path.Combine(Environment.GetFolderPath(special == "v" ? Environment.SpecialFolder.MyVideos : Environment.SpecialFolder.MyPictures), sub);
         Directory.CreateDirectory(d);
@@ -315,7 +315,7 @@ public static class CaptureService
     }
 }
 
-/// <summary>Overlay layar penuh: seret untuk memilih area, Esc membatalkan.</summary>
+/// <summary>Fullscreen overlay: drag to select area, Esc to cancel.</summary>
 sealed class AreaPicker : System.Windows.Window
 {
     public System.Drawing.Rectangle? Result;

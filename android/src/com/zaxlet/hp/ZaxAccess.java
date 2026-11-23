@@ -13,7 +13,7 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import org.json.JSONObject;
 
-/** Layanan aksesibilitas untuk meneruskan ketukan, geseran, tombol navigasi, dan teks dari laptop ke layar HP. */
+/** Accessibility service to forward taps, swipes, navigation buttons, and text from the laptop to the phone screen. */
 public class ZaxAccess extends AccessibilityService {
     static volatile ZaxAccess instance;
 

@@ -12,9 +12,9 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Kontrol Discord lewat RPC lokal (named pipe discord-ipc-N): status voice channel, mute, deafen, dan keluar dari VC.
-/// Butuh aplikasi di discord.com/developers (Client ID + Secret, redirect http://localhost); izin diberikan sekali lewat
-/// dialog "Authorize" di Discord. Token disimpan di %LOCALAPPDATA%\ZaxLet\discord-token.json.
+/// Controls Discord via local RPC (named pipe discord-ipc-N): voice channel status, mute, deafen, and disconnect from VC.
+/// Requires an app at discord.com/developers (Client ID + Secret, redirect http://localhost); permission is granted once via
+/// Discord's "Authorize" dialog. Token is stored in %LOCALAPPDATA%\ZaxLet\discord-token.json.
 /// </summary>
 public sealed class DiscordRpc
 {
@@ -42,7 +42,7 @@ public sealed class DiscordRpc
         _ = Task.Run(Loop);
     }
 
-    /// <summary>Hapus token (otorisasi ulang di sambungan berikutnya).</summary>
+    /// <summary>Delete token (re-authorize on next connection).</summary>
     public void ResetToken() { try { File.Delete(Path.Combine(Settings.Dir, "discord-token.json")); } catch { } }
 
     void Notify() => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke());
@@ -57,7 +57,7 @@ public sealed class DiscordRpc
                 else { await Session(); }
             }
             catch (Exception ex) { Status = ex is TimeoutException ? L.T("Discord belum terbuka") : ex.Message; }
-            Connected = InVoice = false; Channel = ""; _chId = ""; lock (_names) { _speak.Clear(); } Speaking = ""; Notify();   // langganan ikut putus bersama pipa
+            Connected = InVoice = false; Channel = ""; _chId = ""; lock (_names) { _speak.Clear(); } Speaking = ""; Notify();   // subscriptions drop along with the pipe
             await Task.Delay(5000);
         }
     }
@@ -85,19 +85,19 @@ public sealed class DiscordRpc
             foreach (var evt in new[] { "VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE" }) await Command("SUBSCRIBE", new { }, evt);
             Connected = true; Status = L.T("Tersambung ke Discord");
             await Refresh();
-            await reader;   // selesai saat Discord menutup pipa
+            await reader;   // finishes when Discord closes the pipe
         }
         finally
         {
             var p = Interlocked.Exchange(ref _pipe, null);
-            p?.Dispose();   // tutup pipa dulu agar ReadLoop berhenti sebelum sesi berikutnya
+            p?.Dispose();   // close pipe first so ReadLoop stops before the next session
             if (reader != null) try { await reader; } catch { }
         }
     }
 
     static async Task Wait(Task t, int ms) { if (await Task.WhenAny(t, Task.Delay(ms)) != t) throw new TimeoutException(); await t; }
 
-    // ---------- OAuth: kode dari dialog Authorize di Discord -> token ----------
+    // ---------- OAuth: code from Discord Authorize dialog -> token ----------
     async Task<Token> Obtain(Token old)
     {
         var s = Settings.Cur;
@@ -115,7 +115,7 @@ public sealed class DiscordRpc
         var body = await res.Content.ReadAsStringAsync();
         if (!res.IsSuccessStatusCode)
         {
-            if (old != null) { ResetToken(); return await Obtain(null); }   // refresh ditolak: otorisasi ulang
+            if (old != null) { ResetToken(); return await Obtain(null); }   // refresh rejected: re-authorize
             throw new Exception("Token ditolak Discord (cek Secret dan redirect http://localhost)");
         }
         using var doc = JsonDocument.Parse(body);
@@ -128,11 +128,11 @@ public sealed class DiscordRpc
     static Token LoadToken()
     {
         var t = Store.Load<Token>("discord-token.json");
-        if (t != null) Store.Save("discord-token.json", t);   // migrasi: token polos lama ditulis ulang terenkripsi
+        if (t != null) Store.Save("discord-token.json", t);   // migration: rewrite old plain token as encrypted
         return t;
     }
 
-    // ---------- protokol pipa: [opcode int32][panjang int32][JSON] ----------
+    // ---------- pipe protocol: [opcode int32][length int32][JSON] ----------
     async Task Write(int op, string json)
     {
         var b = Encoding.UTF8.GetBytes(json);
@@ -168,7 +168,7 @@ public sealed class DiscordRpc
                 Handle(doc.RootElement.Clone());
             }
         }
-        catch { /* pipa tertutup */ }
+        catch { /* pipe closed */ }
         finally { lock (_pending) { foreach (var p in _pending.Values) p.TrySetCanceled(); _pending.Clear(); } }
     }
 
@@ -204,7 +204,7 @@ public sealed class DiscordRpc
             lock (_names)
             {
                 if (evt == "SPEAKING_START") _speak.Add(uid); else _speak.Remove(uid);
-                if (!_names.ContainsKey(uid) && DateTime.UtcNow - _namesAt > TimeSpan.FromSeconds(5)) { _namesAt = DateTime.UtcNow; needRefresh = true; }   // orang baru masuk: ambil ulang daftar nama
+                if (!_names.ContainsKey(uid) && DateTime.UtcNow - _namesAt > TimeSpan.FromSeconds(5)) { _namesAt = DateTime.UtcNow; needRefresh = true; }   // someone new joined: re-fetch name list
             }
             if (needRefresh) _ = Refresh();
             UpdateSpeaking();
@@ -249,10 +249,10 @@ public sealed class DiscordRpc
         Notify();
     }
 
-    // ---------- siapa yang sedang bicara (event SPEAKING_START/STOP di bawah scope "rpc") ----------
+    // ---------- who is currently speaking (SPEAKING_START/STOP events under "rpc" scope) ----------
     string _chId = "";
     DateTime _namesAt;
-    readonly Dictionary<string, string> _names = new();   // id pengguna -> nama di channel ini
+    readonly Dictionary<string, string> _names = new();   // user id -> name in this channel
     readonly HashSet<string> _speak = new();
     public string Speaking = "";
 
@@ -286,10 +286,10 @@ public sealed class DiscordRpc
         if (string.IsNullOrEmpty(channel)) return;
         foreach (var evt in new[] { "SPEAKING_START", "SPEAKING_STOP" })
             try { await Command(on ? "SUBSCRIBE" : "UNSUBSCRIBE", new { channel_id = channel }, evt); }
-            catch (Exception ex) { App.Log(ex); }   // mis. izin tidak cukup: sisanya tetap jalan
+            catch (Exception ex) { App.Log(ex); }   // e.g., insufficient permissions: the rest keeps working
     }
 
-    // ---------- aksi dari UI ----------
+    // ---------- UI actions ----------
     public async Task SetMute(bool on) { try { await Command("SET_VOICE_SETTINGS", new { mute = on }); } catch (Exception ex) { Status = ex.Message; Notify(); } }
     public async Task SetDeaf(bool on) { try { await Command("SET_VOICE_SETTINGS", new { deaf = on }); } catch (Exception ex) { Status = ex.Message; Notify(); } }
     public async Task Leave() { try { await Command("SELECT_VOICE_CHANNEL", new { channel_id = (string)null, force = true }); await Refresh(); } catch (Exception ex) { Status = ex.Message; Notify(); } }

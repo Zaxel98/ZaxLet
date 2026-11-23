@@ -5,18 +5,18 @@ using System.Runtime.InteropServices;
 namespace ZaxLet;
 
 /// <summary>
-/// Audio HP (PCM 16-bit stereo 48 kHz, frame sampai 6144 byte / kelipatan 4 dari /aud/ws) diputar lewat waveOut sebagai aliran tambahan di output bawaan.
-/// Windows mencampurnya dengan Spotify dkk, jadi pemutar lain tidak ter-pause.
-/// Memakai bantalan jitter adaptif berbasis byte (192 byte/ms): mulai dengan prebuffer ~120 ms, naik bertahap hingga ~400 ms saat underrun,
-/// dan turun perlahan setelah stabil 60 detik tanpa underrun. Saat antrean melewati batas atas (prebuffer + 200 ms),
-/// potongan dilewati secara berkala agar mengejar waktu nyata tanpa membuang semua potongan baru atau meninggalkan tundaan permanen.
+/// Phone audio (PCM 16-bit stereo 48 kHz, frames up to 6144 bytes / multiple of 4 from /aud/ws) played via waveOut as an extra stream on the default output.
+/// Windows mixes it with Spotify etc., so other players are not paused.
+/// Uses a byte-based adaptive jitter buffer (192 bytes/ms): starts with ~120 ms prebuffer, steps up to ~400 ms on underrun,
+/// and steps down slowly after 60 seconds without underruns. When the queue exceeds the upper bound (prebuffer + 200 ms),
+/// chunks are periodically skipped to catch up to real time without flushing all new chunks or leaving permanent delay.
 /// </summary>
 public static class PhoneAudio
 {
     const int Rate = 48000, BytesPerMs = Rate * 4 / 1000, Slots = 96, SlotBytes = 8192, Done = 1;
     const int MinPrebufferMs = 120, MaxPrebufferMs = 400, PrebufferStepUpMs = 40, PrebufferStepDownMs = 20;
     const int HighWatermarkGapMs = 250, SoftGapMs = 100, StablePeriodMs = 60_000, LogIntervalMs = 5000;
-    const int PendCap = 131072; // 128 KB (> 680 ms, kelipatan 4) untuk menampung prebuffer sebelum waveOutRestart
+    const int PendCap = 131072; // 128 KB (> 680 ms, multiple of 4) to hold prebuffer before waveOutRestart
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)] struct Fmt { public short Tag, Ch; public int Rate, Avg; public short Align, Bits, Cb; }
     [StructLayout(LayoutKind.Sequential)] struct Hdr { public IntPtr Data; public int Len, Rec; public IntPtr User; public int Flags, Loops; public IntPtr Next, Res; }
@@ -123,7 +123,7 @@ public static class PhoneAudio
         }
     }
 
-    /// <summary>Catatan diagnostik audio HP di samping ZaxLet.exe (audio-diag.log, dipangkas di 300 KB); tanpa izin tulis diam saja.</summary>
+    /// <summary>Phone audio diagnostics log next to ZaxLet.exe (audio-diag.log, trimmed at 300 KB); silently ignored without write permission.</summary>
     public static void Diag(string s)
     {
         try
@@ -137,7 +137,7 @@ public static class PhoneAudio
 
     static void ResyncOnStale(int queuedBytes)
     {
-        waveOutReset(_h);   // semua potongan ditandai selesai
+        waveOutReset(_h);   // all chunks marked done
         waveOutPause(_h);
         ReclaimDone();
         _droppedBytes += queuedBytes + _pendCount;
@@ -194,14 +194,14 @@ public static class PhoneAudio
             }
             else if (queued > (_prebufferMs + HighWatermarkGapMs) * BytesPerMs)
             {
-                // Tumpukan basi (jaringan tersendat lalu dilepas sekaligus): buang semuanya dan lanjut dari audio terbaru. Memutar tumpukan lebih cepat atau
-                // melewati potongan selang-seling terdengar seperti speed-up, lebih buruk daripada celah senyap sesaat.
+                // Stale backlog (network stalled then released all at once): drop everything and resume from latest audio. Playing the backlog faster or
+                // skipping alternating chunks sounds like a speed-up, which is worse than a brief silent gap.
                 ResyncOnStale(queued);
                 AppendPending(pcm);
             }
             else
             {
-                // tundaan berlebih yang menetap (sisa burst): buang satu potongan per detik sampai normal, tidak terdengar sebagai speed-up
+                // persistent excess delay (residual burst): drop one chunk per second until normal, avoids sounding like speed-up
                 if (queued > (_prebufferMs + SoftGapMs) * BytesPerMs) { if (_overSince == 0) _overSince = now; } else _overSince = 0;
                 if (_overSince != 0 && now - _overSince >= 3000 && now - _lastTrim >= 1000) { _lastTrim = now; _droppedBytes += pcm.Length; }
                 else WriteSlot(pcm, 0, pcm.Length);
@@ -239,13 +239,13 @@ public static class PhoneAudio
         return true;
     }
 
-    /// <summary>HP berhenti mengirim (soket ditutup): buang antrean dan lepas perangkat.</summary>
+    /// <summary>Phone stopped sending (socket closed): drain queue and release device.</summary>
     public static void Stop()
     {
         lock (Lk)
         {
             if (_h == IntPtr.Zero) return;
-            waveOutReset(_h);   // menandai semua potongan selesai, jadi bisa di-unprepare
+            waveOutReset(_h);   // marks all chunks done so they can be unprepared
             for (int i = 0; i < Slots; i++)
             {
                 waveOutUnprepareHeader(_h, H[i], HdrSize);

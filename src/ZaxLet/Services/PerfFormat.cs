@@ -5,10 +5,10 @@ using System.Linq;
 
 namespace ZaxLet;
 
-/// <summary>Bagian murni overlay performa (tanpa WPF/sensor): daftar metrik yang bisa dipilih, pembaca keluaran nvidia-smi, dan penyusun baris. Dites di tests/.</summary>
+/// <summary>Pure part of the performance overlay (no WPF/sensors): selectable metrics list, nvidia-smi output parser, and line builder. Tested in tests/.</summary>
 public static class PerfFormat
 {
-    /// <summary>Kunci, nama di Pengaturan, kelompok baris di overlay. Urutan = urutan tampil.</summary>
+    /// <summary>Key, name in Settings, row group in overlay. Order = display order.</summary>
     public static readonly (string Key, string Label, string Group)[] Metrics =
     {
         ("fps", "FPS (game di depan)", "FPS"),
@@ -35,11 +35,11 @@ public static class PerfFormat
     public sealed record Smi(double? Util, double? Gr, double? Mem, double? Temp, double? MemUsedMb, double? MemTotalMb, double? Power,
         double? MemUtil = null, string PState = null, double? Fan = null, string Throttle = null);
 
-    /// <summary>Kolom yang diminta ke nvidia-smi, urutannya = urutan <see cref="ParseSmi"/>.</summary>
+    /// <summary>Columns requested from nvidia-smi; order matches <see cref="ParseSmi"/>.</summary>
     public const string SmiQuery = "utilization.gpu,clocks.gr,clocks.mem,temperature.gpu,memory.used,memory.total,power.draw,utilization.memory,pstate,fan.speed,clocks_throttle_reasons.active";
 
-    /// <summary>Satu baris keluaran nvidia-smi (<see cref="SmiQuery"/>, csv,noheader,nounits). Kolom "[N/A]" menjadi null (GPU laptop sering tanpa data daya/kipas).
-    /// Tujuh kolom pertama wajib; sisanya opsional.</summary>
+    /// <summary>One line of nvidia-smi output (<see cref="SmiQuery"/>, csv,noheader,nounits). "[N/A]" columns become null (laptop GPUs often lack power/fan data).
+    /// First seven columns are required; the rest are optional.</summary>
     public static Smi ParseSmi(string line)
     {
         var f = (line ?? "").Split(',');
@@ -49,7 +49,7 @@ public static class PerfFormat
         return new Smi(N(f[0]), N(f[1]), N(f[2]), N(f[3]), N(f[4]), N(f[5]), N(f[6]), f.Length > 7 ? N(f[7]) : null, S(8), f.Length > 9 ? N(f[9]) : null, S(10));
     }
 
-    /// <summary>Alasan pembatasan clock GPU dari bitmask nvidia-smi: "suhu" (0x20/0x40), "daya" (0x4/0x80), "HW" (0x8), selain itu "tidak" (idle/app clocks bukan pembatasan).</summary>
+    /// <summary>GPU clock throttle reason from nvidia-smi bitmask: "suhu" (0x20/0x40), "daya" (0x4/0x80), "HW" (0x8), otherwise "tidak" (idle/app clocks are not throttling).</summary>
     public static string ThrottleText(string hex)
     {
         if (hex == null) return null;
@@ -64,8 +64,8 @@ public static class PerfFormat
     }
 
     /// <summary>
-    /// Tegangan dari data.json LibreHardwareMonitor (Remote Web Server, port 8085; LHM perlu dijalankan sebagai admin supaya sensor tegangan terbaca).
-    /// Simpul daun bernilai "1,052 V" / "1.052 V"; perangkat keras dikenali dari nama simpul induk. CPU: "CPU Core"/"Vcore" dulu, lalu tegangan CPU pertama; GPU: "GPU Core" dulu, lalu tegangan GPU pertama.
+    /// Voltages from LibreHardwareMonitor data.json (Remote Web Server, port 8085; LHM must be run as admin for voltage sensors to be read).
+    /// Leaf nodes have values like "1,052 V" / "1.052 V"; hardware is identified from parent node name. CPU: "CPU Core"/"Vcore" first, then first CPU voltage; GPU: "GPU Core" first, then first GPU voltage.
     /// </summary>
     public static (double? Cpu, double? Gpu) ParseLhmVolts(string json)
     {
@@ -102,11 +102,11 @@ public static class PerfFormat
     public static int? PingRound(double? ms) => ms is { } v ? (int)Math.Round(v) : null;
     public static string PingMs(double? ms) => ms is { } v ? $"{Math.Round(v):0} ms" : "—";
 
-    /// <summary>Tingkat warna latensi: -1 = belum ada/mati, 0 = normal (&lt;80 ms), 1 = kuning (80-200 ms), 2 = merah (&gt;200 ms atau hilang).</summary>
+    /// <summary>Latency color level: -1 = none/off, 0 = normal (&lt;80 ms), 1 = yellow (80-200 ms), 2 = red (&gt;200 ms or lost).</summary>
     public static int PingTier(double? ms, bool hasSample) =>
         ms is not { } v ? (hasSample ? 2 : -1) : v < 80 ? 0 : v <= 200 ? 1 : 2;
 
-    /// <summary>Ring buffer kecil (~20 sampel) untuk rata-rata, jitter sederhana, dan persentase paket hilang.</summary>
+    /// <summary>Small ring buffer (~20 samples) for average, simple jitter, and packet loss percentage.</summary>
     public sealed class PingRing
     {
         public const int Capacity = 20;
@@ -152,7 +152,7 @@ public static class PerfFormat
         }
     }
 
-    /// <summary>Baris overlay: tiap kelompok (CPU, RAM, GPU, VRAM) berisi nilai metrik yang dipilih dan tersedia, dipisah " · ". Kelompok kosong dilewati.</summary>
+    /// <summary>Overlay row: each group (CPU, RAM, GPU, VRAM) contains the selected and available metric values, separated by " · ". Empty groups are skipped.</summary>
     public static List<(string Group, string Text)> Compose(HashSet<string> items, IReadOnlyDictionary<string, string> v)
     {
         var r = new List<(string, string)>();

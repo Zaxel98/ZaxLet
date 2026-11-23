@@ -7,15 +7,15 @@ using System.Text;
 namespace ZaxLet;
 
 /// <summary>
-/// Tabel pinyin Mandarin untuk Paket tulisan Latin (diunduh pengguna, bukan bagian dari installer). Sumbernya data teks mozillazg/pinyin-data (MIT)
-/// pada tag tetap dengan SHA-256 dipaku; diubah di perangkat menjadi arsip gzip kecil berisi bacaan pertama tiap aksara ("A" + "pinyin" per baris).
+/// Mandarin pinyin table for the Latin script Pack (user-downloaded, not part of the installer). Sourced from mozillazg/pinyin-data (MIT)
+/// at a pinned tag with pinned SHA-256; converted on device into a small gzip archive with the first reading per character ("C" + "pinyin" per line).
 /// </summary>
 public static class PinyinPack
 {
     public const string Url = "https://raw.githubusercontent.com/mozillazg/pinyin-data/v0.16.0/pinyin.txt";
     public const string Sha256 = "2342a6f98c85dbc3c8d26aef31744876a36326c6466e51e9a0f16898c36c2011";
 
-    /// <summary>Baris "U+4E2D: zhōng,zhòng  # 中" -> "中zhōng". Hanya blok CJK dasar (3400-9FFF) dan 〇.</summary>
+    /// <summary>Line "U+4E2D: zhōng,zhòng  # 中" -> "中zhōng". Basic CJK block (3400-9FFF) and 〇 only.</summary>
     public static byte[] Convert(string txt)
     {
         var sb = new StringBuilder();

@@ -5,21 +5,21 @@ using System.Text;
 namespace ZaxLet;
 
 /// <summary>
-/// Romaji (Hepburn) untuk lirik Jepang, seperti Metrolist. Hiragana dan katakana diubah lokal tanpa kamus.
-/// Kanji butuh kamus bacaan (addon RomajiPack, diunduh pengguna): tanpanya baris berkanji tidak diberi romaji (null).
+/// Romaji (Hepburn) for Japanese lyrics, like Metrolist. Hiragana and katakana are converted locally without a dictionary.
+/// Kanji requires a reading dictionary (RomajiPack addon, downloaded by the user): without it, lines with kanji get no romaji (null).
 /// </summary>
 public static class Romaji
 {
     static readonly Dictionary<string, string> Cache = new();
 
-#if !NOKANJI   // proyek uji mendefinisikan NOKANJI: tanpa Kawazu dan App.Log
-    /// <summary>Dipanggil (thread latar) saat hasil romaji baru siap di cache; UI cukup menggambar ulang.</summary>
+#if !NOKANJI   // test project defines NOKANJI: without Kawazu and App.Log
+    /// <summary>Called (background thread) when new romaji results are ready in cache; UI just needs to redraw.</summary>
     public static event Action Ready;
     static int _busy;
 
     /// <summary>
-    /// Romaji baris berkanji lewat Kawazu (MeCab + IPAdic). Kamus ±50 MB hanya dimuat selama proses ini lalu dilepas supaya RAM tidak
-    /// tertahan; hasil masuk cache dan <see cref="Of"/> mengambilnya tanpa memblokir UI. Dipanggil saat lirik sebuah lagu selesai dimuat.
+    /// Romaji for kanji lines via Kawazu (MeCab + IPAdic). The ~50 MB dictionary is only loaded during this process and then released so RAM is not
+    /// held; results go into the cache and <see cref="Of"/> reads them without blocking the UI. Called when a song's lyrics finish loading.
     /// </summary>
     public static void Prefetch(IEnumerable<string> lines)
     {
@@ -32,7 +32,7 @@ public static class Romaji
         {
             try
             {
-                // RomajiPack membaca kanji lewat MeCab dalam konteks yang bisa dibuang; hasilnya (katakana/kana) dijadikan romaji oleh Kana()
+                // RomajiPack reads kanji via MeCab in a collectible context; the result (katakana/kana) is converted to romaji by Kana()
                 foreach (var (line, reading) in RomajiPack.Read(todo))
                 {
                     var r = reading == null ? "" : Kana(reading);
@@ -43,7 +43,7 @@ public static class Romaji
             finally
             {
                 System.Threading.Interlocked.Exchange(ref _busy, 0);
-                GC.Collect(2, GCCollectionMode.Forced, true, true);   // lepas kamus
+                GC.Collect(2, GCCollectionMode.Forced, true, true);   // release dictionary
                 Ready?.Invoke();
             }
         });
@@ -64,7 +64,7 @@ public static class Romaji
         "だ,da,ぢ,ji,づ,zu,で,de,ど,do,ば,ba,び,bi,ぶ,bu,べ,be,ぼ,bo,ぱ,pa,ぴ,pi,ぷ,pu,ぺ,pe,ぽ,po,ゔ,vu," +
         "ぁ,a,ぃ,i,ぅ,u,ぇ,e,ぉ,o,ゎ,wa";
 
-    // gabungan (kiri) + ya/yu/yo kecil atau vokal kecil
+    // digraphs (left) + small ya/yu/yo or small vowels
     const string Combo =
         "きゃ,kya,きゅ,kyu,きょ,kyo,しゃ,sha,しゅ,shu,しょ,sho,ちゃ,cha,ちゅ,chu,ちょ,cho,にゃ,nya,にゅ,nyu,にょ,nyo," +
         "ひゃ,hya,ひゅ,hyu,ひょ,hyo,みゃ,mya,みゅ,myu,みょ,myo,りゃ,rya,りゅ,ryu,りょ,ryo,ぎゃ,gya,ぎゅ,gyu,ぎょ,gyo," +
@@ -83,7 +83,7 @@ public static class Romaji
             for (int i = 0; i + 1 < p.Length; i += 2)
             {
                 m[p[i]] = p[i + 1];
-                m[ToKatakana(p[i])] = p[i + 1];   // katakana memakai tabel yang sama
+                m[ToKatakana(p[i])] = p[i + 1];   // katakana uses the same table
             }
         }
         return m;
@@ -99,7 +99,7 @@ public static class Romaji
     static bool IsKana(char c) => c is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヺ' or 'ー' or '・';
     static bool IsKanji(char c) => c is >= '一' and <= '鿿' or '々' or '〆';
 
-    /// <summary>True bila teks memuat huruf Jepang (kana atau kanji).</summary>
+    /// <summary>True if text contains Japanese characters (kana or kanji).</summary>
     public static bool IsJapanese(string s)
     {
         if (string.IsNullOrEmpty(s)) return false;
@@ -107,11 +107,11 @@ public static class Romaji
         return false;
     }
 
-    static readonly Dictionary<string, string> Local = new();   // romaji kana-saja tanpa addon (cadangan sampai hasil MeCab siap)
+    static readonly Dictionary<string, string> Local = new();   // kana-only romaji without addon (fallback until MeCab results are ready)
 
     /// <summary>
-    /// Romaji satu baris; null bila bukan Jepang atau memuat kanji yang belum dibaca addon. Hasil MeCab (Cache) didahulukan karena
-    /// mengenali partikel (は=wa, へ=e) dan pemisah kata; baris berkana murni tanpa addon memakai konversi lokal.
+    /// Romaji for one line; null if not Japanese or contains kanji not yet read by the addon. MeCab results (Cache) take precedence because
+    /// they recognize particles (は=wa, へ=e) and word boundaries; pure-kana lines without the addon use local conversion.
     /// </summary>
     public static string Of(string text)
     {
@@ -119,14 +119,14 @@ public static class Romaji
         lock (Cache)
         {
             if (Cache.TryGetValue(text, out var hit)) return string.IsNullOrEmpty(hit) ? null : hit;
-            if (HasKanji(text)) return null;   // menunggu Prefetch
+            if (HasKanji(text)) return null;   // waiting for Prefetch
             if (Local.TryGetValue(text, out var l)) return l;
             if (Local.Count > 400) Local.Clear();
             return Local[text] = Kana(text, true);
         }
     }
 
-    /// <summary>Hiragana/katakana -> romaji; karakter lain (latin, angka, tanda baca) dibiarkan.</summary>
+    /// <summary>Hiragana/katakana -> romaji; other characters (Latin, digits, punctuation) are left as-is.</summary>
     public static string Kana(string s, bool particles = false)
     {
         var sb = new StringBuilder();
@@ -144,14 +144,14 @@ public static class Romaji
             if (r == null) { geminate = false; sb.Append(c); continue; }
             if (geminate)
             {
-                // っ: gandakan konsonan awal (chi -> tchi)
+                // っ: double the following initial consonant (chi -> tchi)
                 if (r.StartsWith("ch")) sb.Append('t'); else if (r.Length > 0 && !"aiueo".Contains(r[0])) sb.Append(r[0]);
                 geminate = false;
             }
             if (r == "n" && i + 1 < s.Length && Map.TryGetValue(s.Substring(i + 1, 1), out var nx) && (nx[0] is 'a' or 'i' or 'u' or 'e' or 'o' or 'y')) r = "n'";
             sb.Append(r);
         }
-        // partikel yang berdiri sendiri (dipisah spasi): は=wa, へ=e, を=o
+        // standalone particles (space-separated): は=wa, へ=e, を=o
         var words = sb.ToString().Split(' ');
         if (particles) for (int k = 0; k < words.Length; k++) words[k] = words[k] switch { "ha" when IsParticle(s, "は", "ハ") => "wa", "he" when IsParticle(s, "へ", "ヘ") => "e", _ => words[k] };
         return string.Join(" ", words).Trim();

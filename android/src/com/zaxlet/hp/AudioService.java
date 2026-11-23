@@ -18,14 +18,14 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 
 /**
- * Audio yang diputar HP (Reels, video, dll) ditangkap lewat AudioPlaybackCapture lalu dikirim ke PC (/aud/opus atau fallback /aud/ws),
- * potongan 20 ms. Selama aktif volume musik HP dibuat 0 supaya suaranya hanya keluar di PC; volume lama dikembalikan saat berhenti.
- * Android 10+ dan izin rekam layar (dialog "Mulai sekarang") wajib tiap kali dimulai.
+ * Audio played on the phone (Reels, videos, etc.) is captured via AudioPlaybackCapture and sent to the PC (/aud/opus or fallback /aud/ws)
+ * in 20 ms chunks. While active, phone media volume is set to 0 so sound only comes out on the PC; the previous volume is restored on stop.
+ * Android 10+ and screen-capture permission ("Start now" dialog) are required each time it starts.
  */
 public class AudioService extends Service {
     private static final String TAG = "ZaxLetAud";
-    private static final int FRAME_BYTES = 3840;   // 20 ms @ 48 kHz stereo 16-bit (<= 6144, kelipatan 4)
-    private static final int MAX_QUEUE_FRAMES = 20;   // ~400 ms batas antrean sebelum buang potongan terlama
+    private static final int FRAME_BYTES = 3840;   // 20 ms @ 48 kHz stereo 16-bit (<= 6144, multiple of 4)
+    private static final int MAX_QUEUE_FRAMES = 20;   // ~400 ms queue limit before dropping oldest chunk
 
     static volatile boolean alive;
     static volatile boolean videoActive;
@@ -74,14 +74,14 @@ public class AudioService extends Service {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.createNotificationChannel(new NotificationChannel("zaxlet-aud", "Audio ke PC", NotificationManager.IMPORTANCE_LOW));
         try {
-            startForeground(2, note("Menyambung ulang…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);   // wajib sebelum getMediaProjection (Android 14)
+            startForeground(2, note("Menyambung ulang…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);   // required before getMediaProjection (Android 14)
             mp = ((MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE)).getMediaProjection(in.getIntExtra("rc", 0), data);
             mp.registerCallback(new MediaProjection.Callback() { @Override public void onStop() { shutdown(); } }, null);
             AudioPlaybackCaptureConfiguration cfg = new AudioPlaybackCaptureConfiguration.Builder(mp)
                     .addMatchingUsage(AudioAttributes.USAGE_MEDIA).addMatchingUsage(AudioAttributes.USAGE_GAME).addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build();
             AudioFormat fmt = new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_IN_STEREO).build();
             int minBuf = AudioRecord.getMinBufferSize(48000, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT);
-            int recBuf = Math.max(FRAME_BYTES * 12, minBuf > 0 ? minBuf * 2 : 0);   // >= 240 ms agar tidak overrun saat CPU sibuk
+            int recBuf = Math.max(FRAME_BYTES * 12, minBuf > 0 ? minBuf * 2 : 0);   // >= 240 ms to avoid overruns when CPU is busy
             rec = new AudioRecord.Builder().setAudioPlaybackCaptureConfig(cfg).setAudioFormat(fmt).setBufferSizeInBytes(recBuf).build();
         } catch (Throwable e) { err = "Audio gagal: " + e.getMessage(); alive = true; shutdown(); return START_NOT_STICKY; }
         am = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -143,7 +143,7 @@ public class AudioService extends Service {
                 }
                 if (++tick % 25 == 0) {
                     synchronized (this) {
-                        if (!stopping && am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);   // tombol volume tidak boleh membunyikan speaker
+                        if (!stopping && am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);   // volume buttons must not unmute the speaker
                     }
                 }
                 long now = SystemClock.elapsedRealtime();
@@ -233,7 +233,7 @@ public class AudioService extends Service {
 
                 if (stopping) { w.close(); break; }
                 w.sock.setTcpNoDelay(true);
-                // Opus: buffer kecil agar macet jaringan terlihat seketika dan paket usang dibuang di antrean (bukan menumpuk 8 dtk di kernel lalu menyembur); PCM butuh buffer besar
+                // Opus: small buffer so network stalls are noticed immediately and stale packets are dropped in the queue (instead of piling up 8 s in the kernel and bursting); PCM needs a large buffer
                 w.sock.setSendBufferSize(enc != null ? 4096 : 65536);
                 backoff = 1000;
                 everConnected = true;
@@ -303,8 +303,8 @@ public class AudioService extends Service {
                     }
                 }
             } catch (Throwable ignored) {
-                // sambungan putus/gagal: pertahankan tangkapan audio & senyap, buang antrean basi, coba sambung lagi
-                if (!everConnected && !stopping) { err = "Audio gagal: PC tidak terjangkau"; shutdown(); return; }   // sambungan pertama gagal: berhenti seperti dulu, HP tidak dibisukan tanpa tujuan
+                // connection dropped/failed: keep audio capture & mute active, discard stale queue, retry connecting
+                if (!everConnected && !stopping) { err = "Audio gagal: PC tidak terjangkau"; shutdown(); return; }   // first connection failed: stop as before, don't mute the phone pointlessly
             } finally {
                 synchronized (qLock) {
                     if (ws == w) ws = null;
@@ -369,7 +369,7 @@ public class AudioService extends Service {
         return produced;
     }
 
-    /** Volume lama disimpan di prefs: bila proses mati saat senyap, sesi berikutnya tetap memulihkan volume asli (bukan 0). */
+    /** Old volume is saved in prefs: if the process dies while muted, the next session still restores the original volume (not 0). */
     private void mute(boolean on) {
         try {
             int old = Net.sp.getInt("audvol", -1);
@@ -396,7 +396,7 @@ public class AudioService extends Service {
         if (audThread == null) cleanup();
     }
 
-    // lepas rec dan pulihkan volume hanya setelah zaxlet-aud keluar agar tidak berpacu dengan rec.read/setStreamVolume
+    // release rec and restore volume only after zaxlet-aud exits so it does not race with rec.read/setStreamVolume
     private synchronized void cleanup() {
         alive = false; videoActive = false; stopping = true; audThread = null;
         ScreenStream ss = screenStream; screenStream = null;

@@ -29,7 +29,7 @@ public partial class IslandWindow : Window
         ["water"] = ("\U0001F4A7", "Minum"), ["apps"] = ("", "Komunikasi"),
     };
     public static readonly string[] DefaultOrder = { "music", "usage", "monitor", "calendar", "prayer", "water", "apps", "ctrl", "shelf", "clip", "tools", "timer", "settings" };
-    /// <summary>Urutan tab sesuai pilihan pengguna; tab yang belum tersimpan (mis. tab baru) ditaruh sesuai urutan bawaan, "settings" selalu terakhir.</summary>
+    /// <summary>Tab order per user preference; unsaved tabs (e.g. new tabs) follow the default order, "settings" is always last.</summary>
     public static string[] TabOrder
     {
         get
@@ -43,7 +43,7 @@ public partial class IslandWindow : Window
     public bool Fullscreen => _fs;
     public FrameworkElement PillElement => Pill;
 
-    const double OpenW = 640, TabH = 200, TabBarH = 46, Flare = 12, IdleH = 36, IdleH2 = 60;   // TabH sama untuk semua tab
+    const double OpenW = 640, TabH = 200, TabBarH = 46, Flare = 12, IdleH = 36, IdleH2 = 60;   // TabH is the same for all tabs
     static readonly Brush BattGreen = UI.B("#FF22D35A"), ArrowBlue = UI.B("#FF3B82F6"), UpTeal = UI.B("#FF2DD4BF"), ClaudeCol = UI.B("#FFE8967A"), CodexCol = UI.B("#FF86EFAC"), AgyCol = UI.B("#FF8AB4F8");
 
     readonly Dictionary<string, Func<TabView>> _make = new();
@@ -53,9 +53,9 @@ public partial class IslandWindow : Window
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer _peekT = new() { Interval = TimeSpan.FromMilliseconds(120) };
     readonly DispatcherTimer _altT = new() { Interval = TimeSpan.FromMilliseconds(100) };
-    readonly ScaleTransform _pillScale = new(1, 1), _userScale = new(1, 1);   // _userScale: ukuran island pilihan pengguna
+    readonly ScaleTransform _pillScale = new(1, 1), _userScale = new(1, 1);   // _userScale: user-chosen island size
     readonly TranslateTransform _pillMove = new();
-    bool _ghost;   // Alt ditahan di atas pill: pill menghilang sementara supaya yang di belakangnya bisa diklik
+    bool _ghost;   // Alt held over pill: pill hides temporarily so whatever is behind it can be clicked
     readonly DispatcherTimer _trimOpenT = new() { Interval = TimeSpan.FromSeconds(4) };
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
     static extern int DwmFlush();
@@ -68,17 +68,17 @@ public partial class IslandWindow : Window
     (double W, double H) _idle = (200, IdleH);
     int _batTick = 999;
 
-    // widget idle
+    // idle widgets
     readonly TextBlock _batText = new() { FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
     readonly Canvas _batIcon = new() { Width = 27, Height = 14, VerticalAlignment = VerticalAlignment.Center };
     readonly System.Windows.Shapes.Ellipse _phoneDot = new() { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     readonly System.Windows.Shapes.Ellipse _voiceDot = new() { Width = 9, Height = 9, Fill = UI.B("#FF22D35A"), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed, ToolTip = L.T("Sedang di voice channel Discord") };
     readonly Marquee Row2 = new() { Foreground = UI.B("#A6FFFFFF") };
-    // notifikasi HP yang sedang tampil di pill: satu baris per notifikasi (key unik), terbaru di atas
-    sealed class NotifRow { public PhoneNotif N; public DateTime Until; public int Count = 1; }   // Count: notifikasi berbeda dari aplikasi yang sama berturut-turut
+    // phone notifications currently shown in pill: one row per notification (unique key), newest on top
+    sealed class NotifRow { public PhoneNotif N; public DateTime Until; public int Count = 1; }   // Count: consecutive distinct notifications from the same app
     readonly List<NotifRow> _rows = new();
     string _rowsSig = "";
-    bool _snooze, _shown = true;      // _snooze: disembunyikan sementara oleh pengguna; _shown: jendela sedang tampil
+    bool _snooze, _shown = true;      // _snooze: temporarily hidden by user; _shown: window is currently shown
     DateTime _snoozeUntil = DateTime.MaxValue;
     const double RowH = 22;
     const int HideHotkeyId = 0x151A, CapHotkeyId = 0x151B, OpenHotkeyId = 0x151C, QuickHotkeyId = 0x151D;
@@ -115,27 +115,27 @@ public partial class IslandWindow : Window
         _closeT.Interval = TimeSpan.FromMilliseconds(Math.Clamp(Settings.Cur.CloseDelayMs, 50, 600000));
 
         Pill.SizeChanged += (_, _) => BuildShape();
-        // kursor yang masuk lewat daftar notifikasi tidak membuka pill, supaya daftar bisa digulir dengan roda mouse
+        // cursor entering over the notification list does not open the pill, so the list can be scrolled with the mouse wheel
         Pill.MouseEnter += (_, _) => { if (_capturing) return; _closeT.Stop(); if (Settings.Cur.HoverOpen && !OverNotifRows() && !(Settings.Cur.AltGhost && Native.AltDown())) Open(); };
         Pill.MouseLeave += (_, _) => { if (_open) _closeT.Start(); };
         Pill.MouseLeftButtonUp += (_, _) => { if (HandleClickAction()) return; Open(); };
-        // klik kanan = mode sembunyi seperti saat fullscreen (kembali lewat pintasan, menu tray, atau sendiri setelah jeda); kolom teks dan item yang menangani klik kanan sendiri dilewati
+        // right-click = hide mode like in fullscreen (restored via shortcut, tray menu, or automatically after a delay); text boxes and items handling their own right-click are skipped
         Pill.MouseRightButtonUp += (_, e) =>
         {
             if (e.Handled || !Settings.Cur.RightClickHide || e.OriginalSource is DependencyObject src && InTextBox(src)) return;
             e.Handled = true;
-            // klik kanan bergantian: tampil biasa -> sembunyi (dengan intipan); sedang mengintip (sembunyi atau auto-hide fullscreen) -> tampil terus
+            // alternating right-click: normal -> hidden (with peek); currently peeking (hidden or fullscreen auto-hide) -> always show
             if (_snooze) SetSnooze(false);
             else if (_fs) { _fsForceShow = true; CheckFullscreen(); }
             else SetSnooze(true, peek: true);
         };
         Pill.RenderTransformOrigin = new Point(.5, 0);
         Pill.RenderTransform = new TransformGroup { Children = { _userScale, _pillScale, _pillMove } };
-        _altT.Tick += (_, _) => AltCheck();   // dijalankan SyncTimers hanya bila AltGhost menyala
+        _altT.Tick += (_, _) => AltCheck();   // run by SyncTimers only when AltGhost is enabled
         InitFeatures();
         _closeT.Tick += (_, _) =>
         {
-            // tetap terbuka bila sedang mengetik di kotak teks (to-do, pengaturan) atau kursor masih di atas pill
+            // stay open while typing in a text box (to-do, settings) or while cursor is still over the pill
             if (Dragging || Pill.IsMouseOver || (Keyboard.FocusedElement is TextBox tb && Pill.IsAncestorOf(tb))) return;
             _closeT.Stop();
             Close_();
@@ -153,7 +153,7 @@ public partial class IslandWindow : Window
 
         _tick.Tick += (_, _) => Tick();
         _peekT.Tick += (_, _) => Peek();
-        // beberapa detik setelah tab terbuka, kembalikan halaman yang tidak terpakai (DLL driver grafis dibagi pakai) ke OS
+        // a few seconds after a tab opens, return unused pages (shared graphics driver DLLs) to the OS
         _trimOpenT.Tick += (_, _) => { _trimOpenT.Stop(); Native.EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle); };
         MediaService.I.Changed += () => { ApplyTint(); ApplyTheme(); RefreshIdle(); TrackFlash(); PlayLog.Update(MediaService.I.HasSession && !MediaService.I.IsAd ? MediaService.I.Title : "",MediaService.I.Artist, MediaService.I.Playing); };
         TimerService.I.Tick += RefreshIdle;
@@ -161,8 +161,8 @@ public partial class IslandWindow : Window
         Settings.Applied += OnSettingsApplied;
         SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.BeginInvoke(ApplyScale);
 
-        // saat tertutup, kembalikan halaman memori yang tidak terpakai ke OS (RAM yang tampak di Task Manager ikut turun)
-        var trim = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };   // GC penuh + EmptyWorkingSet memaksa halaman dimuat ulang: jangan terlalu sering
+        // while closed, return unused memory pages to the OS (RAM shown in Task Manager drops accordingly)
+        var trim = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };   // full GC + EmptyWorkingSet forces pages to reload: don't run too often
         trim.Tick += (_, _) =>
         {
             if (_open) return;
@@ -177,8 +177,8 @@ public partial class IslandWindow : Window
             var warm = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             warm.Tick += (_, _) => { warm.Stop(); Prewarm(); };
             warm.Start();
-            // WPF memuat d3d9 dan driver grafis (Intel igc64, media_bin, dsb: ~100 MB halaman bersama) saat mulai walau render software;
-            // pemangkasan pertama 12 dtk setelah mulai, bukan menunggu 45 dtk, supaya RAM awal tidak tampak 180 MB lama-lama
+            // WPF loads d3d9 and graphics drivers (Intel igc64, media_bin, etc.: ~100 MB shared pages) at startup even with software rendering;
+            // first trim 12 s after startup instead of waiting 45 s, so initial RAM doesn't stay at 180 MB for long
             var early = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
             early.Tick += (_, _) => { early.Stop(); GC.Collect(2, GCCollectionMode.Forced, true, true); Native.EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle); };
             early.Start();
@@ -204,7 +204,7 @@ public partial class IslandWindow : Window
         StartFeatureListeners(h);
     }
 
-    /// <summary>Daftarkan semua pintasan global; yang kosong dilepas, yang gagal (bentrok / salah ketik) diperingatkan di pill.</summary>
+    /// <summary>Register all global shortcuts; empty ones are unregistered, failed ones (conflict / typo) show a warning in the pill.</summary>
     void RegisterKeys(IntPtr h)
     {
         var s = Settings.Cur;
@@ -224,10 +224,10 @@ public partial class IslandWindow : Window
         return false;
     }
 
-    /// <summary>Sembunyikan pill sementara (atau tampilkan lagi). Notifikasi baru tetap memunculkannya sebentar.</summary>
+    /// <summary>Temporarily hide the pill (or show it again). New notifications still show it briefly.</summary>
     public void ToggleHidden() => SetSnooze(!_snooze);
 
-    /// <param name="peek">Sembunyi lewat klik kanan: pill muncul lagi (jam dan baterai saja) saat kursor diarahkan ke tepi atas, persis seperti saat fullscreen.</param>
+    /// <param name="peek">Hidden via right-click: pill reappears (clock and battery only) when cursor moves to the top edge, just like in fullscreen.</param>
     void SetSnooze(bool on, bool peek = false)
     {
         _snooze = on;
@@ -242,7 +242,7 @@ public partial class IslandWindow : Window
 
     bool _snoozePeek, _fsForceShow;
 
-    // Jendela tampil kecuali: fullscreen atau disembunyikan pengguna (keduanya tanpa intipan kursor); notifikasi yang sedang tampil memaksanya muncul.
+    // Window is visible unless: fullscreen or hidden by user (both without cursor peek); active notifications force it visible.
     void SyncVisible()
     {
         if (_capturing) return;
@@ -256,7 +256,7 @@ public partial class IslandWindow : Window
         Pop(want);
     }
 
-    // animasi seperti minimize: pill menciut ke tepi atas sambil memudar lalu jendela disembunyikan; tampil kembali dengan gerak sebaliknya
+    // minimize-like animation: pill shrinks to the top edge while fading, then window is hidden; shown again with the reverse motion
     void Pop(bool show)
     {
         var ease = new QuinticEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn };
@@ -269,7 +269,7 @@ public partial class IslandWindow : Window
         Pill.BeginAnimation(OpacityProperty, fade);
     }
 
-    // Alt ditahan + kursor di area pill (termasuk bahunya) = pill disembunyikan; Alt dilepas atau kursor keluar = tampil lagi seperti biasa
+    // Alt held + cursor over pill area (including its shoulders) = pill hidden; Alt released or cursor leaves = shown again as usual
     void AltCheck()
     {
         bool want = false;
@@ -281,18 +281,18 @@ public partial class IslandWindow : Window
         }
         if (want == _ghost) return;
         _ghost = want;
-        if (want && _open) { _closeT.Stop(); Close_(); }   // pill yang sudah terbuka ikut diciutkan
+        if (want && _open) { _closeT.Stop(); Close_(); }   // an already-open pill also collapses
         SyncVisible();
     }
 
     bool OverNotifRows() => NotifHost.IsVisible && new Rect(0, 0, NotifHost.ActualWidth, NotifHost.ActualHeight).Contains(Mouse.GetPosition(NotifHost));
 
-    /// <summary>Monitor tempat island berada: pilihan pengguna, atau monitor utama bila nomornya tidak ada lagi.</summary>
+    /// <summary>Monitor where the island is placed: user choice, or primary monitor if that index no longer exists.</summary>
     WF.Screen Scr { get { var a = WF.Screen.AllScreens; var i = Settings.Cur.MonitorIdx; return i > 0 && i < a.Length ? a[i] : WF.Screen.PrimaryScreen; } }
 
     double Zoom => _userScale.ScaleX;
 
-    /// <summary>Ukuran island: persen pilihan, atau otomatis menurut lebar layar (1536 DIP = 100%). Jendela dilebarkan secukupnya agar panel terbuka tidak terpotong.</summary>
+    /// <summary>Island size: user-chosen percent, or automatic by screen width (1536 DIP = 100%). Window is widened enough so the open panel isn't clipped.</summary>
     void ApplyScale()
     {
         int p = Settings.Cur.IslandScale;
@@ -314,17 +314,17 @@ public partial class IslandWindow : Window
         double minCx = wa.Left / dpi + half, maxCx = wa.Right / dpi - half;
         double cx = (b.Left + b.Width / 2.0 + Math.Clamp(Settings.Cur.IslandOffsetX, -600, 600)) / dpi;
         cx = minCx <= maxCx ? Math.Clamp(cx, minCx, maxCx) : (minCx + maxCx) / 2.0;
-        Left = cx - Width / 2.0;   // tengah monitor pilihan + geseran (piksel ke DIP), dijepit ke area kerja
+        Left = cx - Width / 2.0;   // center of chosen monitor + offset (pixels to DIP), clamped to work area
         Top = b.Top / dpi;
     }
 
-    // ---------- bentuk pill: bahu cekung di atas seperti notch ----------
+    // ---------- pill shape: concave shoulders at top like a notch ----------
     void BuildShape()
     {
         double w = Pill.ActualWidth, h = Pill.ActualHeight;
         if (w < 10 || h < 10) return;
         double R = Flare, r = Settings.Cur.PillRadius >= 8 ? Math.Min(Settings.Cur.PillRadius, h / 2) : Math.Clamp(h / 2, 14, 28);
-        if (Settings.Cur.IslandShape == "pill")   // gaya Dynamic: kapsul bulat tanpa bahu cekung
+        if (Settings.Cur.IslandShape == "pill")   // Dynamic style: rounded capsule without concave shoulders
         {
             Shape.Margin = new Thickness(0);
             var rg = new RectangleGeometry(new Rect(0, 0, w, h), r, r);
@@ -332,7 +332,7 @@ public partial class IslandWindow : Window
             Shape.Data = rg;
             return;
         }
-        Shape.Margin = new Thickness(-12, 0, -12, 0);   // gaya Notch: bahu cekung melebar di kedua sisi
+        Shape.Margin = new Thickness(-12, 0, -12, 0);   // Notch style: concave shoulders flare out on both sides
         var g = new StreamGeometry();
         using (var c = g.Open())
         {
@@ -350,7 +350,7 @@ public partial class IslandWindow : Window
         Shape.Data = g;
     }
 
-    // ---------- bar tab ----------
+    // ---------- tab bar ----------
     void BuildTabBar()
     {
         TabBar.Children.Clear();
@@ -368,7 +368,7 @@ public partial class IslandWindow : Window
             row.Children.Add(label);
             var box = UI.Btn(row, () => Select(k), Brushes.Transparent, 14, new Thickness(10, 6, 10, 6));
             box.Margin = new Thickness(1, 0, 1, 0);
-            box.ToolTip = L.T(TabMeta[key].Label);   // ikon saja tanpa nama: tooltip juga jadi nama untuk pembaca layar
+            box.ToolTip = L.T(TabMeta[key].Label);   // icon-only without label: tooltip also serves as screen reader name
             TabBar.Children.Add(box);
             _tabBtns[key] = (box, label, icon);
         }
@@ -386,7 +386,7 @@ public partial class IslandWindow : Window
         }
     }
 
-    /// <summary>Ikon tab aktif ikut warna sampul lagu yang sedang diputar (sama seperti garis neon); tanpa lagu memakai warna aksen.</summary>
+    /// <summary>Active tab icon follows the playing song's album art color (same as neon border); without a song it uses the accent color.</summary>
     Brush TabAccent()
     {
         var ms = MediaService.I;
@@ -395,15 +395,15 @@ public partial class IslandWindow : Window
         return br;
     }
 
-    // ---------- buka / tutup ----------
+    // ---------- open / close ----------
     public void OpenNow() { if (_capturing) return; if (_snooze) SetSnooze(false); Open(); _closeT.Start(); }
 
-    /// <summary>Buka island langsung di tab tertentu (perintah "buka monitor" di Aksi cepat).</summary>
+    /// <summary>Open island directly on a specific tab ("open monitor" command in Quick Actions).</summary>
     public void GoTab(string key) { OpenNow(); if (_open) Select(key); }
 
     void Open()
     {
-        if (_capturing || _open || _fs || _snooze) return;   // saat fullscreen pill hanya menampilkan jam dan baterai
+        if (_capturing || _open || _fs || _snooze) return;   // in fullscreen the pill only shows clock and battery
         _open = true;
         OpenLayer.Visibility = Visibility.Visible;
         Fade(IdleLayer, 0, 90, () => { if (_open) IdleLayer.Visibility = Visibility.Collapsed; });
@@ -431,17 +431,17 @@ public partial class IslandWindow : Window
         RestoreFocus();
     }
 
-    /// <summary>Tab baru (bukan yang di pill); dipakai pratinjau di jendela pengaturan.</summary>
+    /// <summary>New tab (not the one in the pill); used for preview in the settings window.</summary>
     public TabView MakeView(string key)
     {
         var v = _make[key]();
-        // semua tab setinggi sama: tab pendek dipusatkan, tab lain mengisi tinggi
+        // all tabs have the same height: short tabs are centered, others fill the height
         foreach (UIElement c in v.Children)
             if (c is FrameworkElement fe) fe.VerticalAlignment = v.CenterV ? VerticalAlignment.Center : VerticalAlignment.Stretch;
         return v;
     }
 
-    /// <summary>Bangun tab monitor lebih awal dan ambil sampel pertamanya agar langsung terisi saat dibuka (lonjakan sekali di awal).</summary>
+    /// <summary>Build the monitor tab early and take its first sample so it is already populated when opened (one-time startup spike).</summary>
     public void Prewarm()
     {
         if (!_views.TryGetValue("monitor", out var v)) _views["monitor"] = v = MakeView("monitor");
@@ -459,7 +459,7 @@ public partial class IslandWindow : Window
         _cur = v;
         Settings.Cur.LastTab = key;
         Host.Children.Add(v);
-        // transisi: tab baru memudar masuk sambil bergeser dari arah tab yang dituju (kanan bila indeks lebih besar)
+        // transition: new tab fades in while sliding from the target tab's direction (right if index is larger)
         int dir = prevKey == null || prevKey == key ? 0 : Array.IndexOf(TabOrder, key) > Array.IndexOf(TabOrder, prevKey) ? 1 : -1;
         var slide = new TranslateTransform(dir * 22, dir == 0 ? 8 : 0);
         v.RenderTransform = slide;
@@ -485,7 +485,7 @@ public partial class IslandWindow : Window
         Pill.BeginAnimation(HeightProperty, Fast(new DoubleAnimation(h, d) { EasingFunction = e }));
     }
 
-    /// <summary>Animasi yang dilihat saat berinteraksi (buka/tutup, ganti tab) tetap 60 fps; sisanya mengikuti bawaan 30 fps (App.OnStartup).</summary>
+    /// <summary>Interactive animations (open/close, switch tab) stay at 60 fps; the rest follow the 30 fps default (App.OnStartup).</summary>
     static T Fast<T>(T a) where T : Timeline { Timeline.SetDesiredFrameRate(a, 60); return a; }
 
     static void Fade(UIElement el, double to, int ms, Action done, int delay = 0)
@@ -525,16 +525,16 @@ public partial class IslandWindow : Window
         ApplyTint();
     }
 
-    // ---------- auto-hide saat fullscreen ----------
+    // ---------- auto-hide in fullscreen ----------
     void CheckFullscreen()
     {
-        // "real": ada alasan menyembunyikan pill (aplikasi fullscreen, atau jendela depan punya tombol yang tertutup island)
+        // "real": there is a reason to hide the pill (fullscreen app, or foreground window has buttons covered by the island)
         bool fsRaw = Native.ForegroundFullscreenOnPrimary(Scr.Bounds);
-        PerfOverlay.Sync(fsRaw);   // overlay performa mengikuti layar penuh walau "sembunyikan saat fullscreen" mati
+        PerfOverlay.Sync(fsRaw);   // performance overlay follows fullscreen even if "hide in fullscreen" is off
         bool fsApp = Settings.Cur.AutoHideFullscreen && fsRaw;
-        bool real = fsApp || (Settings.Cur.YieldOn && _yield.Blocked && !_open);   // pill yang sedang dibuka pengguna tidak ikut menyingkir
+        bool real = fsApp || (Settings.Cur.YieldOn && _yield.Blocked && !_open);   // pill currently opened by user does not yield
         if (!real) _fsForceShow = false;
-        _fsApp = fsApp && !_fsForceShow;   // pilihan "tampil terus" berlaku selama aplikasi fullscreen yang sama berjalan
+        _fsApp = fsApp && !_fsForceShow;   // "always show" choice lasts while the same fullscreen app is running
         bool fs = real && !_fsForceShow;
         if (fs == _fs) return;
         _fs = fs;
@@ -547,11 +547,11 @@ public partial class IslandWindow : Window
         }
         else
         {
-            if (!_snoozePeek) _peekT.Stop();   // sembunyi lewat klik kanan masih memakai intipan
+            if (!_snoozePeek) _peekT.Stop();   // right-click hide still uses cursor peek
             _peek = false;
         }
         _idleKey = "";
-        RefreshIdle();   // memanggil SyncVisible
+        RefreshIdle();   // calls SyncVisible
     }
 
     void Peek()
@@ -568,8 +568,8 @@ public partial class IslandWindow : Window
     }
 
     // ---------- idle ----------
-    /// <param name="onClick">Dijalankan bila pill diklik selagi pesan tampil (mis. buka berkas unduhan, perbarui).</param>
-    /// <param name="sound">False untuk popup OSD yang tidak perlu bunyi.</param>
+    /// <param name="onClick">Runs if the pill is clicked while the message is shown (e.g. open downloaded file, update).</param>
+    /// <param name="sound">False for OSD popups that do not need a sound.</param>
     public void Alert(string text, double seconds = 7, Action onClick = null, bool sound = true)
     {
         Dispatcher.BeginInvoke(() =>
@@ -597,7 +597,7 @@ public partial class IslandWindow : Window
         var want = TimeSpan.FromMilliseconds(fast ? 250 : 1000);
         if (_tick.Interval != want) _tick.Interval = want;
         if (++_batTick * _tick.Interval.TotalSeconds > 30) { _batTick = 0; UpdateBattery(); }
-        // tanpa cek _fs: kuota juga dibaca saat aplikasi fullscreen aktif (cache usage dipakai Middleman worker); hanya satu GET ringan per UsageRefreshSec
+        // no _fs check: quota is also read while a fullscreen app is active (usage cache is used by Middleman worker); just one lightweight GET per UsageRefreshSec
         if (s.IdleUsage && DateTime.Now >= _quotaAt)
         {
             _quotaAt = DateTime.Now.AddSeconds(Math.Max(1, s.UsageRefreshSec));
@@ -625,51 +625,51 @@ public partial class IslandWindow : Window
         var ms = MediaService.I;
         bool full = !_fs;
         bool mini = MiniActive;
-        if (mini != _wasMini) { _wasMini = mini; FixWidths(); UpdateBattery(); }   // masuk/keluar pil jam kecil: lebar jam dan baterai disesuaikan
+        if (mini != _wasMini) { _wasMini = mini; FixWidths(); UpdateBattery(); }   // entering/leaving mini clock pill: adjust clock and battery widths
         if (mini) { TimeText.Width = double.NaN; _batBox.Visibility = Visibility.Collapsed; }
 
         var clock = ClockText();
         if (mini && Settings.Cur.MiniClock == "date") clock += "  " + DateTime.Now.ToString("ddd d MMM", CultureInfo.CurrentUICulture);
         if (TimeText.Text != clock) TimeText.Text = clock;
 
-        // tengah: usage AI, unduh, waveform
+        // center: AI usage, downloads, waveform
         bool c = _chipC.Update(UsageService.I.Claude, full && s.IdleUsage && s.ClaudeOn && s.IdleUsageProviders != "codex");
         bool x = _chipX.Update(UsageService.I.Codex, full && s.IdleUsage && s.CodexOn && s.Slot2 == "codex" && s.IdleUsageProviders != "claude");
         bool a = _chipA.Update(UsageService.I.Agy, full && s.IdleUsage && s.CodexOn && s.Slot2 == "antigravity" && s.IdleUsageProviders != "claude");
         _usageBox.Visibility = c || x || a ? Visibility.Visible : Visibility.Collapsed;
-        _voiceDot.Visibility = full && DiscordRpc.I.InVoice ? Visibility.Visible : Visibility.Collapsed;   // titik hijau: sedang di voice channel
+        _voiceDot.Visibility = full && DiscordRpc.I.InVoice ? Visibility.Visible : Visibility.Collapsed;   // green dot: currently in voice channel
         UpdatePhoneDot(full);
         bool sp = full && s.IdleSpeed;
         if (sp) { NetMeter.Sample(); SetSpeed(NetMeter.Fmt(NetMeter.DownKb), s.IdleSpeedStyle == "both" ? NetMeter.Fmt(NetMeter.UpKb) : null); }
         _speed.Visibility = sp ? Visibility.Visible : Visibility.Collapsed;
         SetWave(full && s.IdleWave && ms.HasSession && ms.Playing);
 
-        // daftar notifikasi HP: kedaluwarsa per baris (tidak selagi kursor di atasnya, supaya sempat digulir/diklik)
+        // phone notification list: per-row expiry (paused while hovered so user has time to scroll/click)
         if (!OverNotifRows()) _rows.RemoveAll(r => DateTime.Now >= r.Until);
         const int maxRows = 1;
         int shownRows = Math.Min(_rows.Count, maxRows);
         UpdateNotifRows(maxRows);
 
-        // baris di bawah notifikasi: peringatan > timer > lirik (tetap ada walau notifikasi menumpuk)
+        // line below notifications: warning > timer > lyrics (remains even when notifications stack)
         string text = null;
-        double pace = 0;   // >0 hanya untuk lirik: running text mengikuti lama baris dan berhenti di ujung
+        double pace = 0;   // >0 for lyrics only: marquee follows line duration and stops at the end
         Brush br = UI.Dim;
         if (_alert != null)
         {
             if (DateTime.Now < _alertUntil) { text = _alert; br = UI.Accent; }
             else _alert = null;
         }
-        if (_fs && !FsMusicOn || (text == null && shownRows > 0)) text = null;   // notifikasi menggantikan timer/lirik: idle tetap satu baris
+        if (_fs && !FsMusicOn || (text == null && shownRows > 0)) text = null;   // notifications replace timer/lyrics: idle stays single-line
         else if (text == null && TimerService.I.Running)
             text = (TimerService.I.Mode == TMode.Stopwatch ? "Stopwatch " : "Timer ") + UI.Clock(TimerService.I.Value);
-        if ((!_fs || FsMusicOn) && text == null && shownRows == 0 && s.MusicLyrics && s.IdleLyrics && ms.Playing && ms.Lyrics.Count > 0)   // lirik dimatikan = idle ikut mati
+        if ((!_fs || FsMusicOn) && text == null && shownRows == 0 && s.MusicLyrics && s.IdleLyrics && ms.Playing && ms.Lyrics.Count > 0)   // lyrics turned off = idle lyrics off too
         {
             var l = ms.CurrentLine();
             text = string.IsNullOrWhiteSpace(l) ? "♪" : s.IdleRomaji ? Translit.Of(l) ?? l : l;
             pace = ms.CurrentLineSpan();
         }
-        if (FsMusicOn && text == null && shownRows == 0 && !string.IsNullOrWhiteSpace(ms.Title)) text = "♪ " + ms.Title;   // layar penuh tanpa lirik: judul lagu saja
-        if (!_fs && !mini && text == null && shownRows == 0 && s.IdleContext) text = ContextLine();   // paling akhir: kalah dari peringatan, timer, lirik, dan notifikasi
+        if (FsMusicOn && text == null && shownRows == 0 && !string.IsNullOrWhiteSpace(ms.Title)) text = "♪ " + ms.Title;   // fullscreen without lyrics: song title only
+        if (!_fs && !mini && text == null && shownRows == 0 && s.IdleContext) text = ContextLine();   // lowest priority: yields to warning, timer, lyrics, and notifications
         Row2.Visibility = text != null ? Visibility.Visible : Visibility.Collapsed;
         Row2.PaceSeconds = pace;
         if (Row2.Text != (text ?? "")) Row2.Text = text ?? "";
@@ -684,11 +684,11 @@ public partial class IslandWindow : Window
             _idle = lines > 0 ? (Math.Max(w, 340), IdleH + 2 + RowH * lines) : (w, IdleH);
             if (!_open) SetSize(_idle.W, _idle.H);
         }
-        if (full) _idleFull = _idle;   // ukuran pill penuh yang stabil untuk YieldService (ukuran saat menyingkir mengecil dan tidak boleh ikut menggeser keputusan)
+        if (full) _idleFull = _idle;   // stable full pill size for YieldService (size shrinks while yielding and must not shift the decision)
         SyncVisible();
     }
 
-    // bangun ulang baris hanya bila isinya berubah (Marquee menjalankan animasi sendiri)
+    // rebuild rows only when contents change (Marquee runs its own animation)
     void UpdateNotifRows(int maxRows)
     {
         var sig = string.Join("¦", _rows.Select(r => r.N.Key + "|" + r.N.Title + "|" + r.N.Text + "|" + r.Count)) + "#" + maxRows;
@@ -712,7 +712,7 @@ public partial class IslandWindow : Window
             g.Children.Add(m);
             if (Settings.Cur.NotifOtp && Otp.Find(n.Title, n.Text) is { } code)
             {
-                // kode OTP: tombol Salin di ujung kanan baris; kodenya tidak masuk riwayat clipboard
+                // OTP code: Copy button at the right end of the row; the code does not enter clipboard history
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 var chip = UI.Btn(UI.T(L.T("Salin") + " " + code, 11.5, UI.Fg, true), () =>
                 {
@@ -723,7 +723,7 @@ public partial class IslandWindow : Window
                 Grid.SetColumn(chip, 2);
                 g.Children.Add(chip);
             }
-            g.MouseLeftButtonUp += (_, e) => { e.Handled = true; OpenRow(r); };   // klik: buka percakapan (bisa dibalas) atau tutup baris
+            g.MouseLeftButtonUp += (_, e) => { e.Handled = true; OpenRow(r); };   // click: open conversation (can reply) or close row
             g.MouseRightButtonUp += (_, e) => { e.Handled = true; _rows.Remove(r); RefreshIdle(); };
             NotifRows.Children.Add(g);
         }
@@ -737,23 +737,23 @@ public partial class IslandWindow : Window
         RefreshIdle();
     }
 
-    // Lebar pill idle mengikuti isi. Bila zona tengah berisi, kiri dan kanan dibuat selebar yang terbesar agar isi tengah
-    // tepat di tengah; bila kosong, tersisa celah 56 px (area kamera) dan kiri/kanan berbagi lebar sesuai isinya.
+    // Idle pill width follows content. When center zone is non-empty, left and right match the wider side so center content
+    // is truly centered; when empty, a 56 px gap (camera area) remains and left/right share width per their content.
     double IdleWidth()
     {
         var inf = new Size(double.PositiveInfinity, double.PositiveInfinity);
         ZoneL.Measure(inf); ZoneC.Measure(inf); ZoneR.Measure(inf);
         double l = ZoneL.DesiredSize.Width, c = ZoneC.DesiredSize.Width, r = ZoneR.DesiredSize.Width;
         var s = Settings.Cur;
-        bool exact = s.IdleExactCenter && c > 0;   // komponen tengah tepat di tengah pill (= tengah layar); sisi yang lebih pendek mengisi selisihnya
+        bool exact = s.IdleExactCenter && c > 0;   // center component dead-center in pill (= screen center); shorter side pads the difference
         var cols = IdleRow.ColumnDefinitions;
         cols[0].Width = cols[2].Width = exact ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
         IdleRow.HorizontalAlignment = exact ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
         double ex = Math.Clamp(s.IdleExtra, 0, 160);
-        return ex + (exact ? Math.Max(120, c + 2 * Math.Max(l, r) + 28) : Math.Max(120, l + c + r + 28));   // jarak antar komponen tetap: Settings.IdleGap
+        return ex + (exact ? Math.Max(120, c + 2 * Math.Max(l, r) + 28) : Math.Max(120, l + c + r + 28));   // spacing between components is fixed: Settings.IdleGap
     }
 
-    // titik status HP, dua keadaan saja: menyala (terisi) = HP tersambung; kosong (hanya cincin) = tidak tersambung, apa pun sebabnya
+    // phone status dot, only two states: lit (filled) = phone connected; empty (ring only) = not connected, regardless of reason
     void UpdatePhoneDot(bool full)
     {
         if (!full || !Settings.Cur.IdlePhoneDot) { _phoneDot.Visibility = Visibility.Collapsed; return; }
@@ -781,7 +781,7 @@ public partial class IslandWindow : Window
         _speed.Inlines.Add(new System.Windows.Documents.Run(up));
     }
 
-    // tempatkan tiap item di zona pilihan pengguna; urutan di dalam zona tetap
+    // place each item in the user's chosen zone; order within a zone is fixed
     void Arrange()
     {
         var s = Settings.Cur;
@@ -790,7 +790,7 @@ public partial class IslandWindow : Window
         Put(s.PosWave, _wave); Put(s.PosUsage, _usageBox); Put(s.PosSpeed, _speed); Put(s.PosClock, TimeText); Put(s.PosBattery, _batBox); Put(s.PosVoice, _voiceDot); Put(s.PosPhone, _phoneDot);
     }
 
-    // Semua komponen punya margin sama: jarak antar dua komponen = IdleGap, tidak ada ruang kosong tambahan.
+    // All components have equal margin: gap between any two components = IdleGap, no extra empty space.
     void ApplyGap()
     {
         var m = new Thickness(Settings.Cur.IdleGap / 2.0, 0, Settings.Cur.IdleGap / 2.0, 0);
@@ -798,7 +798,7 @@ public partial class IslandWindow : Window
         _usageBox.Margin = new Thickness(0);
     }
 
-    // Lebar tetap untuk teks yang berubah-ubah (jam, kecepatan, persen) agar komponen lain tidak bergeser.
+    // Fixed width for changing text (clock, speed, percent) so other components don't shift.
     void FixWidths()
     {
         ApplyGap();
@@ -812,7 +812,7 @@ public partial class IslandWindow : Window
         TimeText.TextAlignment = TextAlignment.Center;
         TimeText.Width = clocks.Max(c => UI.TextWidth(c, 17, FontWeights.Bold)) + 2;
         _speed.MinWidth = UI.TextWidth(s.IdleSpeedStyle == "both" ? "↓ 88K  ↑ 88K" : "↓ 88K", 13, FontWeights.SemiBold);
-        _batText.MinWidth = UI.TextWidth("88%", 14, FontWeights.Bold);   // 2 digit: lebar tetap tanpa ruang kosong; "100%" hanya menggeser sekali
+        _batText.MinWidth = UI.TextWidth("88%", 14, FontWeights.Bold);   // 2 digits: fixed width without extra space; "100%" only shifts once
         _batText.TextAlignment = TextAlignment.Right;
         _chipC.Fix(); _chipX.Fix(); _chipA.Fix();
     }
@@ -825,14 +825,14 @@ public partial class IslandWindow : Window
         ShareServer.I.DevicesChanged += () => { _idleKey = ""; RefreshIdle(); };
         PhoneNotifs.Posted += n =>
         {
-            // idle hanya satu baris: notifikasi terbaru menggantikan yang lama (percakapan lengkap ada di tab Komunikasi)
-            // notifikasi lain dari aplikasi yang sama saat yang lama masih tampil digabung: satu baris dengan penanda "(+n)", bukan baris yang terus berganti
+            // idle is single-line: newest notification replaces the old one (full conversations are in the Communication tab)
+            // another notification from the same app while the old one is still shown is merged: one row with "(+n)" badge, not a constantly flipping row
             int count = _rows.Count > 0 && _rows[0].N.Pkg == n.Pkg && _rows[0].N.Key != n.Key && DateTime.Now < _rows[0].Until ? _rows[0].Count + 1 : _rows.Count > 0 && _rows[0].N.Key == n.Key ? _rows[0].Count : 1;
             _rows.Clear();
             _rows.Add(new NotifRow { N = n, Count = count, Until = DateTime.Now.AddSeconds(Math.Max(2, Settings.Cur.NotifShowSec)) });
             _idleKey = ""; RefreshIdle();
         };
-        PhoneNotifs.Changed += () => { _rows.RemoveAll(r => !r.N.Key.StartsWith("test") && !PhoneNotifs.IsActive(r.N.Key)); RefreshIdle(); };   // dibalas/dihapus di HP atau disilang = baris hilang
+        PhoneNotifs.Changed += () => { _rows.RemoveAll(r => !r.N.Key.StartsWith("test") && !PhoneNotifs.IsActive(r.N.Key)); RefreshIdle(); };   // replied/dismissed on phone or closed = row removed
         _usageBox.Children.Add(_chipC); _usageBox.Children.Add(_chipX); _usageBox.Children.Add(_chipA);
         _speed.Margin = new Thickness(7, 0, 7, 0);
         for (int i = 0; i < 4; i++)
@@ -865,7 +865,7 @@ public partial class IslandWindow : Window
         }
     }
 
-    // ikon baterai gaya ReyLand: "80%" + badan beraksen isi hijau yang melebar sesuai persen
+    // ReyLand-style battery icon: "80%" + accented body with green fill that scales with percentage
     void UpdateBattery()
     {
         _batIcon.Children.Clear();
@@ -888,10 +888,10 @@ public partial class IslandWindow : Window
         _batIcon.Children.Add(nub);
     }
 
-    // dipakai ShelfView untuk drag keluar agar pill tidak menutup
+    // used by ShelfView for drag-out so the pill does not close
     public void KeepOpen(bool on) { Dragging = on; if (!on && _open) _closeT.Start(); }
 
-    // dipakai ToolsView: sembunyikan pill sebelum menangkap layar
+    // used by ToolsView: hide pill before capturing screen
     public void HideForCapture(Action capture, int delayMs = 200)
     {
         if (_capturing) return;
@@ -906,7 +906,7 @@ public partial class IslandWindow : Window
         _pillScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         _pillMove.BeginAnimation(TranslateTransform.YProperty, null);
         _shown = false;
-        Hide(); // Windows mengaktifkan jendela di bawahnya, jadi mode "Jendela" menangkap aplikasi terakhir
+        Hide(); // Windows activates the window underneath, so "Window" mode captures the last app
         try { DwmFlush(); } catch { }
         Dispatcher.BeginInvoke(DispatcherPriority.Render, () =>
         {

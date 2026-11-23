@@ -8,9 +8,9 @@ using System.Text.Json;
 namespace ZaxLet;
 
 /// <summary>
-/// Logika murni pembaruan otomatis (tanpa jaringan/UI supaya bisa diuji): membaca rilis GitHub, membandingkan versi, memeriksa SHA-256,
-/// dan mengekstrak arsip dengan aman. Rilis harus memuat aset "ZaxLet-update.zip" dan hash-nya (kolom "digest" GitHub, atau aset
-/// "ZaxLet-update.zip.sha256"). Pembaruan hanya diunduh dari github.com / githubusercontent.com.
+/// Pure auto-update logic (no network/UI so it is testable): reads GitHub releases, compares versions, checks SHA-256,
+/// and safely extracts archives. Releases must include "ZaxLet-update.zip" and its hash (GitHub "digest" field, or
+/// "ZaxLet-update.zip.sha256" asset). Updates are only downloaded from github.com / githubusercontent.com.
 /// </summary>
 public static class UpdateCheck
 {
@@ -34,7 +34,7 @@ public static class UpdateCheck
         return Match(u.Host, "github.com") || Match(u.Host, "githubusercontent.com");
     }
 
-    /// <summary>Rilis terbaru dari JSON API GitHub; null bila tidak ada aset pembaruan. Hash kosong bila rilis tidak menyertakannya (pemanggil harus menolak).</summary>
+    /// <summary>Latest release from GitHub JSON API; null if no update asset. Hash is empty if the release omits it (caller must reject).</summary>
     public static Release ParseRelease(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -60,7 +60,7 @@ public static class UpdateCheck
 
     public static bool IsNewer(Version latest, Version current) => latest != null && current != null && latest > current;
 
-    /// <summary>Isi berkas .sha256 ("hash  nama" atau hash saja) -> 64 heksa huruf kecil, atau "".</summary>
+    /// <summary>.sha256 file contents ("hash  name" or hash only) -> 64 lowercase hex chars, or "".</summary>
     public static string ReadShaFile(string text)
     {
         var t = (text ?? "").Trim().Split(' ', '\t', '\r', '\n').FirstOrDefault() ?? "";
@@ -74,7 +74,7 @@ public static class UpdateCheck
         return Convert.ToHexString(SHA256.HashData(fs)).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Ekstrak arsip ke folder baru; menolak entri yang keluar dari folder tujuan (zip-slip) dan arsip tanpa ZaxLet.exe.</summary>
+    /// <summary>Extract archive to a new folder; rejects entries escaping the target folder (zip-slip) and archives without ZaxLet.exe.</summary>
     public static void ExtractSafe(string zip, string destDir)
     {
         Directory.CreateDirectory(destDir);

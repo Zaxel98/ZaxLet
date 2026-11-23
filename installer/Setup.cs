@@ -1,5 +1,5 @@
-﻿// Pemasang ZaxLet (per-pengguna, tanpa admin). Dikompilasi dengan csc .NET Framework (C# 5) supaya jalan di Windows 10/11 tanpa .NET apa pun.
-// Isi aplikasi ada di sumber daya "payload.zip". "Setup.exe /uninstall" (salinan: Uninstall.exe di folder pemasangan) mencopot.
+﻿// ZaxLet installer (per-user, no admin). Compiled with .NET Framework csc (C# 5) so it runs on Windows 10/11 without any .NET installed.
+// App contents are in the "payload.zip" resource. "Setup.exe /uninstall" (copy: Uninstall.exe in install folder) uninstalls.
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -12,8 +12,8 @@ using Microsoft.Win32;
 
 static class Setup
 {
-    const string AppName = "ZaxLet";   // folder pasang dan nilai autostart (harus sama dengan App.xaml.cs)
-    const string Title = AppName;        // nama yang tampil
+    const string AppName = "ZaxLet";   // install folder and autostart value (must match App.xaml.cs)
+    const string Title = AppName;        // display name
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ZaxLet";
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
@@ -35,7 +35,7 @@ static class Setup
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
     }
 
-    /// <summary>Folder pemasangan yang sudah ada (dari catatan pencopot), atau null bila belum terpasang: pemasang beralih ke mode perbarui.</summary>
+    /// <summary>Existing install folder (from uninstaller registry), or null if not yet installed: installer switches to update mode.</summary>
     public static string ExistingDir()
     {
         try
@@ -123,7 +123,7 @@ static class Setup
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Title + ".lnk");
     }
 
-    /// <summary>Pasang. report(persen, teks) dipanggil dari thread pemasang.</summary>
+    /// <summary>Install. report(percent, text) is called from the installer thread.</summary>
     public static void Install(string dir, bool autostart, bool desktop, Action<int, string> report)
     {
         report(5, "Menutup ZaxLet yang sedang berjalan…");
@@ -138,7 +138,7 @@ static class Setup
             foreach (ZipArchiveEntry e in zip.Entries)
             {
                 string dest = Path.GetFullPath(Path.Combine(dir, e.FullName));
-                if (!dest.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;   // jangan keluar dari folder tujuan
+                if (!dest.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;   // do not escape target folder
                 if (e.FullName.EndsWith("/")) { Directory.CreateDirectory(dest); continue; }
                 Directory.CreateDirectory(Path.GetDirectoryName(dest));
                 e.ExtractToFile(dest, true);
@@ -176,7 +176,7 @@ static class Setup
         report(100, "Selesai");
     }
 
-    /// <summary>Unduh dan jalankan pemasang resmi .NET 8 Desktop Runtime (Microsoft). Meminta izin admin (UAC) sendiri.</summary>
+    /// <summary>Download and run the official .NET 8 Desktop Runtime installer (Microsoft). Requests admin permission (UAC) itself.</summary>
     public static bool InstallRuntime(Action<int, string> report)
     {
         string tmp = Path.Combine(Path.GetTempPath(), "windowsdesktop-runtime-8-win-x64.exe");
@@ -210,7 +210,7 @@ static class Setup
         {
             try { Directory.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ZaxLet"), true); } catch { }
         }
-        // Uninstall.exe sedang berjalan dari folder ini: hapus folder lewat cmd setelah proses ini selesai
+        // Uninstall.exe is running from this folder: delete folder via cmd after this process exits
         ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"" + dir + "\"");
         psi.CreateNoWindow = true;
         psi.UseShellExecute = false;
@@ -244,7 +244,7 @@ sealed class InstallForm : Form
         Label title = new Label { Text = "ZaxLet", Font = new Font("Segoe UI", 18f, FontStyle.Bold), Location = new Point(20, 14), AutoSize = true };
         Label sub = new Label { Text = "Dynamic island untuk Windows 11: musik, usage AI, notifikasi HP, dan lainnya.", Location = new Point(22, 54), Size = new Size(440, 20) };
         Label l1 = new Label { Text = "Folder pemasangan", Location = new Point(22, 90), AutoSize = true };
-        string old = Setup.ExistingDir(); _update = old != null;   // sudah terpasang: mode perbarui (folder dan pilihan lama dipertahankan, pengaturan dan data tidak disentuh)
+        string old = Setup.ExistingDir(); _update = old != null;   // already installed: update mode (old folder and options kept, settings and data untouched)
         _dir.Text = old ?? Setup.DefaultDir();
         _dir.Location = new Point(22, 110);
         _dir.Width = 360;

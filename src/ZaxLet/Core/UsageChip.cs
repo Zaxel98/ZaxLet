@@ -6,7 +6,7 @@ using System.Windows.Media;
 
 namespace ZaxLet;
 
-/// <summary>Chip usage AI di pill idle. Gaya (Settings.IdleUsageStyle): ring, ringpct, pct, bar.</summary>
+/// <summary>AI usage chip in the idle pill. Styles (Settings.IdleUsageStyle): ring, ringpct, pct, bar.</summary>
 public sealed class UsageChip : StackPanel
 {
     readonly RingBadge _ring;
@@ -26,10 +26,10 @@ public sealed class UsageChip : StackPanel
         Children.Add(_ring); Children.Add(_lbl); Children.Add(_bar); Children.Add(_pct);
     }
 
-    /// <summary>Lebar persen tetap ("100%") supaya angka berubah tidak menggeser komponen lain.</summary>
+    /// <summary>Fixed percentage width ("100%") so changing numbers do not shift other components.</summary>
     public void Fix() => _pct.MinWidth = UI.TextWidth("88%", 13, FontWeights.SemiBold);
 
-    /// <summary>Isi chip dari kuota; false bila tidak ada data untuk ditampilkan (chip disembunyikan).</summary>
+    /// <summary>Populate chip from quota; false if there is no data to display (chip is hidden).</summary>
     public bool Update(ProviderUsage u, bool enabled)
     {
         var s = Settings.Cur;
@@ -53,7 +53,7 @@ public sealed class UsageChip : StackPanel
         _ring.Set(w.Pct / 100, col);
         _bar.Set(w.Pct / 100, col);
         _pct.Text = $"{Math.Round(w.Pct)}%";
-        _pct.Foreground = u.Error != null ? UI.Dim : st == "pct" ? col : Brushes.White;   // data lama tampil redup
+        _pct.Foreground = u.Error != null ? UI.Dim : st == "pct" ? col : Brushes.White;   // stale data shown dimmed
         Key = st + _pct.Text;
         return true;
     }

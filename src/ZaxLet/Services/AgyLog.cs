@@ -7,9 +7,9 @@ using System.Runtime.InteropServices;
 namespace ZaxLet;
 
 /// <summary>
-/// Token Antigravity dari database percakapan lokal (aplikasi + CLI). Tiap langkah model menyimpan
-/// metadata protobuf: medan 1.1 = detik epoch, medan 9 = pemakaian (2 = input baru, 3 = output).
-/// Cache cache-baca (medan 5) tidak dihitung. Dibaca lewat winsqlite3.dll bawaan Windows, tanpa pustaka tambahan.
+/// Antigravity tokens from local conversation databases (app + CLI). Each model step stores
+/// protobuf metadata: field 1.1 = epoch seconds, field 9 = usage (2 = new input, 3 = output).
+/// Cache-read tokens (field 5) are excluded. Read via Windows' built-in winsqlite3.dll, with no extra dependencies.
 /// </summary>
 static class AgyLog
 {
@@ -30,7 +30,7 @@ static class AgyLog
             {
                 if (Path.GetFileName(f).StartsWith("conversation_summaries")) continue;
                 var fi = new FileInfo(f); live.Add(f);
-                // berkas yang terakhir diubah sebelum periode tertua tidak mungkin memuat langkahnya
+                // files last modified before the oldest period cannot contain its steps
                 if (new DateTimeOffset(fi.LastWriteTime).ToUnixTimeSeconds() < oldest) continue;
                 if (!_cache.TryGetValue(f, out var c) || c.Mt != fi.LastWriteTimeUtc || c.Len != fi.Length)
                 {
@@ -69,7 +69,7 @@ static class AgyLog
         return ev;
     }
 
-    /// <summary>Medan protobuf pertama bernomor <paramref name="field"/>: nilai varint atau isi submessage.</summary>
+    /// <summary>First protobuf field numbered <paramref name="field"/>: varint value or submessage payload.</summary>
     static bool Get(byte[] b, int field, out long v, out byte[] sub)
     {
         v = 0; sub = Array.Empty<byte>();

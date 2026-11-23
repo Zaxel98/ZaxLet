@@ -1,6 +1,6 @@
-﻿# Mengompilasi softcam (kamera virtual DirectShow, MIT) menjadi softcam.dll memakai llvm-mingw di ..\.tools.
-# Jalankan dari terminal Anda sendiri:  powershell -ExecutionPolicy Bypass -File native\build-softcam.ps1
-$ErrorActionPreference = "Continue"   # stderr clang bukan kegagalan skrip; yang dinilai adalah exit code
+﻿# Compiles softcam (DirectShow virtual camera, MIT) into softcam.dll using llvm-mingw in ..\.tools.
+# Run from your own terminal:  powershell -ExecutionPolicy Bypass -File native\build-softcam.ps1
+$ErrorActionPreference = "Continue"   # clang stderr is not a script failure; exit code is what matters
 $root = Split-Path $PSScriptRoot -Parent
 $src  = Join-Path $root ".tools\softcam-src\softcam-1.8.1\src"
 $bin  = (Get-ChildItem (Join-Path $root ".tools\llvm\*\bin\clang++.exe")).DirectoryName
@@ -10,9 +10,9 @@ $env:PATH = "$bin;$env:PATH"
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $out | Out-Null
 
-# Satu kebiasaan khas MSVC di wxdebug.cpp: memanggil konstruktor sebagai pernyataan ("CDisp::CDisp(pp);"); clang menolaknya.
+# One MSVC quirk in wxdebug.cpp: calling a constructor as a statement ("CDisp::CDisp(pp);"); clang rejects it.
 $wx = "$src\baseclasses\wxdebug.cpp"
-$latin1 = [Text.Encoding]::GetEncoding(28591)   # baca/tulis per-byte agar isi file tidak berubah
+$latin1 = [Text.Encoding]::GetEncoding(28591)   # read/write per-byte so file contents do not change
 $t = [IO.File]::ReadAllText($wx, $latin1)
 if ($t.Contains("CDisp::CDisp(pp);")) { [IO.File]::WriteAllText($wx, $t.Replace("CDisp::CDisp(pp);", "{ CDisp cd_tmp(pp); }"), $latin1) }
 

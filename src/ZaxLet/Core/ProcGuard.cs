@@ -3,20 +3,20 @@ using System.Diagnostics;
 
 namespace ZaxLet;
 
-/// <summary>Akhiri proses dari tab Monitor: hanya aplikasi biasa. Proses sistem (di folder Windows, atau jalurnya tidak terbaca) dan ZaxLet sendiri ditolak.</summary>
+/// <summary>Terminate a process from the Monitor tab: regular apps only. System processes (in the Windows folder, or whose path is unreadable) and ZaxLet itself are rejected.</summary>
 public static class ProcGuard
 {
     public static bool CanKill(string name, string path) =>
         !string.IsNullOrEmpty(path) && !string.Equals(name, "ZaxLet", StringComparison.OrdinalIgnoreCase)
         && !path.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.Windows) + "\\", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Akhiri semua proses ber-nama itu yang lolos CanKill. Baris Monitor menjumlahkan per nama, jadi semuanya ikut.</summary>
+    /// <summary>Terminate all processes with that name that pass CanKill. Monitor rows aggregate by name, so all of them are included.</summary>
     public static void Kill(string name)
     {
         foreach (var p in Process.GetProcessesByName(name))
         {
             try { if (p.Id != Environment.ProcessId && CanKill(name, p.MainModule?.FileName)) p.Kill(); }
-            catch { /* sudah keluar, atau akses ditolak (proses admin) */ }
+            catch { /* already exited, or access denied (admin process) */ }
             finally { p.Dispose(); }
         }
     }

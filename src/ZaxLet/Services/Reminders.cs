@@ -7,7 +7,7 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-/// <summary>Pengingat berlabel satu kali (independen dari TimerService/Pomodoro), disimpan ke reminders.json.</summary>
+/// <summary>One-time labeled reminders (independent of TimerService/Pomodoro), saved to reminders.json.</summary>
 public sealed class ReminderService
 {
     public static readonly ReminderService I = new();

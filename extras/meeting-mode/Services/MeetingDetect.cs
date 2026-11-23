@@ -5,9 +5,9 @@ using System.Linq;
 namespace ZaxLet;
 
 /// <summary>
-/// Mengenali rapat dari dua petunjuk: aplikasi yang sedang memakai mikrofon (daftar privasi Windows) dan judul jendela.
-/// Aplikasi rapat asli cukup dikenali dari nama prosesnya; di peramban perlu judul tab rapat, supaya tab biasa yang
-/// memakai mikrofon (mis. perekam suara) tidak dianggap rapat. Murni: tanpa WPF dan tanpa akses sistem, jadi bisa dites.
+/// Detects meetings from two signals: apps currently using the microphone (Windows privacy list) and window titles.
+/// Native meeting apps are identified by process name; in browsers a meeting tab title is required so ordinary tabs
+/// using the mic (e.g., voice recorder) are not treated as a meeting. Pure: no WPF and no system access, so it is testable.
 /// </summary>
 public static class MeetingDetect
 {
@@ -18,7 +18,7 @@ public static class MeetingDetect
     };
     static readonly string[] Browsers = { "chrome", "msedge", "firefox", "opera", "brave", "vivaldi", "arc" };
 
-    /// <summary>Nama rapat ("Zoom", "Meet", ...) atau null bila tidak ada rapat.</summary>
+    /// <summary>Meeting name ("Zoom", "Meet", ...) or null if no meeting is active.</summary>
     public static string Classify(IEnumerable<string> micApps, IEnumerable<string> windowTitles)
     {
         var apps = (micApps ?? Enumerable.Empty<string>()).Select(a => (a ?? "").ToLowerInvariant()).ToList();

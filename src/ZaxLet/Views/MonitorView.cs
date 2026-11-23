@@ -21,7 +21,7 @@ public sealed class MonitorView : TabView
     readonly SysMon _s = new();
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(1) };
 
-    // 4 ukuran huruf: 18 (angka utama), 12.5 (isi), 11.5 (judul/kontrol), 10 (keterangan redup)
+    // 4 font sizes: 18 (main numbers), 12.5 (body), 11.5 (titles/controls), 10 (dimmed captions)
     readonly TextBlock _cpu = UI.T("0%", 18, null, true), _cpuLbl = UI.T("CPU", 10, UI.Dim);
     readonly TextBlock _memPct = UI.T("0%", 18, null, true), _memLbl = UI.T("RAM", 10, UI.Dim);
     readonly TextBlock _gpu = UI.T("—", 18, null, true), _gpuLbl = UI.T("GPU", 10, UI.Dim);
@@ -44,15 +44,15 @@ public sealed class MonitorView : TabView
     readonly TextBlock _ovTxt = UI.T("Overlay", 11.5, UI.Dim, true);
     readonly TextBlock _rightTitle = UI.T("Memori terbanyak", 11.5, UI.Dim);
     readonly TextBlock _usageTxt = UI.T("", 10, UI.Dim);
-    readonly StackPanel _perfBox = new() { ClipToBounds = true, Height = 168 };   // tinggi tetap: ganti daftar proses tanpa mengubah ukuran island
-    PerfProbe _probe;   // hidup hanya selama tab terbuka dan "tampilkan di island" menyala
+    readonly StackPanel _perfBox = new() { ClipToBounds = true, Height = 168 };   // fixed height: swap process list without resizing the island
+    PerfProbe _probe;   // alive only while tab is open and "show in island" is on
     bool _preview;
 
     public MonitorView()
     {
         var left = new StackPanel();
 
-        // tiga unit seragam: CPU, RAM, GPU (angka besar, bar tipis status, label redup di bawah)
+        // three uniform units: CPU, RAM, GPU (large number, thin status bar, dimmed label below)
         var units = new Grid();
         units.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         units.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -66,7 +66,7 @@ public sealed class MonitorView : TabView
         units.Children.Add(_gpuBox.At(0, 2));
         left.Children.Add(units);
 
-        // jaringan: dua kolom sama lebar dengan label redup di bawah angka
+        // network: two equal-width columns with dimmed label below numbers
         var net = UI.Cols(-1, -1);
         net.Margin = new Thickness(0, 12, 0, 0);
         var downCol = new StackPanel();
@@ -98,7 +98,7 @@ public sealed class MonitorView : TabView
         net.Children.Add(upCol.At(0, 1));
         left.Children.Add(net);
 
-        // ping: sejajar dengan dua kolom jaringan di atasnya
+        // ping: aligned with the two network columns above
         var ping = UI.Cols(-1, -1);
         ping.Margin = new Thickness(0, 12, 0, 0);
         var gwRow = new StackPanel { Orientation = Orientation.Horizontal };
@@ -120,7 +120,7 @@ public sealed class MonitorView : TabView
         ping.Children.Add(netRow.At(0, 1));
         left.Children.Add(ping);
 
-        // baris bawah: baterai
+        // bottom row: battery
         var batRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
         batRow.Children.Add(_batHost);
         _bat.VerticalAlignment = VerticalAlignment.Center;
@@ -131,7 +131,7 @@ public sealed class MonitorView : TabView
         g.Children.Add(left);
         g.Children.Add(new Border { Width = 1, Background = UI.Track, Margin = new Thickness(12, 4, 12, 4) }.At(0, 1));
         var right = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
-        var head = UI.Cols(-1, 0);   // judul + tombol on/off overlay performa
+        var head = UI.Cols(-1, 0);   // title + performance overlay toggle button
         _rightTitle.VerticalAlignment = VerticalAlignment.Center;
         head.Children.Add(_rightTitle);
         _ovBtn = UI.Btn(_ovTxt, () => { var s = Settings.Cur; if (PerfOverlay.IsOn && FpsSource.NeedsAsk) { FpsSource.Ask(); Render(); return; } bool turnOn = !PerfOverlay.IsOn; s.PerfShow = turnOn ? "on" : "off"; Settings.Apply(); Render(); if (turnOn) PerfOverlay.AskAccess(); }, UI.Card, 8, new Thickness(8, 4, 8, 4));
@@ -150,7 +150,7 @@ public sealed class MonitorView : TabView
         Children.Add(g);
         _t.Tick += async (_, _) =>
         {
-            var iv = TimeSpan.FromSeconds(PowerSaver.On ? 3 : 1);   // hemat baterai: sampel tiap 3 dtk
+            var iv = TimeSpan.FromSeconds(PowerSaver.On ? 3 : 1);   // power saver: sample every 3s
             if (_t.Interval != iv) _t.Interval = iv;
             _s.Sample(); Render(); await _s.SampleSlowAsync();
             if (_visible) await PingAsync();
@@ -168,7 +168,7 @@ public sealed class MonitorView : TabView
         return p;
     }
 
-    // Pemanasan saat aplikasi mulai: sampel pertama (dasar selisih CPU/jaringan), GPU, dan daftar proses sudah siap sebelum tab dibuka.
+    // Warm-up on app start: first sample (CPU/network delta baseline), GPU, and process list are ready before the tab opens.
     public async void Warm()
     {
         try
@@ -182,7 +182,7 @@ public sealed class MonitorView : TabView
     }
     bool _warm;
 
-    // Bila sudah dipanaskan: tampilkan angka terakhir seketika, lalu sampel baru menyusul tanpa menunggu tick pertama.
+    // If already warmed up: show last numbers immediately, then fresh samples follow without waiting for the first tick.
     public override void OnShow()
     {
         _visible = true;
@@ -190,7 +190,7 @@ public sealed class MonitorView : TabView
         if (_warm) Render();
         _s.Sample(); _t.Start(); Render(); _ = _s.SampleSlowAsync(); _ = PingAsync();
     }
-    bool _visible;   // Warm() menggambar saat tab belum terbuka: probe sensor tidak boleh ikut menyala
+    bool _visible;   // Warm() draws while tab is not open: sensor probe must not start yet
     public override void OnHide() { _visible = false; _t.Stop(); _probe?.Dispose(); _probe = null; }
 
     internal static MonitorView Preview()
@@ -238,7 +238,7 @@ public sealed class MonitorView : TabView
         if (want && _probe == null) _probe = new PerfProbe(PerfFormat.Items(st.PerfItems));
         else if (!want && _probe != null) { _probe.Dispose(); _probe = null; }
         bool perf = _probe != null;
-        _rightPanel.Visibility = Visibility.Visible;   // tombol overlay selalu ada
+        _rightPanel.Visibility = Visibility.Visible;   // overlay button is always present
         _top.Visibility = perf || !st.MonTop ? Visibility.Collapsed : Visibility.Visible;
         _perfBox.Visibility = perf ? Visibility.Visible : Visibility.Collapsed;
         _rightTitle.Text = L.T(perf || !st.MonTop ? "Performa" : "Memori terbanyak");
@@ -252,7 +252,7 @@ public sealed class MonitorView : TabView
         _perfBox.Children.Clear();
         var rows = PerfFormat.Metrics.Where(m => items.Contains(m.Key) && v.TryGetValue(m.Key, out var x) && x != null).ToList();
         if (rows.Count == 0) { _perfBox.Children.Add(UI.T(L.T("Belum ada metrik dipilih"), 11.5, UI.Faint)); return; }
-        // lebih dari satu halaman: ganti halaman tiap 4 detik (tinggi daftar tetap, ukuran island tidak berubah)
+        // more than one page: switch page every 4 seconds (list height fixed, island size unchanged)
         int pages = (rows.Count + PerfRows - 1) / PerfRows, page = pages > 1 ? _perfTick++ / 4 % pages : 0;
         if (pages > 1) _rightTitle.Text += $"  {page + 1}/{pages}";
         foreach (var m in rows.Skip(page * PerfRows).Take(PerfRows))
@@ -260,7 +260,7 @@ public sealed class MonitorView : TabView
             var row = UI.Cols(-1, 0);
             row.Margin = new Thickness(0, 0, 0, 4);
             row.Children.Add(UI.T(L.T(m.Label), 11.5, UI.Dim).At(0, 0));
-            var vt = UI.T(System.Text.RegularExpressions.Regex.Replace(v[m.Key], @"^(inti|mem|bus|kipas|batas:)\s+", ""), 11.5);   // label baris sudah menjelaskan
+            var vt = UI.T(System.Text.RegularExpressions.Regex.Replace(v[m.Key], @"^(inti|mem|bus|kipas|batas:)\s+", ""), 11.5);   // row label already explains
             vt.Margin = new Thickness(8, 0, 0, 0);
             row.Children.Add(vt.At(0, 1));
             _perfBox.Children.Add(row);
@@ -325,7 +325,7 @@ public sealed class MonitorView : TabView
             }
             bool armed = _kill == name && DateTime.Now < _killUntil;
             row.Children.Add(UI.T(armed ? L.T("Akhiri") + " " + title + "? " + L.T("Klik kanan lagi") : title, 12.5, armed ? UI.Warn : UI.Fg).At(0, 1));
-            if (ProcGuard.CanKill(name, path))   // klik kanan = siapkan, klik kanan lagi dalam 5 dtk = akhiri (konfirmasi)
+            if (ProcGuard.CanKill(name, path))   // right-click = arm, right-click again within 5s = kill (confirmation)
             {
                 row.Background = Brushes.Transparent;
                 var n = name;

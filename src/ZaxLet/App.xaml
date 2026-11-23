@@ -5,7 +5,7 @@
     <Application.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
-            <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>   <!-- angka selebar sama: jam, timer, dan persen tidak bergoyang (diukur: lebar "11:11" = "00:00") -->
+            <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>   <!-- equal-width digits: clock, timer, and percent don't jitter (measured: "11:11" width = "00:00") -->
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>

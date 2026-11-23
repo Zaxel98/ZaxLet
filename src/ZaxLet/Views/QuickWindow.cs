@@ -8,8 +8,8 @@ using System.Windows.Media;
 namespace ZaxLet;
 
 /// <summary>
-/// Kotak Aksi cepat: pintasan global membuka satu kolom ketik di bawah island; Enter menjalankan satu perintah (lihat <see cref="QuickCmd"/>), Esc atau
-/// klik di luar menutup. Tidak ada pemindaian atau proses latar: jendela hanya ada selama dipakai.
+/// Quick Actions box: global shortcut opens a single input field below the island; Enter runs one command (see <see cref="QuickCmd"/>), Esc or
+/// clicking outside closes it. No scanning or background process: the window only exists while in use.
 /// </summary>
 public sealed class QuickWindow : Window
 {
@@ -46,7 +46,7 @@ public sealed class QuickWindow : Window
             if (e.Key == Key.Escape) { Close(); e.Handled = true; }
             else if (e.Key == Key.Enter) { Run(_box.Text); e.Handled = true; }
         };
-        _box.TextChanged += (_, _) =>   // hasil hitungan tampil langsung saat mengetik
+        _box.TextChanged += (_, _) =>   // calculation results appear live while typing
         {
             _sleepArmed = false;
             var p = QuickCmd.Parse(_box.Text);
@@ -63,7 +63,7 @@ public sealed class QuickWindow : Window
     {
         var c = QuickCmd.Parse(text);
         if (c.Kind == QuickCmd.Kind.None) { Close(); return; }
-        if (c.Kind == QuickCmd.Kind.Unknown) { _hint.Text = L.T(c.Arg); _hint.Foreground = UI.Warn; return; }   // tetap terbuka: perbaiki ketikan
+        if (c.Kind == QuickCmd.Kind.Unknown) { _hint.Text = L.T(c.Arg); _hint.Foreground = UI.Warn; return; }   // stay open: fix typo
         string msg;
         var isl = IslandWindow.Instance;
         switch (c.Kind)
@@ -138,7 +138,7 @@ public sealed class QuickWindow : Window
                 }
                 break;
             case QuickCmd.Kind.Calc:
-                try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // hasil saja, tanpa satuan
+                try { Clipboard.SetText(c.Arg.Contains('=') ? c.Arg[(c.Arg.IndexOf('=') + 1)..].Trim().Split(' ')[0] : c.Arg); } catch { }   // result only, without unit
                 msg = L.F("{0} (disalin)", c.Arg.Contains('=') ? c.Arg : "= " + c.Arg); break;
             case QuickCmd.Kind.Open:
                 var key = IslandWindow.TabOrder.FirstOrDefault(k => k != "settings" && !Settings.Cur.HiddenTabs.Contains(k)

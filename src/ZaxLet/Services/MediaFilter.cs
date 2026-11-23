@@ -3,21 +3,21 @@ using System.Linq;
 
 namespace ZaxLet;
 
-/// <summary>Daftar aplikasi yang musiknya diabaikan island (mis. "discord, zoom"): cocok bila salah satu kata ada di nama aplikasi sumber (SourceAppUserModelId), tanpa membedakan huruf besar kecil.</summary>
+/// <summary>List of apps whose music is ignored by the island (e.g., "discord, zoom"): matches if any word appears in the source app name (SourceAppUserModelId), case-insensitive.</summary>
 public static class MediaFilter
 {
     static readonly string[] AdTitles = { "advertisement", "iklan", "spotify", "spotify free" };
 
-    /// <summary>Teks iklan Spotify yang pernah lolos (artisnya nama pengiklan, bukan "Spotify"): diblokir berdasarkan judul. Tambah di sini bila ada yang lolos lagi.</summary>
+    /// <summary>Spotify ad texts that previously slipped through (artist is the advertiser name, not "Spotify"): blocked by title. Add here if more slip through.</summary>
     static readonly string[] AdBlock = { "Lagu-lagu cinta terbaik.", "DENGARKAN SEKARANG", "Benar dia hemat" };
 
-    /// <summary>Iklan Spotify yang tidak dikenali dari teksnya: sumbernya Spotify dan lamanya di bawah 45 dtk (lagu asli hampir tak pernah sependek itu).</summary>
+    /// <summary>Spotify ads not recognized by text: source is Spotify and duration is under 45s (real songs are rarely that short).</summary>
     public static bool ShortSpotifyAd(string appId, TimeSpan len) =>
         len > TimeSpan.Zero && len.TotalSeconds < 45 && appId != null && appId.Contains("spotify", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Iklan Spotify: selama iklan, Spotify mengisi slot judul dengan teks templat (mis. "Dengarkan musik bebas iklan.") dan artisnya "Spotify".
-    /// Lagu asli tidak pernah berartis persis "Spotify". Tanpa artis, judul templat hanya dihitung iklan bila sumbernya Spotify (appId boleh null untuk catatan lama).
+    /// Spotify ad: during ads, Spotify fills the title slot with template text (e.g., "Listen to ad-free music.") and artist "Spotify".
+    /// Real songs never have artist literally "Spotify". Without an artist, template titles only count as ads if the source is Spotify (appId may be null for legacy records).
     /// </summary>
     public static bool IsAd(string appId, string title, string artist)
     {
@@ -32,6 +32,6 @@ public static class MediaFilter
     {
         if (string.IsNullOrWhiteSpace(list) || string.IsNullOrEmpty(appId)) return false;
         return list.Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(t => t.Trim()).Any(t => t.Length >= 2 && appId.Contains(t, StringComparison.OrdinalIgnoreCase));   // minimal 2 huruf: satu huruf akan mencocokkan hampir semuanya
+            .Select(t => t.Trim()).Any(t => t.Length >= 2 && appId.Contains(t, StringComparison.OrdinalIgnoreCase));   // minimum 2 characters: a single letter would match almost everything
     }
 }

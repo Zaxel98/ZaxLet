@@ -1,4 +1,4 @@
-# Membuat src\ZaxLet\Assets\zaxlet.ico (7 ukuran, PNG di dalam ICO). Jalankan: powershell -File tools\make-icon.ps1
+# Generates src\ZaxLet\Assets\zaxlet.ico (7 sizes, PNG inside ICO). Run: powershell -File tools\make-icon.ps1
 Add-Type -AssemblyName System.Drawing
 $out = Join-Path $PSScriptRoot '..\src\ZaxLet\Assets\zaxlet.ico'
 
@@ -17,16 +17,16 @@ function Frame([int]$S) {
   $g.SmoothingMode = 'AntiAlias'; $g.PixelOffsetMode = 'HighQuality'; $g.TextRenderingHint = 'AntiAliasGridFit'
   $sq = RoundRect (6 * $u) (6 * $u) (244 * $u) (244 * $u) (56 * $u)
 
-  # latar: gradasi teal -> biru -> indigo
+  # background: teal -> blue -> indigo gradient
   $bg = New-Object Drawing.Drawing2D.LinearGradientBrush((New-Object Drawing.PointF 0, 0), (New-Object Drawing.PointF $S, $S), [Drawing.Color]::FromArgb(255, 45, 212, 191), [Drawing.Color]::FromArgb(255, 79, 70, 229))
   $g.FillPath($bg, $sq)
-  # kilau kaca di separuh atas
+  # glass sheen on the top half
   $g.SetClip($sq)
   $gloss = New-Object Drawing.Drawing2D.LinearGradientBrush((New-Object Drawing.PointF 0, 0), (New-Object Drawing.PointF 0, ($S * 0.55)), [Drawing.Color]::FromArgb(70, 255, 255, 255), [Drawing.Color]::FromArgb(0, 255, 255, 255))
   $g.FillRectangle($gloss, 0, 0, $S, $S * 0.55)
   $g.ResetClip()
 
-  # pill hitam bergaya notch (bahu cekung di atas)
+  # notch-style black pill (concave shoulders at top)
   $pill = New-Object Drawing.Drawing2D.GraphicsPath
   $pill.AddLine(46 * $u, 6 * $u, 210 * $u, 6 * $u)
   $pill.AddArc(196 * $u, 6 * $u, 28 * $u, 28 * $u, 270, -90)
@@ -45,14 +45,14 @@ function Frame([int]$S) {
   $g.ResetClip()
 
   if ($S -ge 48) {
-    # isi pill: jam di tengah, titik kiri, batang kanan
+    # pill contents: clock in center, dot on left, bar on right
     $f = New-Object Drawing.Font('Segoe UI', (27 * $u), [Drawing.FontStyle]::Bold, [Drawing.GraphicsUnit]::Pixel)
     $sf = New-Object Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
     $g.DrawString('17.52', $f, [Drawing.Brushes]::White, (New-Object Drawing.RectangleF (60 * $u), (20 * $u), (136 * $u), (44 * $u)), $sf)
     $g.FillEllipse((New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb(255, 34, 211, 90))), (72 * $u), (36 * $u), (12 * $u), (12 * $u))
   }
 
-  # cincin usage (gauge) di bawah pill
+  # usage ring (gauge) below the pill
   $cx = 128 * $u; $cy = 166 * $u; $r = 52 * $u; $pw = 18 * $u
   $rect = New-Object Drawing.RectangleF ($cx - $r), ($cy - $r), (2 * $r), (2 * $r)
   $track = New-Object Drawing.Pen([Drawing.Color]::FromArgb(70, 255, 255, 255), $pw)
@@ -77,6 +77,6 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
 }
 foreach ($p in $pngs) { $w.Write($p) }
 $w.Close()
-# pratinjau 256 px untuk dilihat
+# 256 px preview for inspection
 $prev = Frame 256; $prev.Save((Join-Path $PSScriptRoot 'icon-preview.png')); $prev.Dispose()
 "ikon: $out ($((Get-Item $out).Length) byte)"

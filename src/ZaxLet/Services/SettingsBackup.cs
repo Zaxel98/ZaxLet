@@ -7,9 +7,9 @@ using System.Text.Json.Nodes;
 namespace ZaxLet;
 
 /// <summary>
-/// Cadangan pengaturan ke satu berkas JSON ("ZaxLet-pengaturan.json"). Rahasia (token HP, rahasia Discord, token pengenal lagu) tidak ikut
-/// diekspor, dan saat memulihkan nilai rahasia yang sekarang dipertahankan, jadi cadangan aman dibagikan dan HP yang sudah dipasangkan tidak putus.
-/// Bekerja di tingkat JSON supaya bisa diuji tanpa kelas Settings.
+/// Settings backup to a single JSON file ("ZaxLet-pengaturan.json"). Secrets (phone token, Discord secret, song recognition token) are excluded
+/// on export, and on restore the current secrets are preserved, so backups are safe to share and paired phones stay connected.
+/// Operates at the JSON level so it can be tested without the Settings class.
 /// </summary>
 public static class SettingsBackup
 {
@@ -24,7 +24,7 @@ public static class SettingsBackup
         return o.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
-    /// <summary>JSON pengaturan hasil pemulihan; melempar FormatException bila berkas bukan cadangan ZaxLet.</summary>
+    /// <summary>Restored settings JSON; throws FormatException if the file is not a ZaxLet backup.</summary>
     public static string Import(string backupJson, string currentJson)
     {
         JsonObject b;

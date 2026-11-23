@@ -3,8 +3,8 @@ using System.IO;
 using System.Linq;
 using ZaxLet;
 
-// Cek mandiri PrayerCalc: jadwal Bandung 2 Nov 2026 (WIB) dari foto ReyLand: 04.04, 11.37, 14.52, 17.47, 18.59.
-// Toleransi 5 menit untuk koordinat Bandung kota; kandidat lain hanya dicetak sebagai pembanding.
+// Self-check PrayerCalc: Bandung 2 Nov 2026 (WIB) schedule from ReyLand photo: 04.04, 11.37, 14.52, 17.47, 18.59.
+// 5-minute tolerance for Bandung city coordinates; other candidates are only printed for comparison.
 var expect = new[] { "04:04", "11:37", "14:52", "17:47", "18:59" };
 var candidates = new (string Name, double Lat, double Lon)[]
 {
@@ -27,7 +27,7 @@ foreach (var c in candidates)
     Console.WriteLine();
 }
 
-// Cek mandiri parser lirik LRC (format LRCLIB) dan respons kuota Claude
+// Self-check LRC lyrics parser (LRCLIB format) and Claude quota response
 var lrc = "[00:12.50] Baris satu\n[00:20.00][01:05.25] Ulang\n[00:30.00] \nbukan baris";
 var lines = Lrc.Parse(lrc);
 bool lrcOk = lines.Count == 4 && lines[0].At == TimeSpan.FromSeconds(12.5) && lines[1].Text == "Ulang" && lines[3].At == TimeSpan.FromSeconds(65.25);
@@ -35,7 +35,7 @@ Console.WriteLine(lrcOk ? "LRC OK" : "LRC GAGAL");
 if (!lrcOk) fail++;
 
 
-// Cek mandiri teks durasi bebas
+// Self-check free-form duration text
 bool D(string t, double bare, double want) => DurText.Parse(t, bare, out var s) && Math.Abs(s - want) < 1e-6;
 bool durOk = D("10m", 1, 600) && D("1.5 jam", 1, 5400) && D("1j30m", 1, 5400) && D("30", 1, 30) && D("25", 60, 1500) && D("500ms", 1, 0.5)
              && D("1,5 mnt", 1, 90) && !DurText.Parse("abc", 1, out _) && DurText.Fmt(5400) == "1 jam 30 mnt" && DurText.Fmt(90) == "1 mnt 30 dtk";
@@ -43,14 +43,14 @@ Console.WriteLine(durOk ? "DUR OK" : "DUR GAGAL");
 if (!durOk) fail++;
 
 
-// Cek mandiri romaji (kana lokal; baris berkanji tanpa pembaca = null)
+// Self-check romaji (local kana; kanji lines without reader = null)
 bool R(string t, string want) => Romaji.Of(t) == want;
 bool romOk = R("くるくるまわる", "kurukurumawaru") && R("クローバー・クラブ", "kuroobaa kurabu") && R("きっと", "kitto") && R("こんにちは", "konnichiha") && R("しんあい", "shin'ai") && R("ちょっと", "chotto") && R("まっちゃ", "matcha") && R("わたし は", "watashi wa") && Romaji.Of("世界が") == null && Romaji.Of("la la la") == null;
 Console.WriteLine(romOk ? "ROMAJI OK" : "ROMAJI GAGAL");
 if (!romOk) fail++;
 
 
-// Cek mandiri pengenalan judul YouTube dan tulisan Latin (pinyin, Hangul, Kiril, Yunani, Arab); bahasa Han ditentukan per lagu
+// Self-check YouTube title recognition and Latin transliteration (pinyin, Hangul, Cyrillic, Greek, Arabic); Han language is decided per song
 var tid = TrackId.Parse("Tame Impala - New Person, Same Old Mistakes (Audio)", "tameimpalaVEVO");
 var tid2 = TrackId.Parse("Bohemian Rhapsody - Remastered 2011", "Queen");
 var tid3 = TrackId.Parse("YOASOBI「夜に駆ける」 Official Music Video", "YOASOBI");
@@ -66,7 +66,7 @@ bool idOk = tid.Show == new TrackId.Track("New Person, Same Old Mistakes", "Tame
 Console.WriteLine(idOk ? "TRACKID OK" : "TRACKID GAGAL " + tid.Show + " | " + tid2.Show + " | " + tid3.Show + " | " + tid4.Show + " | " + tid5.Search[0] + " | " + tid6.Show);
 if (!idOk) fail++;
 
-// tabel pinyin sekarang berasal dari Paket tulisan Latin: buat dari cuplikan format asli (pinyin-data) untuk uji
+// pinyin table now comes from the Latin Script Pack: create from a real-format snippet (pinyin-data) for testing
 var pyTxt = "# version: 0.16.0\n# source: x\nU+3007: líng,yuán,xīng  # 〇\nU+4E2D: zhōng,zhòng  # 中\nU+56FD: guó  # 国\nU+6211: wǒ  # 我\nU+7231: ài  # 爱\nU+4F60: nǐ,nì  # 你\nU+7684: de,dī,dí  # 的\nU+4E16: shì  # 世\nU+754C: jiè  # 界\nU+9F9C: guī,jūn,qiū  # 龜\nU+1F600: x  # di luar BMP\nU+0041: a  # bukan CJK\nU+4E2E: \n";
 var pyGz = PinyinPack.Convert(pyTxt);
 var pyFile = Path.Combine(Path.GetTempPath(), "zx-pinyin-test.gz"); File.WriteAllBytes(pyFile, pyGz);
@@ -78,7 +78,7 @@ Console.WriteLine(noPackOk ? "PINYIN PACK OK" : "PINYIN PACK GAGAL");
 if (!noPackOk) fail++;
 Translit.Begin(new[] { "我爱你中国" });
 Translit.PinyinFile = Path.Combine(Path.GetTempPath(), "tidak-ada.gz"); Translit.ResetPinyin();
-bool absent = Translit.Of("我爱你中国") == null;   // tanpa paket: tidak diubah, bukan rusak
+bool absent = Translit.Of("我爱你中国") == null;   // without pack: unchanged, not garbled
 Translit.PinyinFile = pyFile; Translit.ResetPinyin();
 Console.WriteLine(absent ? "PINYIN TANPA PAKET OK" : "PINYIN TANPA PAKET GAGAL");
 if (!absent) fail++;
@@ -86,10 +86,10 @@ var tl = new[] { "我爱你中国", "愿你平安 快乐", "音乐 的 世界", 
 Translit.Begin(new[] { "我爱你", "愿你平安" });
 bool zhOk = Translit.Lang == "zh" && Translit.Of("我爱你中国") == "wǒ ài nǐ zhōng guó" && Translit.Of("音乐 的 世界") == "yīn yuè de shì jiè";
 Translit.Begin(new[] { "世界が", "愛してる", "夜" });
-bool jaOk = Translit.Lang == "ja" && Translit.Of("愛してる") == null;   // kanji butuh addon; kana-saja diurus Romaji
-Translit.Begin(Enumerable.Repeat("我爱你中国愿你平安快乐", 20).Append("の"));   // satu kana nyasar tidak mengubah lagu Mandarin
+bool jaOk = Translit.Lang == "ja" && Translit.Of("愛してる") == null;   // kanji needs addon; kana-only is handled by Romaji
+Translit.Begin(Enumerable.Repeat("我爱你中国愿你平安快乐", 20).Append("の"));   // a single stray kana doesn't flip a Mandarin song
 bool strayOk = Translit.Lang == "zh";
-Translit.Begin(new[] { "夜" }, "夜に駆ける", "YOASOBI");                // lirik Han-saja, judul berkana = Jepang
+Translit.Begin(new[] { "夜" }, "夜に駆ける", "YOASOBI");                // Han-only lyrics, kana in title = Japanese
 bool hintOk = Translit.Lang == "ja";
 Translit.Begin(new string[0]);
 bool otherOk = Translit.Of("다시 만나요") == "dasi mannayo" && Translit.Of("한국어") == "hangugeo" && Translit.Of("Я люблю тебя, мой друг") == "Ya lyublyu tebya, moy drug"
@@ -100,7 +100,7 @@ Console.WriteLine(trOk ? "TRANSLIT OK" : $"TRANSLIT GAGAL zh={zhOk} ja={jaOk} st
 if (!trOk) fail++;
 
 
-// Cek mandiri FFT: sinus 1 kHz dominan di pita vokal, sinus 100 Hz tidak
+// Self-check FFT: 1 kHz sine dominates vocal band, 100 Hz sine does not
 var fw = Dsp.Hann(1024);
 (double, double) Sine(double hz) { var f = new float[1024]; for (int i = 0; i < 1024; i++) f[i] = (float)Math.Sin(2 * Math.PI * hz * i / 48000); var r = Dsp.BandPower(f, fw, 48000, 300, 3400, 60, 12000); return (r.Band, r.All); }
 var (b1, a1) = Sine(1000); var (b2, a2) = Sine(100);
@@ -109,7 +109,7 @@ Console.WriteLine(dspOk ? "DSP OK" : "DSP GAGAL");
 if (!dspOk) fail++;
 
 
-// Cek mandiri model vokal: dua kelompok terpisah harus terpelajari
+// Self-check vocal model: two separated clusters must be learned
 var vm = new VocalModel(); var rr = new Random(3);
 for (int i = 0; i < 300; i++) { vm.Add(new float[] { (float)(rr.NextDouble() + 2), (float)(rr.NextDouble() - 3), (float)rr.NextDouble(), 1f + (float)rr.NextDouble(), 1f }, true); vm.Add(new float[] { (float)(rr.NextDouble() - 1), (float)(rr.NextDouble() - 5), (float)rr.NextDouble(), (float)rr.NextDouble() * 0.5f, 1f }, false); }
 vm.Train();
@@ -117,7 +117,7 @@ bool vmOk = vm.Ready && vm.Accuracy > 0.95;
 Console.WriteLine(vmOk ? "VOCAL MODEL OK" : "VOCAL MODEL GAGAL " + vm.Accuracy);
 if (!vmOk) fail++;
 
-// Cek mandiri daftar lagu YouTube (deskripsi kompilasi) dan pemilihan video dari hasil pencarian
+// Self-check YouTube tracklist (compilation description) and video selection from search results
 var chs = YtChapters.ParseChapters("Compilation!\n\n00:00:00 Tsukino Mito · 浮遊感UFO\n00:04:55 Tokyo Shoegazer · Constellations\n[11:13] 3. CONDOR44 - 00203\n1:20:59 Erio wo Kamattechan · Os\nlink: https://x.y/1:2");
 var searchHtml = "<script>var ytInitialData = {\"a\":[{\"videoRenderer\":{\"videoId\":\"bad1\",\"title\":{\"runs\":[{\"text\":\"Other\"}]},\"lengthText\":{\"simpleText\":\"4:37\"}}},{\"videoRenderer\":{\"videoId\":\"good\",\"title\":{\"runs\":[{\"text\":\"THE SHOES ARE GAZING\"}]},\"lengthText\":{\"simpleText\":\"2:55:18\"}}}]};</script>";
 bool chOk = chs != null && chs.Count == 4 && chs[1].At == new TimeSpan(0, 4, 55) && chs[2].Text == "CONDOR44 - 00203" && chs[3].At == new TimeSpan(1, 20, 59)
@@ -127,7 +127,7 @@ bool chOk = chs != null && chs.Count == 4 && chs[1].At == new TimeSpan(0, 4, 55)
 Console.WriteLine(chOk ? "CHAPTERS OK" : "CHAPTERS GAGAL");
 if (!chOk) fail++;
 
-// Cek mandiri pengenal lagu: WAV 16 kHz dari 48 kHz, kode waktu, dan respons AudD (dikenali, tidak dikenali, ditolak)
+// Self-check song recognizer: 16 kHz WAV from 48 kHz, timecode, and AudD responses (recognized, unrecognized, rejected)
 var wav = SongId.ToWav16k(new float[48000], 48000);
 bool idsOk = wav.Length == 44 + 16000 * 2 && System.Text.Encoding.ASCII.GetString(wav, 0, 4) == "RIFF" && BitConverter.ToInt32(wav, 24) == 16000
              && SongId.ParseTimecode("01:23") == 83 && SongId.ParseTimecode("1:02:03") == 3723 && SongId.ParseTimecode("x") == -1
@@ -137,21 +137,21 @@ try { SongId.ParseResponse("{\"status\":\"error\",\"error\":{\"error_code\":901,
 Console.WriteLine(idsOk ? "SONGID OK" : "SONGID GAGAL");
 if (!idsOk) fail++;
 
-// Uji langsung ke youtube.com (opsional): dotnet run -- --live "judul video" "kanal" detik
+// Live test against youtube.com (optional): dotnet run -- --live "video title" "channel" seconds
 if (args.Length == 4 && args[0] == "--live")
 {
     var live = YtChapters.FetchAsync(args[1], args[2], double.Parse(args[3])).GetAwaiter().GetResult();
     Console.WriteLine(live == null ? "LIVE: tidak ada daftar lagu" : $"LIVE: {live.Count} segmen, pertama '{live[0].Text}', ke-4 '{live[3].At} {live[3].Text}'");
 }
 
-// Cek mandiri kuota dari aplikasi Claude Desktop: cuplikan terbaru yang berisi angka menang, cuplikan kosong dilewati
+// Self-check quota from Claude Desktop app: newest snapshot with numbers wins, empty snapshots skipped
 var du = DesktopUsage.ParseLatest("{\"version\":2,\"samples\":[{\"t\":100,\"org\":\"a\",\"u\":{\"fh\":10,\"sd\":2}},{\"t\":300,\"org\":\"a\",\"u\":{\"fh\":32,\"sd\":66}},{\"t\":400,\"org\":\"a\",\"u\":{}}]}");
 bool duOk = du is { T: 300, FiveHour: 32, Weekly: 66 } && DesktopUsage.ParseLatest("{\"samples\":[]}") == null && DesktopUsage.ParseLatest("{\"x\":1}") == null
             && DesktopUsage.ParseLatest("{\"samples\":[{\"t\":5,\"u\":{\"sd\":7}}]}") is { FiveHour: -1, Weekly: 7 };
 Console.WriteLine(duOk ? "DESKTOP USAGE OK" : "DESKTOP USAGE GAGAL");
 if (!duOk) fail++;
 
-// Cek mandiri pembaruan: versi, rilis GitHub (digest dan berkas .sha256), hash, host, dan ekstraksi aman (zip-slip)
+// Self-check auto-update: version, GitHub release (digest and .sha256 file), hash, host, and safe extraction (zip-slip)
 var rel = UpdateCheck.ParseRelease("{\"tag_name\":\"v1.1.0\",\"body\":\"catatan\",\"assets\":[{\"name\":\"ZaxLetSetup.exe\",\"browser_download_url\":\"https://github.com/a/b/x.exe\"},{\"name\":\"ZaxLet-update.zip\",\"browser_download_url\":\"https://github.com/a/b/u.zip\",\"digest\":\"sha256:" + new string('A', 64) + "\"}]}");
 var rel2 = UpdateCheck.ParseRelease("{\"tag_name\":\"1.2\",\"assets\":[{\"name\":\"ZaxLet-update.zip\",\"browser_download_url\":\"https://github.com/a/b/u.zip\"},{\"name\":\"ZaxLet-update.zip.sha256\",\"browser_download_url\":\"https://github.com/a/b/u.sha\"}]}");
 var tmpU = Path.Combine(Path.GetTempPath(), "zx-upd-test"); if (Directory.Exists(tmpU)) Directory.Delete(tmpU, true); Directory.CreateDirectory(tmpU);
@@ -159,7 +159,7 @@ var okZip = Path.Combine(tmpU, "ok.zip"); var badZip = Path.Combine(tmpU, "bad.z
 void MakeZip(string path, params string[] names)
 {
     using var z = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create);
-    foreach (var n in names) { using var w = new StreamWriter(z.CreateEntry(n).Open()); w.Write("x"); }   // satu entri ditutup sebelum yang berikutnya dibuat
+    foreach (var n in names) { using var w = new StreamWriter(z.CreateEntry(n).Open()); w.Write("x"); }   // one entry closed before the next is created
 }
 MakeZip(okZip, "ZaxLet.exe", "sub/a.txt");
 MakeZip(badZip, "ZaxLet.exe", "../evil.txt");
@@ -176,7 +176,7 @@ Directory.Delete(tmpU, true);
 Console.WriteLine(updOk ? "UPDATE OK" : "UPDATE GAGAL");
 if (!updOk) fail++;
 
-// Cek mandiri cadangan pengaturan: rahasia tidak ikut diekspor, dipertahankan saat memulihkan, berkas asing ditolak
+// Self-check settings backup: secrets excluded on export, preserved on restore, foreign files rejected
 var cur = "{\"Accent\":\"pink\",\"ShareToken\":\"RAHASIA\",\"SongIdToken\":\"T\",\"DiscordSecret\":\"\",\"HoverOpen\":true}";
 var exp = SettingsBackup.Export(cur);
 var imp = SettingsBackup.Import(exp.Replace("\"pink\"", "\"blue\"").Replace("true", "false"), cur);
@@ -185,7 +185,7 @@ bool bkOk = !exp.Contains("RAHASIA") && exp.Contains("\"zaxlet\": 1") && imp.Con
 Console.WriteLine(bkOk ? "BACKUP OK" : "BACKUP GAGAL " + imp);
 if (!bkOk) fail++;
 
-// Cek mandiri unduhan selesai: berkas sementara peramban diabaikan, yang sudah di-rename ke nama akhir dilaporkan setelah ukurannya stabil
+// Self-check completed downloads: temporary browser files ignored, renamed final files reported once size stabilizes
 var dlDir = Path.Combine(Path.GetTempPath(), "zx-dl-test"); if (Directory.Exists(dlDir)) Directory.Delete(dlDir, true); Directory.CreateDirectory(dlDir);
 var dlGot = new System.Collections.Concurrent.ConcurrentBag<string>();
 var dw = new DownloadWatch(); dw.Finished += p => dlGot.Add(Path.GetFileName(p)); dw.Start(dlDir);
@@ -199,7 +199,7 @@ Console.WriteLine(dlOk ? "DOWNLOAD OK" : "DOWNLOAD GAGAL: " + string.Join(",", d
 if (!dlOk) fail++;
 Directory.Delete(dlDir, true);
 
-// Cek mandiri bahasa: Inggris menerjemahkan kunci yang ada, kunci asing tetap Indonesia, format dan satuan durasi ikut berubah
+// Self-check language: English translates existing keys, unknown keys stay Indonesian, duration format and units change accordingly
 L.Init("en");
 bool langOk = L.T("Kirim") == "Send" && L.T("teks yang tidak ada") == "teks yang tidak ada" && L.F("Shelf · {0} file", 3) == "Shelf · 3 files" && DurText.Fmt(5400) == "1 h 30 min";
 L.Init("id");
@@ -207,7 +207,7 @@ langOk = langOk && L.T("Kirim") == "Kirim" && DurText.Fmt(5400) == "1 jam 30 mnt
 Console.WriteLine(langOk ? "LANG OK" : "LANG GAGAL");
 if (!langOk) fail++;
 
-// Cek mandiri pengenal kode OTP di notifikasi: perlu kata kunci + angka 4-8 digit; harga, tahun-tanpa-kunci, dan teks biasa tidak dianggap kode
+// Self-check OTP code detector in notifications: requires keyword + 4-8 digit number; prices, year-without-keyword, and plain text are not treated as codes
 bool otpOk = Otp.Find("Bank Rey", "Kode OTP kamu 482913. Jangan bagikan.") == "482913"
              && Otp.Find("Google", "G-123 456 is your verification code") == "123456"
              && Otp.Find("Shopee", "Gunakan 5821 sebagai kode verifikasi") == "5821"
@@ -217,24 +217,24 @@ bool otpOk = Otp.Find("Bank Rey", "Kode OTP kamu 482913. Jangan bagikan.") == "4
 Console.WriteLine(otpOk ? "OTP OK" : "OTP GAGAL");
 if (!otpOk) fail++;
 
-// Cek mandiri jadwal ibadah mingguan dan pembaca cuaca open-meteo
+// Self-check weekly worship schedule and open-meteo weather reader
 var wl = Worship.Parse("min 08:00 Kebaktian; jum,sab 18.30 Latihan koor; tiap 21:00 Doa\nrusak; sen 25:00 salah");
-var due = new System.Collections.Generic.List<Worship.Item>(Worship.Due(wl, new DateTime(2026, 11, 8, 8, 1, 0)));   // Minggu 08:01
+var due = new System.Collections.Generic.List<Worship.Item>(Worship.Due(wl, new DateTime(2026, 11, 8, 8, 1, 0)));   // Sunday 08:01
 var wj2 = "{\"current\":{\"temperature_2m\":27.4,\"weather_code\":61},\"hourly\":{\"time\":[\"2026-11-06T09:00\",\"2026-11-06T10:00\",\"2026-11-06T11:00\",\"2026-11-06T15:00\"],\"precipitation_probability\":[10,70,20,95]}}";
 var wr = WeatherParse.Read(wj2, new DateTime(2026, 11, 6, 9, 30, 0));
-bool worshipOk = wl.Count == 1 + 2 + 7                  // Min | Jum+Sab | tiap (7 hari); baris rusak dan jam 25:00 dilewati
+bool worshipOk = wl.Count == 1 + 2 + 7                  // Sun | Fri+Sat | daily (7 days); malformed lines and 25:00 skipped
             && due.Count == 1 && due[0].Label == "Kebaktian"
             && Worship.Parse("jum 12.00").Count == 1 && Worship.Parse("jum 12.00")[0].Label == ""
-            && wr != null && wr.Temp == 27.4 && wr.Code == 61 && wr.RainNext2h == 70   // jam 15:00 di luar jendela 2 jam
+            && wr != null && wr.Temp == 27.4 && wr.Code == 61 && wr.RainNext2h == 70   // 15:00 is outside the 2-hour window
             && WeatherParse.Read("bukan json", DateTime.Now) == null && WeatherParse.Describe(95) == "Badai petir";
 Console.WriteLine(worshipOk ? "WORSHIP/WEATHER OK" : $"WORSHIP/WEATHER GAGAL {wl.Count} {due.Count} {wr}");
 if (!worshipOk) fail++;
 
-// Cek mandiri filter sumber musik dan warna aksen Windows
+// Self-check music source filter and Windows accent color
 bool miscOk = MediaFilter.Ignored("Discord.exe", "discord, zoom") && MediaFilter.Ignored("us.zoom.Zoom", "Zoom") && !MediaFilter.Ignored("Spotify.exe", "discord, zoom")
               && !MediaFilter.Ignored("Spotify.exe", "") && !MediaFilter.Ignored("Spotify.exe", "s") && !MediaFilter.Ignored(null, "discord")
-              && AccentColor.FromAbgr(unchecked((int)0xFFD77800)) != "0078D7"          // biru Windows (R0 G120 B215) gelap: dicerahkan
-              && AccentColor.FromAbgr(unchecked((int)0xFFFFFF00)) == "00FFFF"          // sudah terang (cyan): tidak berubah
+              && AccentColor.FromAbgr(unchecked((int)0xFFD77800)) != "0078D7"          // dark Windows blue (R0 G120 B215): brightened
+              && AccentColor.FromAbgr(unchecked((int)0xFFFFFF00)) == "00FFFF"          // already bright (cyan): unchanged
               && AccentColor.FromAbgr(unchecked((int)0xFF000000)).Length == 6;
 var qc = new[] { QuickCmd.Parse("t 10m"), QuickCmd.Parse("timer 90"), QuickCmd.Parse("catat beli susu"), QuickCmd.Parse("minum"), QuickCmd.Parse("minum 250"), QuickCmd.Parse("tema Neon"), QuickCmd.Parse("sembunyi") };
 miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] is { Kind: QuickCmd.Kind.Timer, Value: 5400 }
@@ -242,7 +242,7 @@ miscOk = miscOk && qc[0] is { Kind: QuickCmd.Kind.Timer, Value: 600 } && qc[1] i
           && qc[5] is { Kind: QuickCmd.Kind.Theme, Arg: "neon" } && qc[6].Kind == QuickCmd.Kind.Hide
           && QuickCmd.Parse("").Kind == QuickCmd.Kind.None && QuickCmd.Parse("t abc").Kind == QuickCmd.Kind.Unknown
           && QuickCmd.Parse("catat").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("minum 5").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("tema pelangi").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("xyz").Kind == QuickCmd.Kind.Unknown;
-// overlay performa: baris nvidia-smi nyata dari RTX 3050 laptop (daya [N/A] di data lain), pilihan metrik, penyusun baris
+// perf overlay: real nvidia-smi line from laptop RTX 3050 (power [N/A] in other data), metric selection, line builder
 var smi = PerfFormat.ParseSmi("32, 405, 810, 50, 645, 6144, 8.86, 20, P5, [N/A], 0x0000000000000001");
 var smiNa = PerfFormat.ParseSmi("5, 210, 405, 41, 300, 6144, [N/A]");
 var vals = new System.Collections.Generic.Dictionary<string, string> { ["cpu"] = "12%", ["cputemp"] = "56°C", ["gpu"] = "32%", ["gputemp"] = "50°C", ["vram"] = "0.65/6.00 GB", ["ram"] = "9.1/15.7 GB" };
@@ -258,7 +258,7 @@ miscOk = miscOk && QuickCmd.Parse("= 12*5").Value == 60 && QuickCmd.Parse("2+3*4
           && QuickCmd.Parse("5 km mi") is { Kind: QuickCmd.Kind.Calc } km && km.Arg == "5 km = 3.106856 mi" && Math.Abs(QuickCmd.Parse("100 c f").Value - 212) < 1e-9 && Math.Abs(QuickCmd.Parse("2 gb to mb").Value - 2048) < 1e-9
           && QuickCmd.Parse("5 km kg").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("5 km").Kind == QuickCmd.Kind.Unknown
           && QuickCmd.Parse("buka Monitor") is { Kind: QuickCmd.Kind.Open, Arg: "monitor" } && QuickCmd.Parse("buka").Kind == QuickCmd.Kind.Unknown;
-// tegangan dari data.json LibreHardwareMonitor: pohon Sensor > komputer > perangkat keras > grup "Voltages" > daun "1,052 V" (koma desimal lokal ID)
+// voltage from LibreHardwareMonitor data.json: tree Sensor > computer > hardware > "Voltages" group > "1,052 V" leaf (ID locale decimal comma)
 var lhm = ("{'Text':'Sensor','Children':[{'Text':'NITRO','Children':["
   + "{'Text':'Intel Core 5 210H','Children':[{'Text':'Voltages','Children':[{'Text':'Core #1 VID','Value':'0,850 V','Children':[]},{'Text':'CPU Core','Value':'0,912 V','Children':[]}]}]},"
   + "{'Text':'NVIDIA GeForce RTX 3050 6GB Laptop GPU','Children':[{'Text':'Voltages','Children':[{'Text':'GPU Core','Value':'0.725 V','Children':[]}]},{'Text':'Clocks','Children':[{'Text':'GPU Core','Value':'405 MHz','Children':[]}]}]}]}]}").Replace('\'', '"');
@@ -272,17 +272,17 @@ miscOk = miscOk && lv.Cpu is { } cvv && Math.Abs(cvv - 0.912) < 1e-9 && lv.Gpu i
     var log = new[] { new PlayEntry(U(1), "A", "X", 100), new PlayEntry(U(2), "a", "x", 50), new PlayEntry(U(3), "B", "X", 400), new PlayEntry(U(10), "C", "Y", 900), new PlayEntry(U(20), "C", "Y", 900) };
     var s7 = PlayStats.TopSongs(log, now0, 7, 5); var s30 = PlayStats.TopSongs(log, now0, 30, 5); var a7 = PlayStats.TopArtists(log, now0, 7, 5);
     var rt = PlayStats.FromLine(PlayStats.ToLine(new PlayEntry(5, "Ju\tdul", "Ar\ntis", 31)));
-    miscOk = miscOk && s7.Count == 2 && s7[0].Name == "A" && s7[0].Plays == 2 && s7[1].Name == "B"   // A diputar 2x (huruf besar/kecil sama), B 1x
+    miscOk = miscOk && s7.Count == 2 && s7[0].Name == "A" && s7[0].Plays == 2 && s7[1].Name == "B"   // A played 2x (case-insensitive), B 1x
         && s30[0].Name == "C" && s30[0].Plays == 2 && s30[1].Name == "A" && a7.Count == 1 && a7[0].Plays == 3 && a7[0].Sec == 550
         && rt != null && rt.Title == "Ju dul" && rt.Artist == "Ar tis" && rt.Sec == 31 && PlayStats.FromLine("rusak") == null && PlayStats.FromLine("1\t2\tx\t") == null;
 }
-// iklan Spotify: templat di slot judul + artis "Spotify" (data nyata di playlog), lagu asli tidak ikut
+// Spotify ad: template in title slot + artist "Spotify" (real data in playlog), real song excluded
 miscOk = miscOk && MediaFilter.IsAd("Spotify.exe", "Dengarkan musik bebas iklan.", "Spotify") && MediaFilter.IsAd(null, "Dengarkan musik bebas iklan.", "Spotify")
         && MediaFilter.IsAd("Spotify.exe", "Advertisement", "") && MediaFilter.IsAd("Spotify.exe", "Spotify", "")
         && !MediaFilter.IsAd("Spotify.exe", "Hello!My World!!", "fhána") && !MediaFilter.IsAd("chrome.exe", "Advertisement", "") && !MediaFilter.IsAd("Spotify.exe", "Advertisement", "Some Band") && !MediaFilter.IsAd(null, "", "")
         && MediaFilter.IsAd(null, "Lagu-lagu cinta terbaik.", "100 Greatest Love Songs") && MediaFilter.IsAd(null, "DENGARKAN SEKARANG", "Filtr Indonesia")
         && MediaFilter.ShortSpotifyAd("Spotify.exe", TimeSpan.FromSeconds(30)) && !MediaFilter.ShortSpotifyAd("Spotify.exe", TimeSpan.FromSeconds(200)) && !MediaFilter.ShortSpotifyAd("chrome.exe", TimeSpan.FromSeconds(30));
-// baris pill menurut waktu
+// pill line by time of day
 {
     var pr = ("Ashar", new DateTime(2026, 11, 7, 15, 12, 0));
     miscOk = miscOk && IdleContext.Compose(new DateTime(2026, 11, 7, 7, 0, 0), "27°C · Cerah", pr, 500, 2, "x") == "27°C · Cerah · Ashar 15.12"
@@ -293,20 +293,20 @@ miscOk = miscOk && MediaFilter.IsAd("Spotify.exe", "Dengarkan musik bebas iklan.
         && IdleContext.Compose(new DateTime(2026, 11, 7, 21, 0, 0), "c", pr, 750, 2, "Besok: Libur") == "Besok: Libur"
         && IdleContext.Compose(new DateTime(2026, 11, 7, 21, 0, 0), "c", pr, 750, 2, null) == null;
 }
-// tampil/sembunyi pill: Want(fs, snooze, snoozePeek, peek, mini, ghost, notifForced, fsMusic, activityHide)
-miscOk = miscOk && PillVisibility.Want(false, false, false, false, false, false, false, false, false)   // keadaan biasa: tampil
-    && !PillVisibility.Want(true, false, false, false, false, false, false, false, false)               // fullscreen: sembunyi
-    && PillVisibility.Want(true, false, false, true, false, false, false, false, false)                 // fullscreen + mengintip: tampil
-    && PillVisibility.Want(true, false, false, false, true, false, false, false, false)                 // fullscreen dengan jam kecil: tampil
-    && PillVisibility.Want(true, false, false, false, false, false, true, false, false)                 // notifikasi memaksa tampil
-    && PillVisibility.Want(true, false, false, false, false, false, false, true, false)                 // musik di layar penuh
-    && !PillVisibility.Want(false, true, false, false, false, false, false, false, false)              // disembunyikan pengguna
-    && !PillVisibility.Want(false, true, false, true, false, false, false, false, false)               // sembunyi tanpa snoozePeek: intipan tidak menampilkan
-    && PillVisibility.Want(false, true, true, true, false, false, false, false, false)                 // sembunyi dengan intipan (klik kanan): tampil saat mengintip
-    && !PillVisibility.Want(false, false, false, false, false, false, false, false, true)              // mode aktivitas tanpa aktivitas: sembunyi
-    && PillVisibility.Want(false, false, false, true, false, false, false, false, true)                // ...tapi tampil saat mengintip
-    && !PillVisibility.Want(false, false, false, false, false, true, true, true, false)                // Alt ditahan mengalahkan semuanya
-    && PillVisibility.Want(false, true, false, false, false, false, true, false, false);               // disembunyikan tapi ada notifikasi: tampil
+// pill show/hide: Want(fs, snooze, snoozePeek, peek, mini, ghost, notifForced, fsMusic, activityHide)
+miscOk = miscOk && PillVisibility.Want(false, false, false, false, false, false, false, false, false)   // normal state: show
+    && !PillVisibility.Want(true, false, false, false, false, false, false, false, false)               // fullscreen: hide
+    && PillVisibility.Want(true, false, false, true, false, false, false, false, false)                 // fullscreen + peeking: show
+    && PillVisibility.Want(true, false, false, false, true, false, false, false, false)                 // fullscreen with mini clock: show
+    && PillVisibility.Want(true, false, false, false, false, false, true, false, false)                 // notification forces show
+    && PillVisibility.Want(true, false, false, false, false, false, false, true, false)                 // music in fullscreen
+    && !PillVisibility.Want(false, true, false, false, false, false, false, false, false)              // hidden by user
+    && !PillVisibility.Want(false, true, false, true, false, false, false, false, false)               // hidden without snoozePeek: peek does not show
+    && PillVisibility.Want(false, true, true, true, false, false, false, false, false)                 // hidden with peek (right-click): show while peeking
+    && !PillVisibility.Want(false, false, false, false, false, false, false, false, true)              // activity mode without activity: hide
+    && PillVisibility.Want(false, false, false, true, false, false, false, false, true)                // ...but show while peeking
+    && !PillVisibility.Want(false, false, false, false, false, true, true, true, false)                // Alt held overrides everything
+    && PillVisibility.Want(false, true, false, false, false, false, true, false, false);               // hidden but has notification: show
 miscOk = miscOk && QuickCmd.Parse("kunci").Kind == QuickCmd.Kind.Lock && QuickCmd.Parse("Tidur").Kind == QuickCmd.Kind.Sleep && QuickCmd.Parse("gelap").Kind == QuickCmd.Kind.Dark && QuickCmd.Parse("light").Kind == QuickCmd.Kind.Light
           && QuickCmd.Parse("wifi off") is { Kind: QuickCmd.Kind.Wifi, Value: 0 } && QuickCmd.Parse("wifi") is { Kind: QuickCmd.Kind.Wifi, Value: -1 } && QuickCmd.Parse("bluetooth nyala") is { Kind: QuickCmd.Kind.Bluetooth, Value: 1 }
           && QuickCmd.Parse("wifi maybe").Kind == QuickCmd.Kind.Unknown && QuickCmd.Parse("bt").Kind == QuickCmd.Kind.Bt;
@@ -315,7 +315,7 @@ miscOk = miscOk && ProcGuard.CanKill("notepad++", @"C:\Program Files\Notepad++\n
 Console.WriteLine(miscOk ? "MISC OK" : $"MISC GAGAL {AccentColor.FromAbgr(unchecked((int)0xFFD77800))}");
 if (!miscOk) fail++;
 
-// Cek mandiri parser AiTaskParse: worker JSON (BOM/terpotong), status MATI, stage, vonis, dan token
+// Self-check AiTaskParse parser: worker JSON (BOM/truncated), DEAD status, stage, verdict, and tokens
 {
     var wJson = "\uFEFF{\"name\":\"scope1\",\"repo\":\"toy\",\"state\":\"SELESAI\",\"phase\":\"selesai\",\"model\":\"m\",\"timeoutMin\":8,\"startedAt\":\"2026-11-17T10:00:00+07:00\",\"updatedAt\":\"2026-11-17T10:02:00+07:00\",\"pid\":21092,\"detail\":[\"VONIS: OK\"]}";
     var w = AiTaskParse.ParseWorker(wJson);
@@ -373,7 +373,7 @@ if (!miscOk) fail++;
     if (!aiOk) fail++;
 }
 
-// Cek mandiri pemindai AiTaskScan: worker JSON (urutan, BOM, file rusak, jendela 1 jam)
+// Self-check AiTaskScan scanner: worker JSON (order, BOM, corrupt file, 1-hour window)
 {
     var tmp = Path.Combine(Path.GetTempPath(), "zx-aiscan-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(tmp);
@@ -454,7 +454,7 @@ if (!miscOk) fail++;
     }
 }
 
-// Cek mandiri proyeksi habis kuota (BurnRate)
+// Self-check quota exhaustion projection (BurnRate)
 {
     var t0 = new DateTimeOffset(2026, 11, 18, 10, 0, 0, TimeSpan.FromHours(7));
     var pExhaust = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 30), new BurnSample(t0.AddMinutes(20), 40) }, TimeSpan.FromHours(2));
@@ -466,7 +466,7 @@ if (!miscOk) fail++;
     var pFew = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(20), 30) }, TimeSpan.FromHours(2));
     var pShort = BurnRate.Project(new[] { new BurnSample(t0, 10), new BurnSample(t0.AddMinutes(4), 20), new BurnSample(t0.AddMinutes(8), 30) }, TimeSpan.FromHours(2));
     var pFlat = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 20), new BurnSample(t0.AddMinutes(20), 20) }, TimeSpan.FromHours(2));
-    // laju mendekati nol: dulu TimeSpan.FromHours meluap dan merusak render tab AI
+    // near-zero rate: TimeSpan.FromHours used to overflow and break AI tab rendering
     var pTiny = BurnRate.Project(new[] { new BurnSample(t0, 20), new BurnSample(t0.AddMinutes(10), 20.0000000001), new BurnSample(t0.AddMinutes(20), 20.0000000002) }, TimeSpan.FromHours(2));
     bool fewOk = !pFew.HasData && !pShort.HasData && !pFlat.HasData && BurnRate.Format(pFew) == "" && !pTiny.WillExhaust;
 
@@ -477,10 +477,10 @@ if (!miscOk) fail++;
     BurnRate.Record(samples, t0.AddMinutes(10), 35, r1, ref lastReset);
     BurnRate.Record(samples, t0.AddMinutes(20), 50, r1, ref lastReset);
     bool beforeDrop = BurnRate.Project(samples, TimeSpan.FromHours(2)).HasData;
-    BurnRate.Record(samples, t0.AddMinutes(30), 10, r1, ref lastReset); // Pct turun tajam -> kosongkan
+    BurnRate.Record(samples, t0.AddMinutes(30), 10, r1, ref lastReset); // Pct dropped sharply -> clear
     bool afterDrop = samples.Count == 1 && !BurnRate.Project(samples, TimeSpan.FromHours(2)).HasData;
     BurnRate.Record(samples, t0.AddMinutes(40), 15, r1, ref lastReset);
-    BurnRate.Record(samples, t0.AddMinutes(50), 20, r1.AddHours(5), ref lastReset); // jendela reset berubah -> kosongkan
+    BurnRate.Record(samples, t0.AddMinutes(50), 20, r1.AddHours(5), ref lastReset); // reset window changed -> clear
     bool afterReset = samples.Count == 1;
     bool dropOk = beforeDrop && afterDrop && afterReset;
 
@@ -489,18 +489,18 @@ if (!miscOk) fail++;
     if (!burnOk) fail++;
 }
 
-// ---- pengingat berlabel ----
+// ---- labeled reminders ----
 {
     var now = new DateTime(2026, 11, 21, 14, 0, 0);
     bool a = ReminderLogic.TryParse("15:30 rapat tim", now, out var d1, out var l1) && d1 == new DateTime(2026, 11, 21, 15, 30, 0) && l1 == "rapat tim";
-    bool b = ReminderLogic.TryParse("13.05 makan", now, out var d2, out _) && d2 == new DateTime(2026, 11, 22, 13, 5, 0);   // sudah lewat = besok
+    bool b = ReminderLogic.TryParse("13.05 makan", now, out var d2, out _) && d2 == new DateTime(2026, 11, 22, 13, 5, 0);   // already passed = tomorrow
     bool c = ReminderLogic.TryParse("20m jemuran", now, out var d3, out var l3) && d3 == now.AddMinutes(20) && l3 == "jemuran";
     bool bad = !ReminderLogic.TryParse("25:00 x", now, out _, out _) && !ReminderLogic.TryParse("15:30", now, out _, out _) && !ReminderLogic.TryParse("abc x", now, out _, out _);
     var items = new System.Collections.Generic.List<ReminderItem> {
         new() { Label = "depan", DueAt = now.AddMinutes(5) }, new() { Label = "baru lewat", DueAt = now.AddSeconds(-30) },
         new() { Label = "terlambat", DueAt = now.AddHours(-3) }, new() { Label = "basi", DueAt = now.AddHours(-20) } };
     var (rem, dueList) = ReminderLogic.EvaluateDue(items, now, TimeSpan.FromHours(12), TimeSpan.FromMinutes(2));
-    bool ev = rem.Count == 1 && dueList.Count == 2 && !dueList[0].IsLate && dueList[1].IsLate;   // "basi" dibuang tanpa bunyi
+    bool ev = rem.Count == 1 && dueList.Count == 2 && !dueList[0].IsLate && dueList[1].IsLate;   // "stale" discarded silently
     bool ok = a && b && c && bad && ev;
     Console.WriteLine(ok ? "REMIND OK" : $"REMIND GAGAL a={a} b={b} c={c} bad={bad} ev={ev}");
     if (!ok) fail++;

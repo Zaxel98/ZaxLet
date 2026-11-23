@@ -6,8 +6,8 @@ using System.Text.Json;
 namespace ZaxLet;
 
 /// <summary>
-/// Bagian murni dari jembatan ekstensi browser untuk Wishlist (tanpa jaringan dan tanpa WPF, jadi bisa dites): kunci link, pemeriksaan asal
-/// permintaan, dan pembacaan kiriman halaman produk. Semua masukan dianggap tidak tepercaya dan divalidasi di sini.
+/// Pure part of the browser extension bridge for Wishlist (no network and no WPF, so it is testable): link key, request origin
+/// check, and product page payload parsing. All inputs are treated as untrusted and validated here.
 /// </summary>
 public static class WishBridgeCore
 {
@@ -19,7 +19,7 @@ public static class WishBridgeCore
 
     static bool IsTracking(string name) => Tracking.Any(t => t.EndsWith('_') ? name.StartsWith(t, StringComparison.OrdinalIgnoreCase) : name.Equals(t, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Kunci perbandingan dua link ke halaman yang sama: tanpa www, tanpa #bagian, tanpa garis miring akhir, tanpa parameter pelacak.</summary>
+    /// <summary>Comparison key for two links to the same page: no www, no #fragment, no trailing slash, no tracking parameters.</summary>
     public static string Key(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return null;
@@ -30,14 +30,14 @@ public static class WishBridgeCore
         return host + u.AbsolutePath.TrimEnd('/') + (qs == "" ? "" : "?" + qs);
     }
 
-    /// <summary>Host dan path saja: cadangan bila parameter berbeda antara link yang disalin dan alamat tab.</summary>
+    /// <summary>Host and path only: fallback when parameters differ between the copied link and the tab URL.</summary>
     public static string PathKey(string url) => Key(url) is { } k ? k.Split('?')[0] : null;
 
-    /// <summary>Hanya ekstensi browser (chrome-extension:// untuk Chrome, Edge, Brave; moz-extension:// untuk Firefox). Halaman web punya asal http(s) dan ditolak.</summary>
+    /// <summary>Browser extensions only (chrome-extension:// for Chrome, Edge, Brave; moz-extension:// for Firefox). Web pages have http(s) origin and are rejected.</summary>
     public static bool OriginAllowed(string origin) =>
         origin != null && (origin.StartsWith("chrome-extension://", StringComparison.Ordinal) || origin.StartsWith("moz-extension://", StringComparison.Ordinal));
 
-    /// <summary>Perbandingan token dengan waktu tetap.</summary>
+    /// <summary>Constant-time token comparison.</summary>
     public static bool TokenOk(string given, string expected)
     {
         if (string.IsNullOrEmpty(given) || string.IsNullOrEmpty(expected) || given.Length != expected.Length) return false;
@@ -46,17 +46,17 @@ public static class WishBridgeCore
         return d == 0;
     }
 
-    /// <summary>Buang ujung judul "... | Nama Toko" yang pendek: tempat toko biasanya menaruh namanya.</summary>
+    /// <summary>Strip short "... | Store Name" title suffix: where stores usually put their name.</summary>
     public static string CleanTitle(string t)
     {
         t = (t ?? "").Trim();
-        if (t.Length > 10 && t.StartsWith("Jual ", StringComparison.OrdinalIgnoreCase)) t = t[5..];   // judul tab marketplace Indonesia diawali "Jual "
+        if (t.Length > 10 && t.StartsWith("Jual ", StringComparison.OrdinalIgnoreCase)) t = t[5..];   // Indonesian marketplace tab titles start with "Jual "
         int i = t.LastIndexOf(" | ", StringComparison.Ordinal);
         if (i > 8 && t.Length - i - 3 <= 32) t = t[..i].Trim();
         return t.Length > MaxTitle ? t[..MaxTitle] : t;
     }
 
-    /// <summary>Webhook lokal {"text":"...","seconds":6}: teks 1-200 karakter (satu baris), lama tampil 2-30 detik (bawaan 6). Null bila tidak sah.</summary>
+    /// <summary>Local webhook {"text":"...","seconds":6}: text 1-200 chars (single line), display duration 2-30s (default 6). Null if invalid.</summary>
     public static (string Text, double Seconds)? ParseNotify(string json)
     {
         try
@@ -80,8 +80,8 @@ public static class WishBridgeCore
     public static string ImageExt(byte[] b) => b.Length > 3 && b[0] == 0x89 ? ".png" : b.Length > 3 && b[0] == 0x52 ? ".webp" : ".jpg";
 
     /// <summary>
-    /// Kiriman ekstensi: {"url","title","price","priceText","currency","image":"data:image/jpeg;base64,..."}. Null bila tidak sah.
-    /// Harga memakai angka terstruktur bila ada, kalau tidak teks harga di halaman (WishParse.PriceFromText).
+    /// Extension payload: {"url","title","price","priceText","currency","image":"data:image/jpeg;base64,..."}. Null if invalid.
+    /// Price uses the structured number if present, otherwise the page price text (WishParse.PriceFromText).
     /// </summary>
     public static Page ParsePage(string json)
     {

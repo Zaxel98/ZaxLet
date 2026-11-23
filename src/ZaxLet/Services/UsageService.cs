@@ -21,25 +21,25 @@ public sealed class QuotaWindow
 public sealed class ProviderUsage
 {
     public string Name, Plan, Error;
-    public string Source = "";   // Claude: "api" (login terminal, real-time) | "desktop" (catatan Claude Desktop) | "" (belum ada sumber)
+    public string Source = "";   // Claude: "api" (terminal login, real-time) | "desktop" (Claude Desktop logs) | "" (no source yet)
     public List<QuotaWindow> Windows = new();
     public long TodayTok, WeekTok, MonthTok;
     public double TodayCost, WeekCost, MonthCost;
     public DateTime Updated;
 }
 
-/// <summary>Batas periode tabel pemakaian: minggu mulai Senin, bulan mulai tanggal 1 (waktu lokal).</summary>
+/// <summary>Usage table period boundaries: week starts Monday, month starts on the 1st (local time).</summary>
 public static class UsagePeriod
 {
     public static DateTime WeekStart(DateTime now) => now.Date.AddDays(-(((int)now.DayOfWeek + 6) % 7));
     public static DateTime MonthStart(DateTime now) => new(now.Year, now.Month, 1);
-    /// <summary>Tanggal tertua yang masih dihitung (dikurangi satu hari sebagai cadangan zona waktu).</summary>
+    /// <summary>Oldest date still counted (minus one day as timezone buffer).</summary>
     public static DateTime Oldest(DateTime now) { var a = WeekStart(now); var b = MonthStart(now); return (a < b ? a : b).AddDays(-1); }
 }
 
 /// <summary>
-/// Kuota: endpoint tidak resmi yang dipakai alat sejenis (BrimDeck, CodexIsland). Token dibaca dari file login lokal,
-/// hanya dikirim ke host asalnya, tidak disimpan. Token/biaya: dihitung dari catatan sesi lokal, inkremental.
+/// Quota: unofficial endpoints used by similar tools (BrimDeck, CodexIsland). Tokens are read from local login files,
+/// sent only to their origin host, never stored. Tokens/cost: calculated from local session logs, incrementally.
 /// </summary>
 public sealed class UsageService
 {
@@ -50,7 +50,7 @@ public sealed class UsageService
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(12) };
     const double AlertSec = 8;
-    const double ResetSlackMin = 2;   // toleransi geser beberapa detik pada reset_after_seconds Codex
+    const double ResetSlackMin = 2;   // a few seconds of jitter tolerance on Codex reset_after_seconds
     readonly SemaphoreSlim _gate = new(1, 1);
     readonly Dictionary<string, (int Level, DateTimeOffset? Reset)> _alerted = new();
     readonly Dictionary<string, BurnState> _burn = new();
@@ -58,7 +58,7 @@ public sealed class UsageService
     DateTime _claudeNext = DateTime.MinValue, _codexNext = DateTime.MinValue;
     TimeSpan _claudeBackoff = TimeSpan.FromMinutes(2);
 
-    // agregat harian dari catatan lokal
+    // daily aggregates from local logs
     readonly Dictionary<string, long> _off = new();
     readonly Dictionary<DateOnly, (long Tok, double Cost)> _cDay = new(), _xDay = new();
     readonly HashSet<ulong> _seen = new();
@@ -70,7 +70,7 @@ public sealed class UsageService
         public List<QuotaWindow> Codex { get; set; } = new();
         public string ClaudePlan { get; set; }
         public string CodexPlan { get; set; }
-        // dibaca juga oleh Middleman (skill hydrogen-worker) untuk memilih stage: waktu baca terakhir per sumber, supaya data basi terdeteksi
+        // also read by Middleman (hydrogen-worker skill) to pick a stage: last read time per source, so stale data is detected
         public List<QuotaWindow> Agy { get; set; } = new();
         public string ClaudeSource { get; set; }
         public DateTimeOffset? ClaudeAt { get; set; }
@@ -81,7 +81,7 @@ public sealed class UsageService
 
     UsageService()
     {
-        // kuota terakhir yang berhasil dibaca: tetap tampil bila endpoint sedang membatasi (429) atau offline
+        // last successfully read quota: kept visible if the endpoint is rate-limiting (429) or offline
         if (Store.Load<Cache>("usage-cache.json") is { } c)
         {
             Claude.Windows = c.Claude ?? new(); Claude.Plan = c.ClaudePlan; _claudeAt = c.ClaudeAt;
@@ -91,14 +91,14 @@ public sealed class UsageService
         }
     }
 
-    // dikunci: kuota Claude, Codex dan Antigravity disimpan dari tugas paralel, sedangkan Store.Save memakai satu berkas .tmp
+    // locked: Claude, Codex and Antigravity quotas are saved from parallel tasks, while Store.Save uses a single .tmp file
     void SaveCache() { lock (_cacheLock) Store.Save("usage-cache.json", new Cache
     {
         Claude = Claude.Windows, Codex = Codex.Windows, ClaudePlan = Claude.Plan, CodexPlan = Codex.Plan,
         Agy = Agy.Windows, ClaudeSource = Claude.Source, ClaudeAt = _claudeAt, AgyAt = _agyAt
     }); }
 
-    /// <summary>Hanya kuota (ringan), untuk pill idle; pemindaian log berat hanya saat tab Usage dibuka.</summary>
+    /// <summary>Quota only (lightweight), for idle pill; heavy log scanning only when the Usage tab is opened.</summary>
     public async Task RefreshQuotaAsync()
     {
         if (!await _gate.WaitAsync(0)) return;
@@ -111,12 +111,12 @@ public sealed class UsageService
         finally { _gate.Release(); }
     }
 
-    /// <summary>Kuota Antigravity dibaca tiap menit di latar belakang (hanya localhost, murah), tanpa menunggu tab AI atau pill idle. Claude/Codex tidak ikut: server mereka membatasi lewat 429.</summary>
+    /// <summary>Antigravity quota is read every minute in the background (localhost only, cheap), without waiting for the AI tab or idle pill. Claude/Codex are excluded: their servers rate-limit with 429.</summary>
     public void StartAgyLoop() => _ = Task.Run(async () =>
     {
         while (true)
         {
-            await Task.Delay(TimeSpan.FromSeconds(15));   // AgyQuota sendiri menjaga jarak 60 dtk (_agyNext); tick pendek agar tidak meleset ke 2 menit
+            await Task.Delay(TimeSpan.FromSeconds(15));   // AgyQuota itself enforces a 60s interval (_agyNext); short tick so it doesn't slip to 2 minutes
             if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "antigravity" || !await _gate.WaitAsync(0)) continue;
             try { await AgyQuota(); Changed?.Invoke(); }
             catch (Exception ex) { App.Log(ex); }
@@ -234,12 +234,12 @@ public sealed class UsageService
         if (msg != null) Ui(() => IslandWindow.Instance?.Alert(msg, AlertSec));
     }
 
-    // ---------- kuota Claude ----------
+    // ---------- Claude quota ----------
     DateTime _renewAt = DateTime.MinValue;
 
     sealed class UsageException : Exception { public UsageException(string m) : base(m) { } }
 
-    // Alasan yang bisa dipahami pengguna di perangkat lain (tanpa Claude Code / tanpa internet / login berbeda), bukan "gagal" yang buntu
+    // Reasons understandable to users on other devices (no Claude Code / no internet / different login), rather than a dead-end "failed"
     static string Why(Exception ex) => ex switch
     {
         UsageException u => u.Message,
@@ -248,7 +248,7 @@ public sealed class UsageService
         _ => L.T("gagal membaca kuota") + ": " + ex.GetType().Name,
     };
 
-    // Claude Code dan Codex mengizinkan folder konfigurasi lain lewat variabel lingkungan
+    // Claude Code and Codex allow custom config folders via environment variables
     static string ClaudeDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".claude");
     static string CodexDir => Environment.GetEnvironmentVariable("CODEX_HOME") is { Length: > 0 } d ? d : Path.Combine(Home, ".codex");
 
@@ -272,8 +272,8 @@ public sealed class UsageService
         return Http.SendAsync(req);
     }
 
-    // Claude Code memperbarui token OAuth-nya sendiri saat dipakai, jadi jalankan sekali secara tersembunyi
-    // (satu prompt Haiku sangat kecil). Jeda 10 menit antar percobaan agar tidak terus memakai kuota.
+    // Claude Code refreshes its own OAuth token when used, so run it once hidden
+    // (a tiny Haiku prompt). 10-minute cooldown between attempts so it doesn't keep burning quota.
     async Task<bool> RenewClaudeToken()
     {
         if (DateTime.UtcNow < _renewAt) return false;
@@ -315,7 +315,7 @@ public sealed class UsageService
             using var resHold = res;
             if (res.StatusCode == (HttpStatusCode)429)
             {
-                // hormati Retry-After dari server; tanpa itu mundur eksponensial 2→30 menit. Data lama tetap ditampilkan.
+                // respect Retry-After from server; otherwise exponential backoff 2→30 minutes. Old data remains displayed.
                 var wait = res.Headers.RetryAfter?.Delta ?? _claudeBackoff;
                 _claudeNext = DateTime.UtcNow + wait;
                 _claudeBackoff = TimeSpan.FromMinutes(Math.Min(30, _claudeBackoff.TotalMinutes * 2));
@@ -324,7 +324,7 @@ public sealed class UsageService
             }
             if (!res.IsSuccessStatusCode)
             {
-                if (res.StatusCode == HttpStatusCode.Unauthorized && ClaudeFromDesktop()) return;   // token kedaluwarsa: angka dari aplikasi Claude Desktop
+                if (res.StatusCode == HttpStatusCode.Unauthorized && ClaudeFromDesktop()) return;   // expired token: numbers from Claude Desktop app
                 _claudeNext = DateTime.UtcNow.AddMinutes(5);
                 Claude.Error = res.StatusCode == HttpStatusCode.Unauthorized ? L.T("token kedaluwarsa, buka Claude Code sekali") : $"HTTP {(int)res.StatusCode}";
                 return;
@@ -344,16 +344,16 @@ public sealed class UsageService
         }
         catch (Exception ex)
         {
-            if (ex is UsageException && ClaudeFromDesktop()) return;   // file login tanpa akun: pakai angka dari aplikasi Claude Desktop
+            if (ex is UsageException && ClaudeFromDesktop()) return;   // login file without account: use numbers from Claude Desktop app
             Claude.Error = Why(ex); _claudeNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex);
         }
     }
 
-    // ---------- login Claude Code sekali jalan (untuk kuota real-time) ----------
+    // ---------- one-click Claude Code login (for real-time quota) ----------
     public string LoginStatus = "";
     bool _loginRunning;
 
-    // claude.exe: pemasangan biasa (~/.local/bin), PATH, atau salinan bawaan aplikasi Claude Desktop (terbaru)
+    // claude.exe: regular install (~/.local/bin), PATH, or bundled copy in Claude Desktop app (newest)
     static string FindClaudeExe()
     {
         var own = Path.Combine(Home, ".local", "bin", "claude.exe");
@@ -371,8 +371,8 @@ public sealed class UsageService
     }
 
     /// <summary>
-    /// Jalankan "claude auth login --claudeai" di jendela terlihat: browser terbuka otomatis, pengguna tinggal masuk. Jendela terlihat supaya bila
-    /// browser gagal terbuka, alamat dan petunjuknya tetap tampak. Setelah berhasil, kuota real-time langsung dibaca.
+    /// Run "claude auth login --claudeai" in a visible window: browser opens automatically, user just signs in. Window is visible so if
+    /// the browser fails to open, the URL and instructions remain visible. Once successful, real-time quota is read immediately.
     /// </summary>
     public async Task LoginClaudeAsync()
     {
@@ -403,7 +403,7 @@ public sealed class UsageService
         finally { _loginRunning = false; Changed?.Invoke(); }
     }
 
-    // Tanpa login Claude Code di terminal: angka kuota yang dicatat aplikasi Claude Desktop sendiri (persen saja, tanpa waktu reset)
+    // Without Claude Code login in terminal: quota numbers recorded by Claude Desktop app itself (percent only, no reset time)
     bool ClaudeFromDesktop()
     {
         try
@@ -413,14 +413,14 @@ public sealed class UsageService
             var age = DateTimeOffset.Now - DateTimeOffset.FromUnixTimeMilliseconds(s.T);
             if (age < TimeSpan.Zero) age = TimeSpan.Zero;
             var wins = new List<QuotaWindow>();
-            if (s.FiveHour >= 0 && age < TimeSpan.FromHours(5)) wins.Add(new QuotaWindow { Label = "5-hour", Pct = s.FiveHour });   // jendela 5 jam yang lebih tua dari 5 jam sudah pasti berganti
+            if (s.FiveHour >= 0 && age < TimeSpan.FromHours(5)) wins.Add(new QuotaWindow { Label = "5-hour", Pct = s.FiveHour });   // a 5-hour window older than 5 hours has definitely rolled over
             if (s.Weekly >= 0 && age < TimeSpan.FromDays(7)) wins.Add(new QuotaWindow { Label = "Weekly", Pct = s.Weekly });
             if (wins.Count == 0) return false;
             Claude.Windows = wins;
             Claude.Source = "desktop";
             lock (_cacheLock) _claudeAt = DateTimeOffset.Now;
             Claude.Error = L.F("dari aplikasi Claude Desktop, {0} lalu", UI.Span(age));
-            _claudeNext = DateTime.UtcNow.AddSeconds(30);   // berkasnya lokal dan murah: begitu Claude Desktop menulis catatan baru, langsung tampil
+            _claudeNext = DateTime.UtcNow.AddSeconds(30);   // file is local and cheap: as soon as Claude Desktop writes a new entry, show it immediately
             SaveCache();
             CheckAlerts(Claude);
             return true;
@@ -437,7 +437,7 @@ public sealed class UsageService
         into.Add(new QuotaWindow { Label = label, Pct = u.GetDouble(), Reset = reset });
     }
 
-    // ---------- kuota Antigravity: language server lokal aplikasinya (127.0.0.1, token CSRF dari file daemon-nya) ----------
+    // ---------- Antigravity quota: the app's local language server (127.0.0.1, CSRF token from its daemon file) ----------
     public readonly ProviderUsage Agy = new() { Name = "Antigravity" };
     DateTime _agyNext = DateTime.MinValue;
 
@@ -454,7 +454,7 @@ public sealed class UsageService
                     try
                     {
                         using var d = JsonDocument.Parse(File.ReadAllText(f.FullName));
-                        using var p = System.Diagnostics.Process.GetProcessById(d.RootElement.GetProperty("pid").GetInt32());   // file lama dari sesi yang sudah mati: lewati
+                        using var p = System.Diagnostics.Process.GetProcessById(d.RootElement.GetProperty("pid").GetInt32());   // stale file from a dead session: skip
                         if (p.HasExited) continue;
                         port = d.RootElement.GetProperty("httpPort").GetInt32().ToString();
                         tok = d.RootElement.GetProperty("csrfToken").GetString();
@@ -475,7 +475,7 @@ public sealed class UsageService
             }
             using (var us = await Rpc("GetUserStatus"))
                 Agy.Plan = us.RootElement.TryGetProperty("userStatus", out var u) && u.TryGetProperty("planStatus", out var ps) && ps.TryGetProperty("planInfo", out var pi) && pi.TryGetProperty("planName", out var pn) && pn.ValueKind == JsonValueKind.String ? pn.GetString() : null;
-            // kelompok model, tiap kelompok punya bucket weekly dan/atau 5h (sama seperti popup Usage Antigravity)
+            // model groups, each group has weekly and/or 5h buckets (same as Antigravity Usage popup)
             var wins = new List<QuotaWindow>();
             using (var qs = await Rpc("RetrieveUserQuotaSummary"))
                 if (qs.RootElement.TryGetProperty("response", out var rsp) && rsp.TryGetProperty("groups", out var groups) && groups.ValueKind == JsonValueKind.Array)
@@ -496,13 +496,13 @@ public sealed class UsageService
             Agy.Windows = wins;
             Agy.Error = wins.Count == 0 ? L.T("kuota tidak ditemukan di respons Antigravity") : null;
             if (wins.Count > 0) { lock (_cacheLock) _agyAt = DateTimeOffset.Now; SaveCache(); }
-            _agyNext = DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.Cur.UsageRefreshSec, 1, 60));   // lokal dan murah: paling lambat tiap menit, interval Claude/Codex tidak berlaku
+            _agyNext = DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.Cur.UsageRefreshSec, 1, 60));   // local and cheap: at most every minute, Claude/Codex interval does not apply
             CheckAlerts(Agy);
         }
         catch (Exception ex) { Agy.Error = Why(ex); _agyNext = DateTime.UtcNow.AddMinutes(2); App.Log(ex); }
     }
 
-    // ---------- kuota Codex ----------
+    // ---------- Codex quota ----------
     async Task CodexQuota()
     {
         if (!Settings.Cur.CodexOn || Settings.Cur.Slot2 != "codex" || DateTime.UtcNow < _codexNext) return;
@@ -566,7 +566,7 @@ public sealed class UsageService
 
     static string Cap(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];
 
-    // ---------- token & biaya dari catatan lokal (inkremental) ----------
+    // ---------- tokens & cost from local logs (incremental) ----------
     void ScanAll()
     {
         try { ScanDir(Path.Combine(ClaudeDir, "projects"), true); } catch (Exception ex) { App.Log(ex); }
@@ -574,7 +574,7 @@ public sealed class UsageService
         var cutoff = DateOnly.FromDateTime(UsagePeriod.Oldest(DateTime.Now));
         foreach (var d in _cDay.Keys.Where(k => k < cutoff).ToList()) _cDay.Remove(d);
         foreach (var d in _xDay.Keys.Where(k => k < cutoff).ToList()) _xDay.Remove(d);
-        // pindaian awal menyisakan banyak buffer besar: kembalikan segera
+        // initial scan leaves many large buffers: return immediately
         System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
         GC.Collect(2, GCCollectionMode.Forced, true, true);
         Native.EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle);
@@ -602,7 +602,7 @@ public sealed class UsageService
                 for (int i = 0; i < n; i++)
                 {
                     if (buf[i] != 10) continue;
-                    // bekerja pada byte: baris besar (output tool) tidak pernah dijadikan string, hanya baris usage yang di-parse
+                    // work on bytes: large lines (tool output) are never turned into strings, only usage lines are parsed
                     ReadOnlyMemory<byte> line;
                     if (carry.Count == 0) line = new ReadOnlyMemory<byte>(buf, s, i - s);
                     else { carry.AddRange(new ArraySegment<byte>(buf, s, i - s)); line = carry.ToArray(); carry.Clear(); }
@@ -621,7 +621,7 @@ public sealed class UsageService
         if (sp.IndexOf("\"usage\""u8) < 0 || sp.IndexOf("\"assistant\""u8) < 0) return;
         try
         {
-            // pembaca streaming: isi pesan yang besar dilewati tanpa dialokasikan (JsonDocument membuat puluhan MB)
+            // streaming reader: large message bodies are skipped without allocation (JsonDocument allocates tens of MB)
             if (!TryClaude(sp, out var tsText, out var id, out var model, out var inp, out var outp, out var cw, out var cr, out var cw1, out var fast)) return;
             if (model.StartsWith("<")) return;
             if (id.Length > 0 && !_seen.Add(Fnv(id))) return;
@@ -629,10 +629,10 @@ public sealed class UsageService
             var (pi, po, pr, pw5, pw1) = ClaudePrice(model, inp + cw + cr);
             cw1 = Math.Clamp(cw1, 0, cw);
             double cost = (inp * pi + outp * po + cr * pr + (cw - cw1) * pw5 + cw1 * pw1) / 1e6;
-            if (fast) cost *= 2;   // fast mode: tepat 2x harga standar (Fable 5.2, Opus 5.5, Opus 5/4.8)
+            if (fast) cost *= 2;   // fast mode: exactly 2x standard price (Fable 5.2, Opus 5.5, Opus 5/4.8)
             Bump(_cDay, DateOnly.FromDateTime(when.LocalDateTime), inp + outp + cw + cr, cost);
         }
-        catch { /* baris rusak: lewati */ }
+        catch { /* malformed line: skip */ }
     }
 
     static bool TryClaude(ReadOnlySpan<byte> json, out string ts, out string key, out string model,
@@ -667,7 +667,7 @@ public sealed class UsageService
                             else if (rd.ValueTextEquals("cache_creation_input_tokens"u8)) { rd.Read(); cw = Num(ref rd); }
                             else if (rd.ValueTextEquals("cache_read_input_tokens"u8)) { rd.Read(); cr = Num(ref rd); }
                             else if (rd.ValueTextEquals("speed"u8)) { rd.Read(); fast = Str(ref rd) == "fast"; }
-                            else if (rd.ValueTextEquals("cache_creation"u8))   // rincian tulis cache: bagian 1 jam dihargai 2x (5 menit 1,25x)
+                            else if (rd.ValueTextEquals("cache_creation"u8))   // cache write breakdown: 1-hour tier is priced at 2x (5-minute 1.25x)
                             {
                                 rd.Read();
                                 if (rd.TokenType != JsonTokenType.StartObject) { rd.Skip(); continue; }
@@ -702,7 +702,7 @@ public sealed class UsageService
             if (!r.TryGetProperty("payload", out var p) || !p.TryGetProperty("info", out var info) || info.ValueKind != JsonValueKind.Object) return;
             if (!info.TryGetProperty("total_token_usage", out var tot) || !info.TryGetProperty("last_token_usage", out var last)) return;
             long total = Lng(tot, "total_tokens");
-            if (total <= _codexLast.GetValueOrDefault(file)) return; // event duplikat
+            if (total <= _codexLast.GetValueOrDefault(file)) return; // duplicate event
             _codexLast[file] = total;
             if (!r.TryGetProperty("timestamp", out var ts) || !DateTimeOffset.TryParse(ts.GetString(), out var when)) return;
             long inp = Lng(last, "input_tokens"), cached = Lng(last, "cached_input_tokens"), outp = Lng(last, "output_tokens");
@@ -720,9 +720,9 @@ public sealed class UsageService
 
     static long Lng(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
 
-    // Harga resmi API Anthropic (platform.claude.com/docs/en/about-claude/pricing, dicek 2026-11-21), USD per juta token:
-    // masuk, keluar, baca cache, tulis cache 5 menit, tulis cache 1 jam. Model baru perlu ditambah di sini.
-    // Belum dihitung: pengali 1,1x untuk inference_geo "us", diskon Batch API, dan biaya pencarian web.
+    // Official Anthropic API pricing (platform.claude.com/docs/en/about-claude/pricing, checked 2026-11-21), USD per million tokens:
+    // input, output, cache read, 5-min cache write, 1-hour cache write. New models need to be added here.
+    // Not yet counted: 1.1x multiplier for inference_geo "us", Batch API discount, and web search cost.
     static (double In, double Out, double CacheRead, double Write5m, double Write1h) ClaudePrice(string model, long promptTokens)
     {
         model = model.ToLowerInvariant();
@@ -732,12 +732,12 @@ public sealed class UsageService
         if (model.Contains("opus-5-5")) return (4, 20, 0.2, 5, 8);
         if (model.Contains("opus-4-1") || model.Contains("opus-4-2") || model.Contains("3-opus") || model.EndsWith("opus-4")) return (15, 75, 1.5, 18.75, 30);   // Opus 4.1, 4, 3
         if (model.Contains("opus")) return (5, 25, 0.5, 6.25, 10);   // Opus 5, 4.8, 4.7, 4.6, 4.5
-        if (model.Contains("haiku-5")) return promptTokens > 100_000 ? (0.5, 2.5, 0.05, 0.625, 1) : (0.1, 0.5, 0.01, 0.125, 0.2);   // harga lebih tinggi bila prompt > 100 rb token
+        if (model.Contains("haiku-5")) return promptTokens > 100_000 ? (0.5, 2.5, 0.05, 0.625, 1) : (0.1, 0.5, 0.01, 0.125, 0.2);   // higher rate when prompt > 100k tokens
         if (model.Contains("haiku-4-5")) return (1, 5, 0.1, 1.25, 2);
         if (model.Contains("haiku")) return (0.8, 4, 0.08, 1, 1.6);
         if (model.Contains("sonnet-5-5")) return (2, 10, 0.1, 2.5, 4);
         if (model.Contains("sonnet-5")) return (2, 10, 0.2, 2.5, 4);
-        return (3, 15, 0.3, 3.75, 6);   // Sonnet 4.x dan model lain
+        return (3, 15, 0.3, 3.75, 6);   // Sonnet 4.x and other models
     }
 
     static ulong Fnv(string s)

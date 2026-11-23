@@ -6,10 +6,10 @@ using System.Windows.Automation;
 namespace ZaxLet;
 
 /// <summary>
-/// Posisi putar YouTube yang sebenarnya, dibaca dari bilah progres di halamannya lewat aksesibilitas Windows (UI Automation). Posisi
-/// yang dilaporkan peramban ke Windows (SMTC) sering basi atau kosong; bilah progres YouTube selalu memuat detik sekarang dan panjang
-/// video. Lokal sepenuhnya, tidak ada yang dikirim. Hanya berhasil bila tab videonya sedang menjadi tab aktif di jendelanya (judul jendela
-/// memuat judul video); selain itu pemanggil memakai laporan Windows.
+/// Actual YouTube playback position, read from its page progress bar via Windows accessibility (UI Automation). The position
+/// reported by browsers to Windows (SMTC) is often stale or empty; YouTube's progress bar always holds the current second and video
+/// length. Fully local, nothing is sent. Only succeeds when the video tab is the active tab in its window (window title
+/// contains the video title); otherwise the caller falls back to Windows' report.
 /// </summary>
 public static class YtProgress
 {
@@ -35,7 +35,7 @@ public static class YtProgress
         return found;
     }
 
-    /// <summary>Null bila tidak ada jendela YouTube dengan judul itu, atau bilah progresnya tidak terbaca. <paramref name="durSec"/> = durasi yang diketahui (0 = belum tahu).</summary>
+    /// <summary>Null if there is no YouTube window with that title, or its progress bar is unreadable. <paramref name="durSec"/> = known duration (0 = unknown).</summary>
     public static Reading Read(string title, double durSec)
     {
         if (string.IsNullOrWhiteSpace(title)) return null;
@@ -52,11 +52,11 @@ public static class YtProgress
                 if (!e.TryGetCurrentPattern(RangeValuePattern.Pattern, out var p)) continue;
                 var r = ((RangeValuePattern)p).Current;
                 bool progress = cls.Contains("progress", StringComparison.OrdinalIgnoreCase);
-                bool sameLength = durSec <= 0 || Math.Abs(r.Maximum - durSec) <= 5;   // bar milik video lain (tab lain) dilewati
+                bool sameLength = durSec <= 0 || Math.Abs(r.Maximum - durSec) <= 5;   // skip bars belonging to other videos (other tabs)
                 if ((progress || durSec > 0) && sameLength && r.Maximum >= 5) return new Reading(r.Value, r.Maximum);
             }
         }
-        catch (Exception) { /* jendela menutup / pohon aksesibilitas belum siap: coba lagi di putaran berikut */ }
+        catch (Exception) { /* window closed / accessibility tree not ready: retry on next tick */ }
         return null;
     }
 }

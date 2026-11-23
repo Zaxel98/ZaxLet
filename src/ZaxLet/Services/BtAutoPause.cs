@@ -6,13 +6,13 @@ using Windows.Devices.Radios;
 
 namespace ZaxLet;
 
-/// <summary>Menjeda musik saat perangkat Bluetooth terputus ketika sedang memutar, dengan tombol klik untuk lanjut.</summary>
+/// <summary>Pauses music when a Bluetooth device disconnects while playing, with a click-to-resume button.</summary>
 public sealed class BtAutoPause
 {
     public static readonly BtAutoPause I = new();
 
     readonly BluetoothWatch _bt = new();
-    readonly System.Collections.Generic.HashSet<string> _audioNames = new(StringComparer.OrdinalIgnoreCase);   // nama endpoint keluaran yang pernah aktif: hanya perangkat audio yang memicu jeda
+    readonly System.Collections.Generic.HashSet<string> _audioNames = new(StringComparer.OrdinalIgnoreCase);   // output endpoint names that have been active: only audio devices trigger pause
     bool _started;
 
     void Snap()
@@ -40,8 +40,8 @@ public sealed class BtAutoPause
 
     void OnDeviceChanged(string name, bool on)
     {
-        if (on) { _ = Task.Delay(3000).ContinueWith(_ => Snap()); return; }   // endpoint audio muncul beberapa detik setelah tersambung
-        if (!Settings.Cur.BtPauseOnLost || !MediaService.I.Playing || !IsAudioDevice(name)) return;   // mouse/keyboard/stik putus: abaikan
+        if (on) { _ = Task.Delay(3000).ContinueWith(_ => Snap()); return; }   // audio endpoint appears a few seconds after connecting
+        if (!Settings.Cur.BtPauseOnLost || !MediaService.I.Playing || !IsAudioDevice(name)) return;   // mouse/keyboard/controller disconnect: ignore
         _ = HandleDisconnectAsync();
     }
 

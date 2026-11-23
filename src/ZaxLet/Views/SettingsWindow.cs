@@ -9,8 +9,8 @@ using System.Windows.Shapes;
 namespace ZaxLet;
 
 /// <summary>
-/// Pengaturan di jendela sendiri (seperti BrimDeck): daftar kategori di kiri, pratinjau langsung di kanan.
-/// Pratinjau idle mencerminkan pill asli; pratinjau tab memakai salinan tab yang dibangun ulang tiap pengaturan berubah.
+/// Settings in its own window (like BrimDeck): category list on the left, live preview on the right.
+/// Idle preview mirrors the real pill; tab preview uses a copy of the tab rebuilt whenever a setting changes.
 /// </summary>
 public sealed class SettingsWindow : Window
 {

@@ -6,16 +6,16 @@ using System.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// "Flow" audio: membaca keluaran suara PC (WASAPI loopback, lokal, tidak direkam) dan menandai kapan vokal sedang bernyanyi, dari energi
-/// pita 300-3400 Hz relatif terhadap level terendah/tertinggi lagu yang sedang jalan. Dipakai karaoke: progres isi lirik maju hanya saat
-/// ada suara vokal, bukan dihitung dari panjang teks. Capture hanya berjalan selama ada yang memintanya (tab Musik terbuka dan lagu main).
+/// Audio "Flow": reads PC audio output (WASAPI loopback, local, not recorded) and detects when vocals are singing, from
+/// 300-3400 Hz band energy relative to the current song's floor/peak levels. Used by karaoke: lyric progress advances only when
+/// vocals are present, rather than by text length. Capture only runs while requested (Music tab open and song playing).
 /// </summary>
 public sealed class AudioFlow
 {
     public static readonly AudioFlow I = new();
 
-    // ---- COM WASAPI (hanya bagian yang dipakai) ----
-    // Enumerator/IMMDevice dipakai bersama AudioEndpoint: dua kelas [ComImport] ber-CLSID sama membuat `new` gagal (InvalidCast) selama RCW yang lain hidup.
+    // ---- COM WASAPI (only the parts used) ----
+    // Enumerator/IMMDevice shared with AudioEndpoint: two [ComImport] classes with the same CLSID make `new` fail (InvalidCast) while the other RCW is alive.
 
     [ComImport, Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface IAudioClient
@@ -42,8 +42,8 @@ public sealed class AudioFlow
         [PreserveSig] int GetNextPacketSize(out uint frames);
     }
 
-    // ---- keadaan ----
-    const int Frame = 1024, Hist = 1200;   // bingkai analisis ±21 ms; riwayat ±25 dtk
+    // ---- state ----
+    const int Frame = 1024, Hist = 1200;   // analysis frame ~21 ms; history ~25s
     readonly object _lk = new();
     readonly long[] _t = new long[Hist];
     readonly double[] _v = new double[Hist];
@@ -55,21 +55,21 @@ public sealed class AudioFlow
     int _on;
     long _frames;
 
-    /// <summary>Menerima tiap bingkai mono keluaran PC (buffer dipakai ulang: salin bila perlu). Dipakai pengenal lagu, hanya selama menangkap cuplikan.</summary>
+    /// <summary>Receives each mono frame of PC output (buffer is reused: copy if needed). Used by song recognizer, only while capturing a clip.</summary>
     public event Action<float[], int> Tap;
 
     public bool Active => _run;
-    /// <summary>Ada data audio dalam ±0,35 dtk terakhir (loopback tidak mengirim apa pun saat hening total).</summary>
+    /// <summary>Audio data received within the last ~0.35s (loopback sends nothing during complete silence).</summary>
     public bool Fresh => _run && Stopwatch.GetTimestamp() - Interlocked.Read(ref _lastData) < Stopwatch.Frequency * 0.35;
-    /// <summary>Sudah berapa detik capture berjalan (riwayat suara tidak lebih lama dari ini).</summary>
+    /// <summary>How many seconds capture has been running (voice history is no older than this).</summary>
     public double CapturingFor => _run ? (Stopwatch.GetTimestamp() - Interlocked.Read(ref _startedAt)) / (double)Stopwatch.Frequency : 0;
-    /// <summary>Detik sejak vokal terakhir terdeteksi.</summary>
+    /// <summary>Seconds since vocals were last detected.</summary>
     public double SilentFor => (Stopwatch.GetTimestamp() - Interlocked.Read(ref _lastVoice)) / (double)Stopwatch.Frequency;
 
     public void Acquire() { lock (_lk) { _users++; if (!_run) Start(); } }
     public void Release() { lock (_lk) if (--_users <= 0) { _users = 0; _run = false; } }
 
-    /// <summary>Total detik bersuara dalam <paramref name="secondsAgo"/> detik terakhir.</summary>
+    /// <summary>Total voiced seconds in the last <paramref name="secondsAgo"/> seconds.</summary>
     public double VoicedSince(double secondsAgo)
     {
         lock (_lk)
@@ -81,7 +81,7 @@ public sealed class AudioFlow
             {
                 int idx = (_head - 1 - k + Hist * 2) % Hist;
                 if (_t[idx] <= target) { at = _v[idx]; break; }
-                at = _v[idx];   // lebih tua dari riwayat: pakai yang paling lama
+                at = _v[idx];   // older than history: use oldest available
             }
             return Math.Max(0, now - at);
         }
@@ -159,16 +159,16 @@ public sealed class AudioFlow
         }
     }
 
-    // ---- belajar pola vokal vs instrumen per lagu ----
+    // ---- learn vocal vs instrumental pattern per song ----
     readonly VocalModel _model = new();
     readonly double[] _prevP = new double[Frame / 2];
     long _lastTrain;
-    /// <summary>Label dari lirik untuk posisi putar sekarang: 1 = vokal, 0 = instrumen, -1 = tidak yakin (dipasang MediaService).</summary>
+    /// <summary>Label from lyrics for current playback position: 1 = vocal, 0 = instrumental, -1 = uncertain (set by MediaService).</summary>
     public Func<int> Labeler;
     public void ResetModel() { _model.Reset(); Array.Clear(_prevP); }
     public string ModelInfo => $"model {(_model.Ready ? "siap" : "belajar")} akurasi={_model.Accuracy:0.00} sampel vokal/instrumen={_model.Count1}/{_model.Count0}";
 
-    // Ciri satu bingkai: [dB pita vokal, vokal relatif ke seluruh pita (dB), terang vs bass (dB), perubahan spektrum (flux), pusat spektrum vokal (kHz)]
+    // Single-frame features: [vocal band dB, vocal relative to full band (dB), brightness vs bass (dB), spectral flux, vocal spectral centroid (kHz)]
     float[] Features(float[] frame, float[] win, int rate)
     {
         var p = Dsp.Power(frame, win);
@@ -197,7 +197,7 @@ public sealed class AudioFlow
         };
     }
 
-    // satu bingkai: bila model lagu ini sudah belajar, pakai model; sebelum itu heuristik energi pita vokal (300-3400 Hz) relatif ke rentang level
+    // single frame: if this song's model is trained, use it; before that, use vocal band energy heuristic (300-3400 Hz) relative to level range
     void Analyze(float[] frame, float[] win, int rate, bool silent)
     {
         long now = Stopwatch.GetTimestamp();
@@ -207,20 +207,20 @@ public sealed class AudioFlow
         if (!silent && db > -90)
         {
             Interlocked.Exchange(ref _lastData, now);
-            _peak = Math.Max(db, _peak - 0.02);                 // puncak meluruh pelan (±1 dB/dtk)
-            _floor = Math.Min(db, _floor + 0.02);               // lantai naik pelan: mengikuti bagian lagu yang paling pelan
+            _peak = Math.Max(db, _peak - 0.02);                 // peak decays slowly (~1 dB/s)
+            _floor = Math.Min(db, _floor + 0.02);               // floor rises slowly: tracks the quietest part of the song
             _minDb = Math.Min(_minDb, db); _maxDb = Math.Max(_maxDb, db);
             double span = _peak - _floor;
             raw = span > 6 && db - _floor > 0.5 * span && ratio > 0.30;
 
-            // belajar: waktu lirik memberi label (di dalam baris = vokal, jeda panjang/intro = instrumen); latih ulang tiap 3 dtk
+            // training: lyric timing provides labels (inside a line = vocal, long gap/intro = instrumental); retrain every 3s
             int label = -1;
             try { label = Labeler?.Invoke() ?? -1; } catch { }
             if (label >= 0) _model.Add(x, label == 1);
             if (now - _lastTrain > Stopwatch.Frequency * 3) { _lastTrain = now; _model.Train(); }
             if (_model.Ready) raw = _model.Prob(x) > 0.55;
         }
-        _on = Math.Clamp(_on + (raw ? 1 : -1), 0, 4);   // histeresis: 2 bingkai untuk mulai, ±4 untuk berhenti
+        _on = Math.Clamp(_on + (raw ? 1 : -1), 0, 4);   // hysteresis: 2 frames to start, ~4 to stop
         bool voice = _on >= 2;
         double dt = (double)Frame / rate;
         lock (_lk)

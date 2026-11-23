@@ -1,11 +1,11 @@
 namespace ZaxLet;
 
-/// <summary>Keputusan tampil/sembunyi jendela pill sebagai fungsi murni, supaya bisa diuji tanpa jendela.</summary>
+/// <summary>Pill window show/hide decision as a pure function, so it can be tested without a window.</summary>
 public static class PillVisibility
 {
     /// <summary>
-    /// Jendela tampil kecuali: fullscreen atau disembunyikan pengguna (keduanya tanpa intipan kursor), atau mode "saat ada aktivitas" tanpa aktivitas.
-    /// notifForced: ada notifikasi yang boleh memaksa tampil di fullscreen/sembunyi. fsMusic: musik di layar penuh. ghost: Alt ditahan di atas pill.
+    /// Window is shown unless: fullscreen or hidden by the user (both without cursor peek), or "when active" mode with no activity.
+    /// notifForced: there is a notification allowed to force-show in fullscreen/hidden. fsMusic: music in fullscreen. ghost: Alt held over pill.
     /// </summary>
     public static bool Want(bool fs, bool snooze, bool snoozePeek, bool peek, bool miniActive, bool ghost, bool notifForced, bool fsMusic, bool activityHide)
     {

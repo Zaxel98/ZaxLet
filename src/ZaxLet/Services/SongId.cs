@@ -8,16 +8,16 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Pengenal lagu seperti Shazam untuk audio tanpa judul (kompilasi, siaran, video tanpa keterangan). Menangkap ±12 detik keluaran suara PC
-/// (loopback, hanya saat tombol ditekan), lalu mengirimnya ke layanan AudD (api.audd.io) dengan token milik pengguna sendiri. Hasil:
-/// judul, artis, dan menit ke berapa cuplikan itu di dalam lagunya (dipakai menyelaraskan lirik).
+/// Shazam-like song recognizer for untitled audio (compilations, streams, unlabeled videos). Captures ~12 seconds of PC audio output
+/// (loopback, only when the button is pressed), then sends it to the AudD service (api.audd.io) using the user's own token. Returns:
+/// title, artist, and the timestamp of the clip within the song (used to sync lyrics).
 /// </summary>
 public static partial class SongId
 {
     public const int Seconds = 12;
     public sealed record Hit(string Title, string Artist, double At);
 
-    /// <summary>Cuplikan mono ke WAV 16 kHz 16 bit (cukup untuk pengenalan, ±380 KB untuk 12 dtk).</summary>
+    /// <summary>Mono clip to 16 kHz 16-bit WAV (sufficient for recognition, ~380 KB for 12s).</summary>
     public static byte[] ToWav16k(IReadOnlyList<float> mono, int rate)
     {
         double ratio = rate / 16000.0;
@@ -31,12 +31,12 @@ public static partial class SongId
             int a = (int)(i * ratio), b = Math.Max(a + 1, (int)((i + 1) * ratio));
             double s = 0;
             for (int k = a; k < b && k < mono.Count; k++) s += mono[k];
-            w.Write((short)Math.Clamp(s / (b - a) * 32767, -32768, 32767));   // rata-rata kotak = penapis lolos-bawah sederhana
+            w.Write((short)Math.Clamp(s / (b - a) * 32767, -32768, 32767));   // box average = simple low-pass filter
         }
         return ms.ToArray();
     }
 
-    /// <summary>"01:23" atau "1:02:03" -> detik; -1 bila tak terbaca.</summary>
+    /// <summary>"01:23" or "1:02:03" -> seconds; -1 if unreadable.</summary>
     public static double ParseTimecode(string t)
     {
         double sec = 0;
@@ -44,7 +44,7 @@ public static partial class SongId
         return sec;
     }
 
-    /// <summary>Hasil AudD: null = tidak dikenali; melempar bila layanan menolak (token salah, kuota habis).</summary>
+    /// <summary>AudD result: null = unrecognized; throws if service rejects (invalid token, quota exhausted).</summary>
     public static Hit ParseResponse(string json)
     {
         using var doc = JsonDocument.Parse(json);

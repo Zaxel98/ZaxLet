@@ -8,7 +8,7 @@ using SD = System.Drawing;
 
 namespace ZaxLet;
 
-/// <summary>Nama deskriptif + ikon asli sebuah aplikasi dari exe-nya (di-cache per nama proses).</summary>
+/// <summary>Descriptive name + native icon of an application from its exe (cached per process name).</summary>
 public static class AppInfo
 {
     static readonly ConcurrentDictionary<string, (string Title, ImageSource Icon)> Cache = new(StringComparer.OrdinalIgnoreCase);

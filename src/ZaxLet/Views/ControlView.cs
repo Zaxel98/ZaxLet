@@ -10,7 +10,7 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-/// <summary>Panel kontrol: wadah semua jenis kontrol. Sekarang berisi mixer volume per aplikasi (Spotify, Discord, game terpisah).</summary>
+/// <summary>Control panel: container for all controls. Currently holds the per-app volume mixer (Spotify, Discord, games separately).</summary>
 public sealed class ControlView : TabView
 {
     public override string Key => "ctrl";
@@ -100,7 +100,7 @@ public sealed class ControlView : TabView
             if (_drag) return;
             RenderDevices();
             Render();
-        };   // baca ulang berkala: perangkat atau aplikasi muncul/hilang, volume/bawaan diubah dari tempat lain
+        };   // periodic refresh: devices or apps appear/disappear, volume/default changed from elsewhere
     }
 
     public override void OnShow()

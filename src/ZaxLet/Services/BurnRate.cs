@@ -7,7 +7,7 @@ public readonly record struct BurnSample(DateTimeOffset At, double Pct);
 
 public readonly record struct BurnProjection(bool HasData, bool WillExhaust, TimeSpan? TimeToExhaust, double RatePerHour);
 
-/// <summary>Estimasi laju pemakaian kuota (%/jam) dan proyeksi habis sebelum jendela reset.</summary>
+/// <summary>Estimates quota burn rate (%/hour) and projects exhaustion before the reset window.</summary>
 public static class BurnRate
 {
     public const int MaxSamples = 30;
@@ -64,7 +64,7 @@ public static class BurnRate
         if (rate <= 0 || double.IsNaN(rate) || double.IsInfinity(rate)) return default;
 
         double remPct = Math.Max(0, 100.0 - samples[^1].Pct);
-        // laju sangat kecil membuat jam tak terhingga: TimeSpan.FromHours meluap (OverflowException) dan merusak render tab AI; batasi ke 1 juta jam
+        // very small rate makes hours infinite: TimeSpan.FromHours overflows (OverflowException) and breaks AI tab rendering; cap at 1 million hours
         var exhaustIn = TimeSpan.FromHours(Math.Min(remPct / rate, 1e6));
         return new BurnProjection(true, exhaustIn < resetIn, exhaustIn, rate);
     }

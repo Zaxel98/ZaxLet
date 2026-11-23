@@ -22,7 +22,7 @@ public sealed class UsageView : TabView
 
     readonly StackPanel _claude = new(), _codex = new(), _page2 = new() { Visibility = Visibility.Collapsed };
     readonly Grid _main = UI.Cols(-1, 1, -1);
-    bool _more;   // halaman 2: semua worker + pemakaian 5 jam
+    bool _more;   // page 2: all workers + 5-hour usage
     const int PageWorkers = 2;
     readonly DispatcherTimer _t = new() { Interval = TimeSpan.FromSeconds(60) };
     readonly DispatcherTimer _redraw = new() { Interval = TimeSpan.FromSeconds(20) };
@@ -100,7 +100,7 @@ public sealed class UsageView : TabView
     {
         var s = Settings.Cur;
         bool agy = s.CodexOn && s.Slot2 == "antigravity";
-        if (_more && (!agy || _workerRows.Count <= PageWorkers)) _more = false;   // tidak ada lagi yang disembunyikan
+        if (_more && (!agy || _workerRows.Count <= PageWorkers)) _more = false;   // nothing left to hide
         _main.Visibility = _more ? Visibility.Collapsed : Visibility.Visible;
         _page2.Visibility = _more ? Visibility.Visible : Visibility.Collapsed;
         if (_more) { BuildPage2(s); return; }
@@ -126,7 +126,7 @@ public sealed class UsageView : TabView
         }
     }
 
-    /// <summary>Halaman 2: pemakaian 5 jam AI yang tampil di halaman 1 (bersebelahan) lalu semua worker.</summary>
+    /// <summary>Page 2: 5-hour usage of AIs shown on page 1 (side by side) followed by all workers.</summary>
     void BuildPage2(Settings s)
     {
         _page2.Children.Clear();
@@ -179,11 +179,11 @@ public sealed class UsageView : TabView
         var wins = u.Windows ?? new List<QuotaWindow>();
         if (wins.Count == 0)
             host.Children.Add(new TextBlock { Text = u.Error ?? L.T("memuat…"), Foreground = UI.Dim, FontSize = 12, Margin = new Thickness(0, 12, 0, 8), TextWrapping = TextWrapping.Wrap });
-        bool tight = wins.Count > 3;   // 5 bar (Antigravity) harus muat di tinggi tab
+        bool tight = wins.Count > 3;   // 5 bars (Antigravity) must fit in the tab height
         if (u.Name == "Antigravity") PairBars(host, u, burnFn);
         else foreach (var w in wins)
         {
-            if (w == null || (u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now)) continue; // jendela lama sudah lewat
+            if (w == null || (u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now)) continue; // old window already passed
             var row = UI.Cols(-1, 0);
             row.Margin = new Thickness(0, tight ? 1 : 5, 0, 0);
             var pct = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Foreground = UI.Fg };
@@ -211,7 +211,7 @@ public sealed class UsageView : TabView
         if (wins.Count > 0 && u.Error != null)
             host.Children.Add(UI.T(u.Error, 10.5, UI.Warn));
 
-        // Claude tanpa sumber real-time: satu tombol membuka login (browser terbuka otomatis, tinggal masuk)
+        // Claude without real-time source: single button opens login (browser opens automatically, just sign in)
         if (u.Name == "Claude" && u.Source != "api")
         {
             var us = UsageService.I;
@@ -223,8 +223,8 @@ public sealed class UsageView : TabView
             host.Children.Add(hint);
         }
 
-        if (u.Name == "Antigravity") return;   // tokennya tampil sebagai kolom Agy di tabel Claude
-        // tabel pemakaian: total token (Claude + Agy) | perkiraan biaya Claude | Claude (token) | Antigravity (token); kolom Claude dan Agy hanya bila Agy aktif
+        if (u.Name == "Antigravity") return;   // its tokens appear as the Agy column in Claude's table
+        // usage table: total tokens (Claude + Agy) | estimated Claude cost | Claude (tokens) | Antigravity (tokens); Claude and Agy columns only when Agy is active
         var s = Settings.Cur;
         var agy = u.Name == "Claude" && s.CodexOn && s.Slot2 == "antigravity" ? (agyOverride ?? UsageService.I.Agy) : null;
         host.Children.Add(Head(agy != null));
@@ -233,7 +233,7 @@ public sealed class UsageView : TabView
         host.Children.Add(Line("Month", u.MonthTok, u.MonthCost, agy?.MonthTok));
     }
 
-    /// <summary>Untuk <c>--ui-test</c>: isi tab AI dengan data contoh besar tanpa membaca log atau jaringan.</summary>
+    /// <summary>For <c>--ui-test</c>: populate AI tab with large sample data without reading logs or network.</summary>
     internal static UsageView Preview(ProviderUsage claude, ProviderUsage agy, Func<string, QuotaWindow, BurnProjection> burn)
     {
         var v = new UsageView();
@@ -245,15 +245,15 @@ public sealed class UsageView : TabView
     }
 
     static readonly Brush AgyBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0xB4, 0xF8));
-    const double LabW = 42, CodeW = 56, AgyW = 52;   // lebar kolom tabel pemakaian; kolom token dan biaya selebar isinya (Auto) supaya angka tidak terpotong
+    const double LabW = 42, CodeW = 56, AgyW = 52;   // usage table column widths; token and cost columns auto-size to content so numbers are never clipped
 
-    /// <summary>Antigravity: satu baris per grup model, weekly dan 5h bersebelahan.</summary>
+    /// <summary>Antigravity: one row per model group, weekly and 5h side by side.</summary>
     static void PairBars(StackPanel host, ProviderUsage u, Func<string, QuotaWindow, BurnProjection> burnFn = null)
     {
         var live = (u.Windows ?? new List<QuotaWindow>()).Where(w => w != null && !string.IsNullOrEmpty(w.Label) && !(u.Error != null && w.Reset != null && w.Reset < DateTimeOffset.Now));
         foreach (var grp in live.GroupBy(w => w.Label.Split(" · ")[0]))
         {
-            // nama grup di kiri; prakiraan habis di kanan (sel bar terlalu sempit: "weekly 51% 3d 22h · Habis ±…" terpotong). Tanpa jendela yang akan habis: "Aman".
+            // group name on left; exhaustion forecast on right (bar cell is too narrow: "weekly 51% 3d 22h · Habis ±…" gets clipped). If no window will exhaust: "Aman".
             var head = UI.Cols(-1, 0);
             head.Margin = new Thickness(0, 4, 0, 0);
             head.Children.Add(UI.T(grp.Key, 11, UI.Dim));
@@ -302,11 +302,11 @@ public sealed class UsageView : TabView
         return g;
     }
 
-    /// <param name="claudeTok">token Claude saja; kolom Total = Claude + Agy (akumulasi)</param>
+    /// <param name="claudeTok">Claude tokens only; Total column = Claude + Agy (cumulative)</param>
     static Grid Line(string label, long claudeTok, double cost, long? agy)
     {
         long tok = claudeTok + (agy ?? 0);
-        var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);   // label | total token | biaya (Auto: tidak pernah dipotong) | sisa | Claude | Agy
+        var g = UI.Cols(LabW, 0, 0, -1, CodeW, AgyW);   // label | total tokens | cost (Auto: never clipped) | spacer | Claude | Agy
         g.Margin = new Thickness(0, 1, 0, 0);
         g.Children.Add(UI.T(label, 12, UI.Dim));
         var tk = UI.T(UI.Tok(tok), 12, UI.Dim);

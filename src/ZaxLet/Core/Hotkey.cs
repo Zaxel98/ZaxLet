@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ZaxLet;
 
-/// <summary>Kirim kombinasi tombol global ("ctrl+shift+m") lewat SendInput, mis. untuk keybind mic/kamera Discord dan pintasan Meet.</summary>
+/// <summary>Send global key combinations ("ctrl+shift+m") via SendInput, e.g. for Discord mic/camera keybinds and Meet shortcuts.</summary>
 public static class Hotkey
 {
     [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
@@ -36,7 +36,7 @@ public static class Hotkey
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
 
-    /// <summary>Daftarkan pintasan global ("ctrl+alt+i") yang mengirim WM_HOTKEY ke jendela h. Mendaftar ulang bila id sama. False bila format salah / sudah dipakai aplikasi lain.</summary>
+    /// <summary>Register a global shortcut ("ctrl+alt+i") that sends WM_HOTKEY to window h. Re-registers if id is the same. False if invalid format / already used by another app.</summary>
     public static bool Register(IntPtr h, int id, string combo)
     {
         UnregisterHotKey(h, id);
@@ -52,12 +52,12 @@ public static class Hotkey
                 default: vk = Vk(part); if (vk == 0) return false; break;
             }
         }
-        return vk != 0 && RegisterHotKey(h, id, mods | 0x4000, vk);   // 0x4000 = tanpa pengulangan saat ditahan
+        return vk != 0 && RegisterHotKey(h, id, mods | 0x4000, vk);   // 0x4000 = no repeat while held
     }
 
     public static void Unregister(IntPtr h, int id) => UnregisterHotKey(h, id);
 
-    /// <summary>Tekan lalu lepas kombinasi. False bila format tidak dikenal.</summary>
+    /// <summary>Press then release combination. False if format is unrecognized.</summary>
     public static bool Send(string combo)
     {
         var keys = new System.Collections.Generic.List<ushort>();
@@ -79,7 +79,7 @@ public static class Hotkey
 
     static INPUT Key(ushort vk, uint flags) => new() { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = flags } } };
 
-    /// <summary>Kirim kombinasi ke jendela yang judulnya memuat teks tertentu (mis. tab Meet di Chrome), lalu kembalikan fokus.</summary>
+    /// <summary>Send combination to the window whose title contains specific text (e.g. Meet tab in Chrome), then restore focus.</summary>
     public static bool SendToWindow(string titlePart, string combo)
     {
         IntPtr target = IntPtr.Zero;
@@ -94,7 +94,7 @@ public static class Hotkey
         if (target == IntPtr.Zero) return false;
         var prev = GetForegroundWindow();
         if (IsIconic(target)) ShowWindow(target, 9);
-        Send("alt");                       // trik agar Windows mengizinkan SetForegroundWindow dari proses latar
+        Send("alt");                       // trick so Windows allows SetForegroundWindow from a background process
         SetForegroundWindow(target);
         System.Threading.Thread.Sleep(180);
         var ok = Send(combo);

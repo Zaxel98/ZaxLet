@@ -9,7 +9,7 @@ using SDI = System.Drawing.Imaging;
 
 namespace ZaxLet;
 
-/// <summary>OCR area layar offline via Windows.Media.Ocr, lalu salin teks ke clipboard.</summary>
+/// <summary>Offline screen-region OCR via Windows.Media.Ocr, then copy the text to the clipboard.</summary>
 public static class ScreenOcr
 {
     const int PreviewMax = 40;

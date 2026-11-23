@@ -9,8 +9,8 @@ using System.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Kirim berkas ke HP dari menu klik kanan Explorer (SendTo): membuat/menghapus pintasan <c>ZaxLet HP.lnk</c>,
-/// meneruskan argumen dari instans kedua lewat named pipe, dan memasukkan berkas ke Shelf + mengirim perintah ke HP.
+/// Send files to phone from the Explorer right-click menu (SendTo): creates/removes the <c>ZaxLet HP.lnk</c> shortcut,
+/// forwards arguments from a second instance via named pipe, and adds files to Shelf + sends a command to the phone.
 /// </summary>
 public static class SendTo
 {

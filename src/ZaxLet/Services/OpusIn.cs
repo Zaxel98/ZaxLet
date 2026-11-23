@@ -5,7 +5,7 @@ using Concentus;
 namespace ZaxLet;
 
 /// <summary>
-/// Dekoder Opus 48 kHz stereo untuk aliran audio HP (/aud/opus) ke PCM 16-bit stereo untuk PhoneAudio.
+/// 48 kHz stereo Opus decoder for phone audio stream (/aud/opus) to 16-bit stereo PCM for PhoneAudio.
 /// </summary>
 public sealed class OpusIn
 {
@@ -15,7 +15,7 @@ public sealed class OpusIn
     readonly short[] _pcmSamples = new short[MaxFrameSamples * Channels];
     bool _loggedDecodeErr;
 
-    /// <summary>Mendekode satu paket Opus 20 ms menjadi byte PCM 16-bit stereo; mengembalikan null jika gagal.</summary>
+    /// <summary>Decodes one 20 ms Opus packet into 16-bit stereo PCM bytes; returns null on failure.</summary>
     public byte[] Decode(byte[] packet)
     {
         if (packet == null || packet.Length == 0) return null;

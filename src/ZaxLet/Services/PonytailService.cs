@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ZaxLet;
 
-/// <summary>Ringkasan sesi Claude Code yang dicatat Ponytail (~/.config/ponytail/band/*.csv, satu baris per sesi).</summary>
+/// <summary>Claude Code session summary recorded by Ponytail (~/.config/ponytail/band/*.csv, one line per session).</summary>
 public sealed class PonytailStats
 {
     public double Cost, AgentMin;
@@ -20,12 +20,12 @@ public static class PonytailService
     static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "ponytail", "band");
     record Row(DateTime Started, double Cost, double AgentMin, long Tokens, int Turns);
 
-    // cache per file: hanya dibaca ulang bila waktu ubah berbeda
+    // per-file cache: only re-read when modification time differs
     static readonly Dictionary<string, (DateTime Stamp, List<Row> Rows)> Cache = new();
 
     public static bool Available => Directory.Exists(Dir);
 
-    /// <summary>Total sesi yang mulai hari ini, sejak Senin, dan sejak tanggal 1. Biaya sesi dicatat penuh pada hari mulainya.</summary>
+    /// <summary>Session totals started today, since Monday, and since the 1st. Session cost is recorded in full on its start day.</summary>
     public static (PonytailStats Today, PonytailStats Week, PonytailStats Month) Read()
     {
         var today = new PonytailStats(); var week = new PonytailStats(); var month = new PonytailStats();
@@ -70,7 +70,7 @@ public static class PonytailService
 
     static double Num(string s) => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
 
-    // CSV sederhana: kolom bertanda kutip boleh berisi koma (judul sesi)
+    // simple CSV: quoted columns may contain commas (session title)
     static List<string> Split(string line)
     {
         var r = new List<string>(); var sb = new StringBuilder(); bool q = false;

@@ -33,7 +33,7 @@ public sealed class ShelfView : TabView
         var head = UI.Cols(-1, 0, 0, 0, 0, 0);
         head.Margin = new Thickness(0, 0, 0, 8);
         head.Children.Add(_title);
-        // chip dikelompokkan: [duplikat · teks] [kamera · balik] [HP]; jarak 12 antar kelompok, 6 di dalam kelompok; radius 8 seperti tombol lain
+        // chips grouped: [duplicate · text] [camera · flip] [phone]; 12px gap between groups, 6px within a group; radius 8 like other buttons
         _dupChip = UI.Btn(UI.T("Cari duplikat", 12), PickDupFolder, UI.CardOn, 8, new Thickness(10, 4, 10, 4));
         _dupChip.Margin = new Thickness(0, 0, 6, 0);
         _dupChip.ToolTip = L.T("Cari file duplikat di folder yang dipilih");
@@ -77,7 +77,7 @@ public sealed class ShelfView : TabView
     public override void OnHide() { Shelf.Changed -= Render; _camT.Stop(); }
     void CamTick(object s, EventArgs e) => RefreshCam();
 
-    // kamera HP: nyalakan/matikan dan ganti depan/belakang langsung dari tab
+    // phone camera: toggle on/off and switch front/back directly from the tab
     void ToggleCam()
     {
         if (PhoneCam.Active) ShareServer.I.Command("cam off"); else CameraWindow.CamOn();
@@ -88,7 +88,7 @@ public sealed class ShelfView : TabView
     {
         Settings.Cur.CamFront = !Settings.Cur.CamFront;
         Settings.Save();
-        if (PhoneCam.Active) CameraWindow.CamOn();   // kamera sedang menyala: pindah kamera tanpa mematikan layanan
+        if (PhoneCam.Active) CameraWindow.CamOn();   // camera is currently on: switch camera without stopping the service
         Render();
     }
 
@@ -127,7 +127,7 @@ public sealed class ShelfView : TabView
     void TogglePhone()
     {
         _phone = !_phone;
-        if (_phone) VirtualCam.EnsureFirewall(() => { ShareServer.I.Start(); PhoneGuide.Show(false); Render(); });   // izin firewall dulu (satu UAC), lalu panduan sambung HP tampil sendiri pertama kali
+        if (_phone) VirtualCam.EnsureFirewall(() => { ShareServer.I.Start(); PhoneGuide.Show(false); Render(); });   // firewall permission first (single UAC), then phone connection guide shows automatically the first time
         else { ShareServer.I.Stop(); Render(); }
     }
 
@@ -142,7 +142,7 @@ public sealed class ShelfView : TabView
         _body.ColumnDefinitions.Clear();
         _body.Children.Add(new Rectangle { Stroke = UI.Faint, StrokeThickness = 1.2, StrokeDashArray = new DoubleCollection { 4, 3 }, RadiusX = 12, RadiusY = 12 });
 
-        var files = new StackPanel { Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Top };   // satu file per baris selebar slot: nama terbaca utuh, gulir bila banyak
+        var files = new StackPanel { Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Top };   // one file per full-width row: name stays readable, scrolls when many
         if (items.Count == 0 && !_phone)
         {
             var hint = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -160,12 +160,12 @@ public sealed class ShelfView : TabView
             _body.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = files });
             return;
         }
-        // mode HP: file di kiri, QR di kanan
+        // phone mode: files on the left, QR on the right
         _body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = files };
         _body.Children.Add(sv);
-        // QR halaman web dihapus: sambungan HP lewat aplikasi (unduh + pairing), jadi di sini cukup status dan panduannya
+        // web page QR removed: phone connects via the app (download + pairing), so status and guide are enough here
         var qr = new StackPanel { Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center, Width = 150 };
         var (ok, state) = PhoneGuide.State();
         qr.Children.Add(GuideWindow.Status(ok, state));
@@ -178,10 +178,10 @@ public sealed class ShelfView : TabView
 
     UIElement Chip(string path)
     {
-        var sp = UI.Cols(0, -1);   // ikon + nama selebar sisa slot (agar nama bisa turun baris, bukan melebar tanpa batas)
+        var sp = UI.Cols(0, -1);   // icon + name filling remaining slot width (so name wraps instead of growing unbounded)
         sp.Children.Add(new Image { Source = IconOf(path), Width = 20, Height = 20, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Top });
         var name = UI.T(Path.GetFileName(path), 12);
-        name.TextWrapping = TextWrapping.Wrap;   // nama panjang turun ke baris berikutnya, tidak dipotong
+        name.TextWrapping = TextWrapping.Wrap;   // long names wrap to the next line instead of truncating
         name.TextTrimming = TextTrimming.None;
         sp.Children.Add(name.At(0, 1));
         var b = UI.Btn(sp, () => Open(path), UI.Card, 10, new Thickness(8, 5, 8, 5));
@@ -251,7 +251,7 @@ public sealed class ShelfView : TabView
     {
         using var gen = new QRCoder.QRCodeGenerator();
         using var data = gen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
-        var png = new QRCoder.BitmapByteQRCode(data).GetGraphic(6); // BMP: warna persis (PNG tampil abu-abu di WPF)
+        var png = new QRCoder.BitmapByteQRCode(data).GetGraphic(6); // BMP: exact colors (PNG renders gray in WPF)
         var bi = new BitmapImage();
         bi.BeginInit();
         bi.CacheOption = BitmapCacheOption.OnLoad;

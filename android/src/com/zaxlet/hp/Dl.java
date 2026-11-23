@@ -13,7 +13,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import javax.net.ssl.HttpsURLConnection;
 
-/** Pengunduh berkas dari Shelf PC (/d/<idx>) ke Download/ZaxLet, dipakai MainActivity dan ConnService. */
+/** File downloader from PC Shelf (/d/<idx>) to Download/ZaxLet, used by MainActivity and ConnService. */
 final class Dl {
     static final class Result {
         final Uri uri;

@@ -1,4 +1,4 @@
-﻿# Membangun ZaxLet.apk tanpa Gradle: aapt2 + javac + d8 + zipalign + apksigner dari SDK di ..\.android
+﻿# Builds ZaxLet.apk without Gradle: aapt2 + javac + d8 + zipalign + apksigner from SDK at ..\.android
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $sdk  = Join-Path $root "..\.android" | Resolve-Path
@@ -12,12 +12,12 @@ New-Item -ItemType Directory -Force "$out\classes","$out\dex" | Out-Null
 & "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$root\AndroidManifest.xml" --min-sdk-version 26 --target-sdk-version 34 --version-code 4 --version-name 1.3 "$out\res.zip"
 
 $src = Get-ChildItem "$root\src" -Recurse -Filter *.java | ForEach-Object FullName
-$zx = Join-Path $root "lib\core-3.5.3.jar"   # ZXing core (Apache 2.0): pemindai QR pasangan
+$zx = Join-Path $root "lib\core-3.5.3.jar"   # ZXing core (Apache 2.0): pairing QR scanner
 & javac --release 8 -g:none -Xlint:-options -encoding UTF-8 -classpath "$jar;$zx" -d "$out\classes" $src
 $cls = Get-ChildItem "$out\classes" -Recurse -Filter *.class | ForEach-Object FullName
 & "$bt\d8.bat" --lib $jar --min-api 26 --output "$out\dex" $cls $zx
 
-# classes.dex ke dalam APK
+# classes.dex into the APK
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::Open("$out\base.apk", "Update")
 [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$out\dex\classes.dex", "classes.dex")

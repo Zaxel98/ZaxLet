@@ -9,7 +9,7 @@ using WF = System.Windows.Forms;
 
 namespace ZaxLet;
 
-/// <summary>Pipet warna layar penuh tanpa kaca pembesar: klik membaca piksel di bawah kursor (GDI, sadar DPI) dan menyalin #RRGGBB.</summary>
+/// <summary>Full-screen color picker without magnifier: click reads the pixel under the cursor (GDI, DPI-aware) and copies #RRGGBB.</summary>
 public static class ColorPick
 {
     public static void Pick() => CaptureService.HideAndCapture(() =>

@@ -19,9 +19,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // pembantu FPS (admin): tanpa jendela, tanpa mutex instans tunggal, hanya mengirim angka ke ZaxLet yang meminta
+        // FPS helper (admin): no window, no single-instance mutex, only sends numbers to the requesting ZaxLet
         if (e.Args.Length == 2 && e.Args[0] == "--fps-helper") { FpsHelper.Run(e.Args[1]); Environment.Exit(0); return; }
-        // ZAXLET_NO_SINGLE=1: izinkan instans kedua (uji di PC yang sudah menjalankan ZaxLet; dipakai bersama ZAXLET_DATA_DIR)
+        // ZAXLET_NO_SINGLE=1: allow a second instance (testing on a PC already running ZaxLet; used with ZAXLET_DATA_DIR)
         bool isSendPhone = e.Args.Contains("--send-phone");
         if (Environment.GetEnvironmentVariable("ZAXLET_NO_SINGLE") != "1")
         {
@@ -34,7 +34,7 @@ public partial class App : Application
             }
         }
         base.OnStartup(e);
-        // UI sederhana: render software menghindari driver grafis (puluhan MB RAM) dan GPU tetap bebas
+        // simple UI: software rendering avoids graphics driver overhead (tens of MB RAM) and keeps GPU free
         System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
 
         DispatcherUnhandledException += (_, a) => { Log(a.Exception); a.Handled = true; };
@@ -42,13 +42,13 @@ public partial class App : Application
 
         MigrateLegacy();
         Settings.Load();
-        // animasi latar (equalizer, teks berjalan, lingkaran) 30 fps cukup halus dan separuh bebannya; buka/tutup/ganti tab memakai 60 fps (IslandWindow.Fast)
+        // background animations (equalizer, scrolling text, ring) 30 fps is smooth enough at half the load; open/close/tab switch use 60 fps (IslandWindow.Fast)
         if (Settings.Cur.AnimFps != "full")
             System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(typeof(System.Windows.Media.Animation.Timeline), new FrameworkPropertyMetadata(30));
-        Translit.PinyinFile = RomajiPack.PinyinFile;   // tabel pinyin ada di Paket tulisan Latin (opsional), bukan di installer
+        Translit.PinyinFile = RomajiPack.PinyinFile;   // pinyin table is in the Latin Script Pack (optional), not in the installer
         var w = new IslandWindow();
         w.Show();
-        // tur pengguna baru dan pemeriksaan pembaruan: tidak untuk pemakaian uji (flag --… atau folder data lain)
+        // new user tour and update check: not for test runs (flags --… or custom data folder)
         bool dev = e.Args.Any(x => x.StartsWith("--") && x != "--updated") || Environment.GetEnvironmentVariable("ZAXLET_DATA_DIR") != null;
         System.Windows.Threading.DispatcherTimer After(double sec, Action act)
         {
@@ -59,12 +59,12 @@ public partial class App : Application
         }
         if (!dev) { After(4, () => TourWindow.ShowIt()); After(25, () => _ = UpdateService.AutoCheckAsync()); }
         if (e.Args.Contains("--updated")) After(3, () => w.Alert(L.F("ZaxLet diperbarui ke {0}", UpdateService.Current), 8));
-        // `ZaxLet.exe --tab=prayer` membuka dan menahan pill pada satu tab (dipakai untuk uji visual)
+        // `ZaxLet.exe --tab=prayer` opens and holds the pill on a single tab (used for visual testing)
         foreach (var a in e.Args)
         {
             if (a.StartsWith("--tab=")) { Settings.Cur.LastTab = a[6..]; w.OpenNow(); w.KeepOpen(true); }
             else if (a == "--shot") CaptureService.Full();
-            else if (a == "--fps-test")   // uji FPS: mencoba sesi langsung, bila ditolak meminta UAC; 15 dtk membaca FPS -> fps-test.txt
+            else if (a == "--fps-test")   // FPS test: tries direct session, prompts UAC if denied; 15s reading FPS -> fps-test.txt
             {
                 System.Threading.Tasks.Task.Run(() =>
                 {
@@ -78,19 +78,19 @@ public partial class App : Application
                     System.IO.File.WriteAllText(System.IO.Path.Combine(o, "fps-test.txt"), log.ToString());
                 });
             }
-            else if (a == "--ui-test") UiTest.Run();   // gambar tiap halaman Pengaturan dan langkah panduan -> PNG di ZAXLET_UI_OUT
-            else if (a == "--usage-test")   // kuota Claude/Codex yang berhasil dibaca dan dari sumber mana -> usage-test.txt
+            else if (a == "--ui-test") UiTest.Run();   // render each Settings page and guide step -> PNG in ZAXLET_UI_OUT
+            else if (a == "--usage-test")   // Claude/Codex quotas successfully read and from which source -> usage-test.txt
             {
                 System.Threading.Tasks.Task.Run(async () =>
                 {
                     await UsageService.I.RefreshQuotaAsync();
-                    // jendela island menjalankan pembacaan yang sama: tunggu sampai sumber Claude jelas (maks. 20 dtk)
+                    // island window runs the same reading: wait until Claude source is clear (max 20s)
                     for (int i = 0; i < 20 && UsageService.I.Claude.Source == ""; i++) { await System.Threading.Tasks.Task.Delay(1000); await UsageService.I.RefreshQuotaAsync(); }
                     string F(ProviderUsage u) => $"{u.Name}: sumber={(u.Source == "" ? "-" : u.Source)} catatan={u.Error ?? "-"} jendela=" + string.Join(", ", u.Windows.Select(x => $"{x.Label}={x.Pct}%"));
                     File.WriteAllText(Path.Combine(Settings.Dir, "usage-test.txt"), F(UsageService.I.Claude) + "\n" + F(UsageService.I.Codex));
                 });
             }
-            else if (a == "--update-test")   // hasil cek rilis GitHub -> update-test.txt (ZAXLET_UPDATE_URL mengganti alamat)
+            else if (a == "--update-test")   // GitHub release check result -> update-test.txt (ZAXLET_UPDATE_URL overrides address)
             {
                 System.Threading.Tasks.Task.Run(async () =>
                 {
@@ -98,7 +98,7 @@ public partial class App : Application
                     File.WriteAllText(Path.Combine(Settings.Dir, "update-test.txt"), $"saat ini={UpdateService.Current} tersedia={UpdateService.Available?.Version.ToString() ?? "-"} status={UpdateService.Status}");
                 });
             }
-            else if (a == "--feat-test")   // sumber OSD/privasi/jaringan yang tersedia di PC ini -> feat-test.txt
+            else if (a == "--feat-test")   // OSD/privacy/network sources available on this PC -> feat-test.txt
             {
                 System.Threading.Tasks.Task.Run(() =>
                 {
@@ -109,7 +109,7 @@ public partial class App : Application
                         $"jaringan={(n == null ? "-" : n.Name + "/" + n.Kind)} firewallPublik={NetInfo.FirewallOpenToPublic()} unduhan={DownloadWatch.DownloadsDir()}");
                 });
             }
-            else if (a == "--mon-test")   // sumber suhu/GPU yang terbaca -> mon-test.txt (uji tab Monitor di PC lain)
+            else if (a == "--mon-test")   // readable temp/GPU sources -> mon-test.txt (test Monitor tab on another PC)
             {
                 System.Threading.Tasks.Task.Run(async () =>
                 {
@@ -118,7 +118,7 @@ public partial class App : Application
                     File.WriteAllText(Path.Combine(Settings.Dir, "mon-test.txt"), $"cpuTemp={sm.CpuTemp?.ToString("0.0")} gpuUtil={sm.GpuUtil?.ToString("0.00")} gpuTemp={sm.GpuTemp?.ToString("0.0")} gpuPower={sm.GpuPower?.ToString("0.0")}");
                 });
             }
-            else if (a.StartsWith("--yt-trace="))   // tiap detik: lagu, posisi, durasi, keadaan lirik -> yt-trace.txt (uji pembacaan posisi YouTube)
+            else if (a.StartsWith("--yt-trace="))   // every second: song, position, duration, lyric state -> yt-trace.txt (test YouTube position reading)
             {
                 int secs = int.Parse(a[11..]);
                 var m = MediaService.I;
@@ -133,9 +133,9 @@ public partial class App : Application
                 };
                 tt.Start();
             }
-            else if (a == "--romaji-test")   // uji Kawazu: hasil ditulis ke romaji-test.txt
+            else if (a == "--romaji-test")   // Kawazu test: results written to romaji-test.txt
             {
-                var inFile = Path.Combine(Settings.Dir, "romaji-in.txt");   // opsional: baris uji sendiri, satu per baris
+                var inFile = Path.Combine(Settings.Dir, "romaji-in.txt");   // optional: custom test lines, one per line
                 var sample = File.Exists(inFile) ? File.ReadAllLines(inFile) : new[] { "この世界が くるくる回る夢で", "君の名前を呼んだ", "クローバー・クラブ" };
                 var sw = Stopwatch.StartNew();
                 Romaji.Ready += () => File.WriteAllText(Path.Combine(Settings.Dir, "romaji-test.txt"),
@@ -147,9 +147,9 @@ public partial class App : Application
                     Romaji.Prefetch(sample);
                 });
             }
-            else if (a.StartsWith("--karaoke-trace="))   // rekam karaoke tiap 250 ms selama N dtk -> karaoke-trace.txt
+            else if (a.StartsWith("--karaoke-trace="))   // record karaoke every 250 ms for N sec -> karaoke-trace.txt
             {
-                var parts = a[16..].Split(',');   // --karaoke-trace=detik[,jumlahLagu]  (bawaan 5 lagu berlirik)
+                var parts = a[16..].Split(',');   // --karaoke-trace=seconds[,songCount]  (default 5 songs with lyrics)
                 int secs = int.Parse(parts[0]), maxSongs = parts.Length > 1 ? int.Parse(parts[1]) : 5;
                 var m = MediaService.I;
                 AudioFlow.I.Labeler = m.VocalLabel;
@@ -157,26 +157,26 @@ public partial class App : Application
                 var sb = new System.Text.StringBuilder();
                 var tm = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
                 var t0 = DateTime.Now;
-                // Aturan: iklan (artis "Spotify" / durasi < 45 dtk) dan lagu tanpa lirik TIDAK dihitung. Lirik dicari dulu lewat semua sumber; hanya bila
-                // ketemu lagu direkam (dihitung), bila tidak lagu dilewati. Berhenti setelah 5 lagu berlirik selesai (lagu ke-6 mulai) atau batas waktu.
+                // Rules: ads (artist "Spotify" / duration < 45s) and songs without lyrics are NOT counted. Lyrics are searched first across all sources; only if
+                // found is the song recorded (counted), otherwise skipped. Stops after 5 songs with lyrics finish (6th song starts) or time limit.
                 string song = null, skippedKey = null; int songs = 0, skipped = 0, tick = 0; bool recording = false, finished = false;
                 void Flush() => File.WriteAllText(Path.Combine(Settings.Dir, "karaoke-trace.txt"), $"songs={songs} skipped={skipped} finished={finished}\n{AudioFlow.I.ModelInfo}\n" + sb);
                 tm.Tick += (_, _) =>
                 {
                     bool ad = m.Artist == "Spotify" || (m.Duration > TimeSpan.Zero && m.Duration.TotalSeconds < 45) || string.IsNullOrEmpty(m.Title);
                     bool timeUp = (DateTime.Now - t0).TotalSeconds >= secs;
-                    if (++tick % 240 == 0 || timeUp) Flush();   // simpan berkala (tiap ±60 dtk)
+                    if (++tick % 240 == 0 || timeUp) Flush();   // save periodically (every ±60s)
                     if (ad) { if (timeUp) { tm.Stop(); AudioFlow.I.Release(); } return; }
                     var key = m.Title + "|" + m.Artist;
                     if (key != song)
                     {
-                        if (recording && songs >= maxSongs) { finished = true; Flush(); tm.Stop(); AudioFlow.I.Release(); return; }   // lagu ke-6 mulai: 5 lagu selesai
+                        if (recording && songs >= maxSongs) { finished = true; Flush(); tm.Stop(); AudioFlow.I.Release(); return; }   // 6th song starts: 5 songs done
                         song = key; recording = false;
                     }
                     if (!recording)
                     {
                         if (m.LyricState == "ok" && m.Lyrics.Count > 0) { recording = true; songs++; sb.AppendLine($"### {m.Title} | {m.Artist} | dur={m.Duration.TotalSeconds:0}s lyricsLines={m.Lyrics.Count}"); }
-                        else if (m.LyricState == "none" && skippedKey != key) { skipped++; skippedKey = key; sb.AppendLine($"### SKIP (tanpa lirik) {m.Title} | {m.Artist}"); }   // dilewati, tidak dihitung
+                        else if (m.LyricState == "none" && skippedKey != key) { skipped++; skippedKey = key; sb.AppendLine($"### SKIP (tanpa lirik) {m.Title} | {m.Artist}"); }   // skipped, not counted
                         if (!recording) { if (timeUp) { tm.Stop(); AudioFlow.I.Release(); } return; }
                     }
                     var (i, p) = m.Karaoke();
@@ -191,7 +191,7 @@ public partial class App : Application
                 };
                 tm.Start();
             }
-            else if (a.StartsWith("--flow-test"))   // tangkap audio keluaran (bawaan 8 dtk, --flow-test=40) -> flow-test.txt (putar musik dulu)
+            else if (a.StartsWith("--flow-test"))   // capture output audio (default 8s, --flow-test=40) -> flow-test.txt (play music first)
             {
                 int secs = a.Contains('=') ? int.Parse(a[(a.IndexOf('=') + 1)..]) : 8;
                 AudioFlow.I.Labeler = MediaService.I.VocalLabel;
@@ -203,7 +203,7 @@ public partial class App : Application
                     AudioFlow.I.Release();
                 });
             }
-            else if (a.StartsWith("--lyrics-test="))   // --lyrics-test=Judul|Artis|detik -> lyrics-test.txt
+            else if (a.StartsWith("--lyrics-test="))   // --lyrics-test=Title|Artist|seconds -> lyrics-test.txt
             {
                 var p = a[14..].Split('|');
                 _ = System.Threading.Tasks.Task.Run(async () => File.WriteAllText(Path.Combine(Settings.Dir, "lyrics-test.txt"), await MediaService.I.DebugSources(p[0], p[1], int.Parse(p[2]))));
@@ -219,7 +219,7 @@ public partial class App : Application
         Safe(() => _ = MediaService.I.StartAsync());
         Safe(() => PrayerAlerts.Start());
         Safe(() => WeatherService.I.Apply());
-        Settings.Applied += WeatherService.I.Apply;   // nyala/mati dari Pengaturan berlaku langsung
+        Settings.Applied += WeatherService.I.Apply;   // on/off from Settings takes effect immediately
         Safe(() => HydrationService.I.Start());
         Safe(() => SysAlerts.I.Start());
         Safe(() => BtAutoPause.I.Start());
@@ -239,7 +239,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Versi lama bernama "Island": pindahkan folder data dan nilai autostartnya sekali supaya pengaturan tidak hilang.</summary>
+    /// <summary>Old version was named "Island": migrate its data folder and autostart value once so settings are not lost.</summary>
     static void MigrateLegacy()
     {
         try
@@ -276,7 +276,7 @@ public partial class App : Application
         _tray.DoubleClick += (_, _) => IslandWindow.Instance?.OpenNow();
     }
 
-    /// <summary>Mulai ulang (mis. setelah ganti bahasa): proses baru menunggu 2 dtk agar instans ini sempat melepas mutex single-instance.</summary>
+    /// <summary>Restart (e.g. after language change): new process waits 2s so this instance can release the single-instance mutex.</summary>
     public static void Restart()
     {
         try
@@ -329,7 +329,7 @@ public partial class App : Application
             using var k = Registry.CurrentUser.OpenSubKey(RunKey, true);
             k?.DeleteValue("ZaxLet", false);
         }
-        // hapus status nonaktif dari Task Manager > Startup apps agar entri Run benar-benar aktif/bersih
+        // clear disabled status from Task Manager > Startup apps so the Run entry is truly active/clean
         using var sa = Registry.CurrentUser.OpenSubKey(StartupApprovedKey, true);
         sa?.DeleteValue("ZaxLet", false);
     }
@@ -348,8 +348,8 @@ public partial class App : Application
         {
             Directory.CreateDirectory(Settings.Dir);
             var p = Path.Combine(Settings.Dir, "error.log");
-            if (File.Exists(p) && new FileInfo(p).Length > 200_000) File.Move(p, p + ".old", true);   // batas ukuran: simpan satu generasi lama
-            // galat jaringan (timeout, 429, 403, DNS) cukup satu baris, tanpa stack trace
+            if (File.Exists(p) && new FileInfo(p).Length > 200_000) File.Move(p, p + ".old", true);   // size limit: keep one old generation
+            // network errors (timeout, 429, 403, DNS) need just one line, no stack trace
             var net = ex is System.Net.Http.HttpRequestException or System.Threading.Tasks.TaskCanceledException or System.Net.Sockets.SocketException or System.Net.WebException;
             File.AppendAllText(p, net ? $"{DateTime.Now:s} {ex.GetType().Name}: {ex.Message}\n" : $"{DateTime.Now:s} {ex}\n\n");
         }

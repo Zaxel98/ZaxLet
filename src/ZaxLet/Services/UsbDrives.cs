@@ -7,14 +7,14 @@ using System.Runtime.InteropServices;
 
 namespace ZaxLet;
 
-/// <summary>Deteksi flashdisk USB dan lepas aman (eject) tanpa hak admin lewat cfgmgr32 + SetupAPI.</summary>
+/// <summary>USB flash drive detection and safe eject without admin rights via cfgmgr32 + SetupAPI.</summary>
 public static class UsbDrives
 {
     static readonly object _lock = new();
     static readonly HashSet<char> _seen = new();
     static char? _lastArrival;
 
-    /// <summary>Ubah bitmask unitmask dari DEV_BROADCAST_VOLUME menjadi daftar huruf drive ('A'..'Z').</summary>
+    /// <summary>Convert unitmask bitmask from DEV_BROADCAST_VOLUME to a list of drive letters ('A'..'Z').</summary>
     public static List<char> LettersFromMask(uint unitmask)
     {
         var list = new List<char>();
@@ -23,7 +23,7 @@ public static class UsbDrives
         return list;
     }
 
-    /// <summary>Ambil huruf drive dari argumen perintah ("e", "E:", "e:\").</summary>
+    /// <summary>Extract drive letter from command argument ("e", "E:", "e:\").</summary>
     public static bool TryParseDriveLetter(string arg, out char letter)
     {
         letter = '\0';

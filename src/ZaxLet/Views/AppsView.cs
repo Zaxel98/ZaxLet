@@ -11,9 +11,9 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Satu tab untuk banyak aplikasi; pilih aplikasinya di kiri atas. Aplikasi HP (WhatsApp, Telegram, dll): balas chat langsung dari pill
-/// lewat aksi balas milik notifikasinya. Discord: mic/deafen/kamera lewat pintasan bawaan; status voice dan Keluar VC lewat RPC
-/// yang disiapkan sekali oleh panduan di tab ini (muncul saat tombol Discord pertama kali ditekan). Meet: pintasan keyboard.
+/// One tab for multiple apps; pick the app at top left. Phone apps (WhatsApp, Telegram, etc.): reply to chats directly from the pill
+/// via their notification reply actions. Discord: mic/deafen/camera via built-in shortcuts; voice status and Leave VC via RPC
+/// set up once by the guide in this tab (shown when Discord buttons are first pressed). Meet: keyboard shortcuts.
 /// </summary>
 public sealed class AppsView : TabView
 {
@@ -27,16 +27,16 @@ public sealed class AppsView : TabView
     readonly Grid _body = new();
     readonly Dictionary<string, string> _draft = new();
     readonly DispatcherTimer _clip = new() { Interval = TimeSpan.FromMilliseconds(700) };
-    public static string WantPkg;   // klik baris notifikasi di pill: tab dibuka langsung di aplikasinya
+    public static string WantPkg;   // click a notification row in the pill: tab opens directly on its app
     string _sel, _lastClip = "";
-    bool _picked;   // pengguna sudah memilih aplikasi sendiri; sebelum itu tab mengikuti aplikasi pertama (chat HP bila ada)
+    bool _picked;   // user chose an app manually; before that the tab follows the first app (phone chat if any)
     bool _wizard;
 
     public AppsView()
     {
         var root = UI.Rows(0, -1);
         var sv = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _chips };
-        var top = UI.Cols(-1, 0);   // kiri: pilih aplikasi; kanan: perangkat Bluetooth yang tersambung (ikon + cincin baterai)
+        var top = UI.Cols(-1, 0);   // left: pick app; right: connected Bluetooth devices (icon + battery ring)
         top.Margin = new Thickness(0, 0, 0, 8);
         top.Children.Add(sv);
         _bt.VerticalAlignment = VerticalAlignment.Center; _bt.Margin = new Thickness(12, 0, 0, 0);
@@ -48,11 +48,11 @@ public sealed class AppsView : TabView
         _btT.Tick += (_, _) => RenderBt();
     }
 
-    // ---------- Bluetooth: ikon headset/stik dengan cincin sisa baterai ----------
+    // ---------- Bluetooth: headset/controller icon with remaining battery ring ----------
     readonly StackPanel _bt = new() { Orientation = Orientation.Horizontal };
-    readonly DispatcherTimer _btT = new() { Interval = TimeSpan.FromSeconds(6) };   // baterai headset baru dilaporkan beberapa detik setelah tersambung, lalu berubah pelan
+    readonly DispatcherTimer _btT = new() { Interval = TimeSpan.FromSeconds(6) };   // headset battery is reported a few seconds after connecting, then changes slowly
 
-    /// <summary>"headset" bila melaporkan baterai Hands-Free atau namanya audio; "gamepad" untuk stik; selain itu "other".</summary>
+    /// <summary>"headset" if it reports Hands-Free battery or has an audio name; "gamepad" for controllers; otherwise "other".</summary>
     public static string BtKind(string name, bool hasBattery)
     {
         var n = (name ?? "").ToLowerInvariant();
@@ -72,7 +72,7 @@ public sealed class AppsView : TabView
             var ring = new RingBadge("", 32);
             var cell = new Grid { Width = 32, Height = 32 };
             if (pct is { } p) ring.Set(p / 100.0, p <= Math.Max(10, Settings.Cur.BtLowPct) ? UI.Bad : p <= 40 ? UI.Warn : UI.Good);
-            else ring.Set(0.999, UI.Faint);   // perangkat tanpa laporan baterai: cincin penuh redup
+            else ring.Set(0.999, UI.Faint);   // device without battery reporting: dim full ring
             cell.Children.Add(ring);
             var ic = UI.Icon(glyph, 14);
             ic.HorizontalAlignment = HorizontalAlignment.Center; ic.VerticalAlignment = VerticalAlignment.Center;
@@ -88,20 +88,20 @@ public sealed class AppsView : TabView
     }
 
     public override void OnShow() { PhoneNotifs.Changed += OnChanged; DiscordRpc.I.Changed += OnChanged; Render(); RenderBt(); _btT.Start(); }
-    public override void OnHide() { PhoneNotifs.Changed -= OnChanged; DiscordRpc.I.Changed -= OnChanged; _btT.Stop(); if (!_wizard) _clip.Stop(); }   // panduan: clipboard tetap dipantau walau pill menutup (pengguna sedang di browser)
+    public override void OnHide() { PhoneNotifs.Changed -= OnChanged; DiscordRpc.I.Changed -= OnChanged; _btT.Stop(); if (!_wizard) _clip.Stop(); }   // guide: keep watching clipboard even when pill closes (user is in browser)
 
-    // jangan membangun ulang saat pengguna sedang mengetik balasan
+    // do not rebuild while the user is typing a reply
     void OnChanged() { if (Keyboard.FocusedElement is TextBox) return; Render(); }
 
     void Render()
     {
         var apps = new List<(string Id, string Name, string Pkg)>();
-        foreach (var g in PhoneNotifs.Inbox().GroupBy(n => n.Pkg)) apps.Add((g.Key, g.First().App + " " + g.Count(), g.Key));   // "WhatsApp 4": jumlah percakapan/notifikasi aktif
+        foreach (var g in PhoneNotifs.Inbox().GroupBy(n => n.Pkg)) apps.Add((g.Key, g.First().App + " " + g.Count(), g.Key));   // "WhatsApp 4": active conversation/notification count
         if (WantPkg != null) { if (apps.Any(a => a.Id == WantPkg)) { _sel = WantPkg; _picked = true; } WantPkg = null; }
         apps.Add(("pc:discord", "Discord", null));
         apps.Add(("pc:meet", "Google Meet", null));
         if (!_picked || _sel == null || apps.All(a => a.Id != _sel)) _sel = apps[0].Id;
-        if (_wizard && DiscordRpc.I.Connected) { _wizard = false; _clip.Stop(); }   // selesai: Discord sudah tersambung
+        if (_wizard && DiscordRpc.I.Connected) { _wizard = false; _clip.Stop(); }   // done: Discord is connected
 
         _chips.Children.Clear();
         foreach (var a in apps)
@@ -116,7 +116,7 @@ public sealed class AppsView : TabView
             b.Margin = new Thickness(0, 0, 6, 0);
             _chips.Children.Add(b);
         }
-        if (_sel != "pc:meet")   // tombol info: panduan sambung Discord / sambung HP kapan pun dibutuhkan
+        if (_sel != "pc:meet")   // info button: Discord/phone connection guide whenever needed
         {
             var info = UI.IconBtn("", () => { if (_sel == "pc:discord") DiscordGuide.Show(true); else PhoneGuide.Show(true); }, 13);
             info.ToolTip = L.T("Panduan");
@@ -127,7 +127,7 @@ public sealed class AppsView : TabView
         _body.Children.Add(_sel.StartsWith("pc:") ? PcPanel(_sel[3..]) : ChatPanel(_sel));
     }
 
-    // ---------- balas chat dari HP ----------
+    // ---------- reply to chat from phone ----------
     UIElement ChatPanel(string pkg)
     {
         var list = new StackPanel();
@@ -142,10 +142,10 @@ public sealed class AppsView : TabView
             head.Inlines.Add(new System.Windows.Documents.Run(n.Title) { FontWeight = FontWeights.SemiBold, Foreground = UI.Fg });
             var headRow = UI.Cols(-1, 0);
             headRow.Children.Add(head);
-            headRow.Children.Add(UI.IconBtn("\uE711", () => { PhoneNotifs.Dismiss(key); _draft.Remove(key); }, 10).At(0, 1));   // silang: hapus dari daftar bila sudah dibalas
+            headRow.Children.Add(UI.IconBtn("\uE711", () => { PhoneNotifs.Dismiss(key); _draft.Remove(key); }, 10).At(0, 1));   // cross: remove from list once replied
             card.Children.Add(headRow);
 
-            // pesan dalam percakapan ini: satu baris per pesan (lama di atas, terbaru di bawah); lebih dari 3 baris bisa digulir
+            // messages in this conversation: one line per message (oldest at top, newest at bottom); scrollable past 3 lines
             var msgs = new StackPanel();
             if (n.Msgs.Count == 0) n.Msgs.Add((null, n.Text));
             foreach (var (who, text) in n.Msgs)
@@ -158,7 +158,7 @@ public sealed class AppsView : TabView
             var msgScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, MaxHeight = 3 * 18, Content = msgs };
             msgScroll.Loaded += (_, _) => msgScroll.ScrollToEnd();
             card.Children.Add(msgScroll);
-            if (!n.CanReply) { list.Children.Add(card); continue; }   // notifikasi biasa (Gmail dll): hanya dibaca, bisa disilang
+            if (!n.CanReply) { list.Children.Add(card); continue; }   // regular notification (Gmail etc.): read-only, dismissible
 
             var box =new TextBox { FontSize = 12, Padding = new Thickness(8, 3, 8, 3), Text = _draft.GetValueOrDefault(key, "") };
             var ph = new TextBlock { Text = L.T("Balas…"), Foreground = UI.Faint, FontSize = 12, IsHitTestVisible = false, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -188,7 +188,7 @@ public sealed class AppsView : TabView
         return new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = list };
     }
 
-    // ---------- kontrol aplikasi PC ----------
+    // ---------- PC app controls ----------
     UIElement PcPanel(string app)
     {
         if (app == "discord" && _wizard) return DiscordWizard();
@@ -223,7 +223,7 @@ public sealed class AppsView : TabView
         if (app == "discord" && DiscordRpc.Configured)
         {
             var rpc = DiscordRpc.I;
-            // status voice channel + tombol bergantung keadaan (RPC lokal Discord)
+            // voice channel status + state-dependent buttons (local Discord RPC)
             var st = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
             st.Children.Add(new System.Windows.Shapes.Ellipse { Width = 9, Height = 9, Fill = rpc.InVoice ? UI.Good : UI.Faint, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
             st.Children.Add(UI.T(!rpc.Connected ? rpc.Status : rpc.InVoice ? "Voice: " + rpc.Channel + (rpc.Speaking.Length > 0 ? "  ·  " + rpc.Speaking : "") : "Tidak sedang di voice channel", 12.5, rpc.InVoice ? UI.Fg : UI.Dim, rpc.InVoice));
@@ -234,8 +234,8 @@ public sealed class AppsView : TabView
         }
         else if (app == "discord")
         {
-            // Penekanan tombol pertama: panduan sambung RPC (sekali). Setelahnya tombol memfokuskan Discord sebentar dan
-            // menekan pintasan bawaannya (Ctrl+Shift+M mic, Ctrl+Shift+D deafen) tanpa mengganggu.
+            // First button press: RPC connection guide (once). Afterward buttons briefly focus Discord and
+            // press its built-in shortcuts (Ctrl+Shift+M mic, Ctrl+Shift+D deafen) unobtrusively.
             bool D(string combo)
             {
                 if (!Settings.Cur.DiscordSetupAsked) { StartWizard(); return true; }
@@ -243,7 +243,7 @@ public sealed class AppsView : TabView
             }
             Btn("Mic", "", "discord.mic", D);
             Btn("Deafen", "", "discord.deaf", D);
-            RBtn("Keluar VC", "", false, StartWizard, UI.BadBg);   // butuh RPC: langsung ke panduan
+            RBtn("Keluar VC", "", false, StartWizard, UI.BadBg);   // requires RPC: go straight to guide
         }
         else
         {
@@ -260,20 +260,20 @@ public sealed class AppsView : TabView
         return sp;
     }
 
-    // ---------- panduan sambung Discord (sekali) ----------
+    // ---------- Discord connection guide (once) ----------
     void StartWizard()
     {
         Settings.Cur.DiscordSetupAsked = true;
         Settings.Save();
-        DiscordGuide.Show(true);   // panduan bertahap di jendela sendiri (menggantikan panel kecil di dalam tab)
+        DiscordGuide.Show(true);   // step-by-step guide in its own window (replaces small panel inside tab)
     }
 
-    /// <summary>Client ID (angka 17-20 digit) dan Secret (32 karakter) dikenali otomatis dari clipboard saat disalin di portal Discord.</summary>
+    /// <summary>Client ID (17-20 digit number) and Secret (32 chars) are auto-detected from clipboard when copied on the Discord portal.</summary>
     void ClipTick()
     {
         string txt;
         try { if (!Clipboard.ContainsText()) return; txt = Clipboard.GetText().Trim(); }
-        catch { return; }   // clipboard sedang dipakai aplikasi lain
+        catch { return; }   // clipboard is in use by another app
         if (txt == _lastClip || txt.Length > 64) return;
         _lastClip = txt;
         var s = Settings.Cur;

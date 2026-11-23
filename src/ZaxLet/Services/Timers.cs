@@ -5,7 +5,7 @@ namespace ZaxLet;
 
 public enum TMode { Timer, Stopwatch }
 
-/// <summary>Timer / Stopwatch. Hidup di luar tab agar tetap berjalan saat pill tertutup.</summary>
+/// <summary>Timer / Stopwatch. Lives outside the tab so it keeps running when the pill is closed.</summary>
 public sealed class TimerService
 {
     public static readonly TimerService I = new();
@@ -75,7 +75,7 @@ public sealed class TimerService
     }
 }
 
-/// <summary>Beri tahu di pill saat masuk waktu sholat (tanpa audio adzan).</summary>
+/// <summary>Notify on the pill when prayer time arrives (without adzan audio).</summary>
 public static class PrayerAlerts
 {
     static readonly DispatcherTimer T = new() { Interval = TimeSpan.FromSeconds(15) };
@@ -87,7 +87,7 @@ public static class PrayerAlerts
         ("egypt", "Mesir", 19.5, 17.5), ("karachi", "Karachi", 18, 18), ("jakim", "JAKIM (Malaysia)", 18, 18),
     };
 
-    /// <summary>Jadwal untuk tanggal tertentu sesuai metode, mazhab Asar, ihtiyat, dan lokasi di Pengaturan.</summary>
+    /// <summary>Schedule for a given date according to method, Asr school, ihtiyat, and location in Settings.</summary>
     public static PrayerCalc.Times For(DateTime date)
     {
         var s = Settings.Cur;
@@ -103,7 +103,7 @@ public static class PrayerAlerts
             var s = Settings.Cur;
             var now = DateTime.Now;
             if (s.WorshipMode == "off") return;
-            if (s.WorshipMode == "other")   // jadwal mingguan buatan sendiri (Worship): hanya pengingat di pill
+            if (s.WorshipMode == "other")   // custom weekly schedule (Worship): pill reminder only
             {
                 foreach (var w in Worship.Due(Worship.Parse(s.WorshipText), now))
                 {
@@ -117,7 +117,7 @@ public static class PrayerAlerts
             if (!s.PrayerAlert) return;
             var times = For(now.Date);
             var list = new System.Collections.Generic.List<(string Name, DateTime At)>(times.All);
-            if (s.ImsakOn) list.Add(("Imsak", times.Fajr.AddMinutes(-10)));   // 10 menit sebelum Subuh
+            if (s.ImsakOn) list.Add(("Imsak", times.Fajr.AddMinutes(-10)));   // 10 minutes before Subuh
             foreach (var (name, at) in list)
             {
                 var key = $"{now:yyyyMMdd}{name}";
@@ -140,7 +140,7 @@ public static class PrayerAlerts
 
     static DispatcherTimer _resumeT;
 
-    /// <summary>Musik tidak lanjut sendiri setelah adzan: beberapa menit kemudian pill menawarkan memutarnya lagi (klik untuk lanjut).</summary>
+    /// <summary>Music does not auto-resume after adzan: a few minutes later the pill offers to play it again (click to resume).</summary>
     static void ResumeLater()
     {
         _resumeT?.Stop();

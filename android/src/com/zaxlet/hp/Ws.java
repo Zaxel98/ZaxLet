@@ -4,7 +4,7 @@ import java.io.*;
 import java.security.SecureRandom;
 import javax.net.ssl.SSLSocket;
 
-/** Klien WebSocket minimal (RFC 6455) di atas soket TLS: kirim biner/teks, baca bingkai teks dari server. */
+/** Minimal WebSocket client (RFC 6455) over a TLS socket: sends binary/text, reads text frames from the server. */
 final class Ws {
     final SSLSocket sock;
     final InputStream in;
@@ -44,7 +44,7 @@ final class Ws {
         rnd.nextBytes(m);
         h.write(m);
         byte[] hb = h.toByteArray();
-        byte[] fr = new byte[hb.length + len];   // satu write: header dan isi tidak terpisah jadi dua rekaman TLS
+        byte[] fr = new byte[hb.length + len];   // single write: header and payload are not split into two TLS records
         System.arraycopy(hb, 0, fr, 0, hb.length);
         for (int i = 0; i < len; i++) fr[hb.length + i] = (byte) (p[off + i] ^ m[i & 3]);
         out.write(fr);
@@ -54,7 +54,7 @@ final class Ws {
     void sendBinary(byte[] p, int len) throws IOException { send(2, p, 0, len); }
     void sendText(String s) throws IOException { byte[] b = s.getBytes("UTF-8"); send(1, b, 0, b.length); }
 
-    /** Membaca satu bingkai; mengembalikan teks bila bingkai teks, "" untuk bingkai lain, null bila ditutup. */
+    /** Reads one frame; returns text if text frame, "" for other frames, null if closed. */
     String readText() throws IOException {
         int b0 = in.read();
         if (b0 < 0) return null;

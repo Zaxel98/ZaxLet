@@ -1,4 +1,4 @@
-// MinGW tidak punya anotasi SAL milik MSVC (<sal.h>) yang dipakai BaseClasses; jadikan kosong.
+// MinGW lacks MSVC's SAL annotations (<sal.h>) used by BaseClasses; define them as empty.
 #pragma once
 #ifndef __in
 #define __in
@@ -47,26 +47,26 @@
 #define __control_entrypoint(x)
 #define __analysis_assume(x)
 
-// streams.h mendefinisikan ini hanya untuk MSVC (__declspec(novtable)); di clang cukup kosong.
+// streams.h defines this only for MSVC (__declspec(novtable)); on clang it can be empty.
 #ifndef AM_NOVTABLE
 #define AM_NOVTABLE
 #endif
 
-// Anotasi SAL untuk anggota struct
+// SAL annotations for struct members
 #define __field_ecount(x)
 #define __field_bcount(x)
 #define __field_ecount_opt(x)
 #define __field_bcount_opt(x)
 #define __field_range(x, y)
 
-// Kode BaseClasses memanggil min()/max() tanpa std:: (makro di windows.h MSVC)
+// BaseClasses code calls min()/max() without std:: (macros in MSVC's windows.h)
 #ifdef __cplusplus
 #include <type_traits>
 template <class A, class B> inline typename std::common_type<A, B>::type min(A a, B b) { return a < b ? a : b; }
 template <class A, class B> inline typename std::common_type<A, B>::type max(A a, B b) { return a < b ? b : a; }
 #endif
 
-// Makro dari amvideo.h Windows SDK yang tidak ada di header MinGW
+// Macros from Windows SDK amvideo.h missing from MinGW headers
 #ifndef HEADER
 #define HEADER(pVideoInfo) (&(((VIDEOINFOHEADER *)(pVideoInfo))->bmiHeader))
 #endif
@@ -84,7 +84,7 @@ template <class A, class B> inline typename std::common_type<A, B>::type max(A a
 #define DIBSIZE(bi) ((bi).biHeight < 0 ? (-1) * (_DIBSIZE(bi)) : _DIBSIZE(bi))
 #endif
 
-// Makro palet dari amvideo.h Windows SDK
+// Palette macros from Windows SDK amvideo.h
 #ifndef PALETTISED
 #define TRUECOLOR(pbmi) ((TRUECOLORINFO *)(((LPBYTE) & ((pbmi)->bmiHeader)) + (pbmi)->bmiHeader.biSize))
 #define COLORS(pbmi) ((RGBQUAD *)(((LPBYTE) & ((pbmi)->bmiHeader)) + (pbmi)->bmiHeader.biSize))
@@ -93,8 +93,8 @@ template <class A, class B> inline typename std::common_type<A, B>::type max(A a
 #define PALETTE_ENTRIES(pbmi) ((DWORD)1 << (pbmi)->bmiHeader.biBitCount)
 #endif
 
-// wxutil.h mendeklarasikan ContainsPalette/GetBitmapPalette hanya bila __AMVIDEO__ (guard amvideo.h Microsoft);
-// amvideo.h MinGW memakai guard lain, jadi tandai sendiri.
+// wxutil.h declares ContainsPalette/GetBitmapPalette only if __AMVIDEO__ (Microsoft amvideo.h guard);
+// MinGW's amvideo.h uses a different guard, so define it ourselves.
 #ifndef __AMVIDEO__
 #define __AMVIDEO__
 #endif

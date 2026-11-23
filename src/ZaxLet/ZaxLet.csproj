@@ -13,7 +13,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\zaxlet.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <!-- hemat RAM: GC non-concurrent + konservasi memori. InvariantGlobalization TIDAK dipakai: WPF gagal mengetik tanpa budaya keyboard -->
+    <!-- save RAM: non-concurrent GC + memory conservation. InvariantGlobalization is NOT used: WPF fails to type without keyboard culture -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
-    <!-- tanpa batas, budget gen-0 mengikuti cache CPU dan GC menahan puluhan MB kosong -->
+    <!-- without a cap, gen-0 budget tracks CPU cache and GC holds onto tens of empty MB -->
     <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />

@@ -7,7 +7,7 @@ using System.Windows.Media;
 
 namespace ZaxLet;
 
-/// <summary>Tur singkat untuk pengguna baru (muncul sekali, bisa dibuka lagi dari Pengaturan > Umum).</summary>
+/// <summary>Short tour for new users (shown once, can be reopened from Settings > General).</summary>
 public sealed class TourWindow : Window
 {
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);

@@ -2,12 +2,12 @@ using System.Collections.Generic;
 
 namespace ZaxLet;
 
-/// <summary>Terjemahan Inggris. Kunci = teks Indonesia persis seperti di kode (lihat <see cref="L"/>); yang tidak ada di sini tampil Indonesia.</summary>
+/// <summary>English translations. Key = exact Indonesian text as in code (see <see cref="L"/>); anything missing here displays in Indonesian.</summary>
 public static class Strings
 {
     public static readonly Dictionary<string, string> En = new()
     {
-        // tab dan umum
+        // tabs and general
         ["Musik"] = "Music", ["Komunikasi"] = "Communication", ["tersambung"] = "connected", ["Mata"] = "Eyes", ["Hari ini"] = "Today", ["Sholat"] = "Prayer", ["Tangkap"] = "Capture",
         ["Minum"] = "Water", ["Atur"] = "Settings", ["Pengaturan"] = "Settings", ["Shelf"] = "Shelf", ["Usage"] = "Usage", ["Monitor"] = "Monitor", ["Timer"] = "Timer",
         ["Aktif"] = "On", ["Nonaktif"] = "Off", ["Kirim"] = "Send", ["Gagal"] = "Failed", ["Salin"] = "Copy", ["Hapus"] = "Remove", ["Unduh"] = "Download",
@@ -26,7 +26,7 @@ public static class Strings
         // tray
         ["Sembunyikan / tampilkan pill"] = "Hide / show pill", ["Mulai bersama Windows"] = "Start with Windows",
 
-        // musik
+        // music
         ["Tidak ada musik yang diputar"] = "Nothing is playing", ["Mencari lirik…"] = "Looking for lyrics…", ["Server lirik sibuk, mencoba lagi…"] = "Lyrics server busy, retrying…",
         ["Lirik tidak tersedia"] = "Lyrics not available", ["Sinkron"] = "Sync", ["dtk"] = "s", ["mnt"] = "min", ["jam"] = "h",
         ["Sedang di voice channel Discord"] = "In a Discord voice channel", ["HP tersambung"] = "Phone connected", ["HP tidak tersambung"] = "Phone not connected",
@@ -45,7 +45,7 @@ public static class Strings
         ["file login tidak terbaca (formatnya berbeda)"] = "login file unreadable (different format)", ["gagal membaca kuota"] = "could not read quota",
         ["dibatasi (429), coba lagi {0} lagi"] = "rate limited (429), retry in {0}",
 
-        // komunikasi / discord
+        // communication / discord
         ["Aplikasi ZaxLet HP belum tersambung."] = "The ZaxLet HP app is not connected.", ["Belum ada percakapan yang bisa dibalas."] = "No conversations to reply to yet.", ["Belum ada notifikasi dari HP."] = "No notifications from the phone yet.", ["{0} tugas hari ini"] = "{0} tasks today", ["{0} tugas besok"] = "{0} tasks tomorrow", ["Minum {0} ml lagi"] = "{0} ml of water to go", ["Besok"] = "Tomorrow", ["Hari ini"] = "Today",
         ["Info sesuai waktu di pill"] = "Time-based info in the pill", ["Pagi: cuaca dan sholat berikutnya. Siang: tugas hari ini. Sore: sholat dan sisa minum. Malam: jadwal besok. Hanya tampil bila ada isinya dan tidak ada yang lebih penting"] = "Morning: weather and next prayer. Midday: today's tasks. Afternoon: prayer and water left. Night: tomorrow's schedule. Shown only when there is something and nothing more important",
         ["Acak"] = "Shuffle", ["Acak: menyala"] = "Shuffle: on", ["Acak: mati"] = "Shuffle: off", ["Bisukan"] = "Mute", ["Bisu"] = "Muted",
@@ -61,7 +61,7 @@ public static class Strings
         ["Belum diatur"] = "Not set up", ["Isi Client ID dan Secret di Pengaturan > Aplikasi"] = "Enter the Client ID and Secret in Settings > Apps",
         ["Discord belum terbuka"] = "Discord is not open", ["Tersambung ke Discord"] = "Connected to Discord", ["Setujui dialog \"Authorize\" di Discord"] = "Approve the \"Authorize\" dialog in Discord",
 
-        // mata, timer, minum, kalender, sholat
+        // eye break, timer, water, calendar, prayer
         ["Istirahat mata"] = "Eye break", ["Istirahat sekarang"] = "Break now", ["Pengingat tiap {0} menit · lihat jauh 20 detik"] = "Reminder every {0} min · look far away for 20 s",
         ["Istirahat mata · lihat jauh 20 detik"] = "Eye break · look far away for 20 s",
         ["Hitung mundur"] = "Countdown", ["Hitung maju"] = "Count up", ["Istirahat "] = "Break ", ["Fokus "] = "Focus ", ["· {0}/{1} menit"] = "· {0}/{1} min",
@@ -72,7 +72,7 @@ public static class Strings
         ["Tambah tugas…"] = "Add a task…", ["Libur: {0}"] = "Holiday: {0}", ["Tidak ada acara."] = "No events.", [" Libur: {0} · {1}, {2} {3}"] = " Holiday: {0} · {1}, {2} {3}", [" ({0} hari lagi)"] = " ({0} days left)",
         ["Belum ada tugas"] = "No tasks yet", ["{0}j {1}m lagi"] = "{0}h {1}m left", ["{0}m {1}d lagi"] = "{0}m {1}s left",
 
-        // shelf, kamera, tangkap
+        // shelf, camera, capture
         ["Sambung HP"] = "Link phone", ["Putuskan HP"] = "Unlink phone", ["Matikan kamera"] = "Turn camera off", ["Nyalakan kamera"] = "Turn camera on",
         ["Shelf · {0} file"] = "Shelf · {0} files", ["Seret file ke sini untuk disimpan sementara"] = "Drop files here to keep them for a while",
         ["Online (Tailscale) ⇄"] = "Online (Tailscale) ⇄", ["Satu Wi-Fi ⇄"] = "Same Wi-Fi ⇄",
@@ -86,16 +86,16 @@ public static class Strings
         ["Rekam layar butuh ffmpeg (belum ditemukan)"] = "Screen recording needs ffmpeg (not found)", ["Merekam layar…"] = "Recording the screen…",
         ["HP tersambung · {0}"] = "Phone connected · {0}", ["Diterima dari HP · {0}"] = "Received from phone · {0}", ["Memori terbanyak"] = "Top memory",
 
-        // jendela pengaturan
+        // settings window
         ["Pratinjau"] = "Preview", ["kemiripan {0}%"] = "similarity {0}%", ["Hasil cukup buram; pertimbangkan menaikkan target atau mengizinkan resolusi turun"] = "The result is quite blurry; consider a higher target or allowing the resolution to drop",
         ["ZaxLet · Pengaturan"] = "ZaxLet · Settings", ["Pratinjau langsung"] = "Live preview",
         ["Klik ikon tab untuk melihat tampilannya. Pill idle di atas mengikuti pill yang sebenarnya."] = "Click a tab icon to preview it. The idle pill above follows the real one.",
 
-        // kategori pengaturan
+        // settings categories
         ["Umum"] = "General", ["Pill idle"] = "Idle pill", ["Kalender"] = "Calendar", ["Aplikasi"] = "Apps", ["Notifikasi HP"] = "Phone notifications", ["Perangkat HP"] = "Phone devices",
         ["Alat"] = "Tools", ["Tab"] = "Tabs", ["Addon"] = "Add-ons",
 
-        // pengaturan: umum
+        // settings: general
         ["Bahasa / Language"] = "Language", ["Otomatis (ikut Windows)"] = "Automatic (follow Windows)", ["Berlaku setelah ZaxLet dimulai ulang"] = "Applies after ZaxLet restarts", ["Mulai ulang sekarang"] = "Restart now",
         ["Cara membuka pill"] = "How the pill opens", ["Kursor di atas pill"] = "Cursor over the pill", ["Klik kiri"] = "Left click", ["Jeda sebelum menutup"] = "Delay before closing", ["Sembunyikan saat fullscreen"] = "Hide in fullscreen",
         ["Tahan Alt di atas pill = hilang sementara"] = "Hold Alt over the pill = hide briefly", ["Sembunyikan lebih lama"] = "Hide for longer", ["pintasan di bawah atau menu tray"] = "shortcut below or the tray menu",
@@ -103,7 +103,7 @@ public static class Strings
         ["Warna aksen"] = "Accent colour", ["Format jam"] = "Clock format", ["Tampilkan detik"] = "Show seconds", ["Kembalikan semua pengaturan"] = "Restore all settings", ["Klik lagi untuk yakin"] = "Click again to confirm",
         ["Keluar dari ZaxLet"] = "Quit ZaxLet",
 
-        // pengaturan: pill idle
+        // settings: idle pill
         ["Jarak antar komponen"] = "Spacing between items", [" px"] = " px", ["Zona tengah tepat di tengah layar"] = "Center zone exactly at screen center",
         ["Titik status HP (kosong = tidak tersambung)"] = "Phone status dot (empty = not connected)", ["Posisi titik status HP"] = "Phone dot position", ["Posisi jam"] = "Clock position",
         ["Baterai"] = "Battery", ["Posisi baterai"] = "Battery position", ["Angka persen baterai"] = "Battery percentage", ["Usage AI"] = "AI usage", ["Posisi usage AI"] = "AI usage position",
@@ -112,7 +112,7 @@ public static class Strings
         ["Isi kecepatan"] = "Speed content", ["↓ unduh"] = "↓ download", ["↓ ↑ keduanya"] = "↓ ↑ both", ["Waveform saat musik main"] = "Waveform while music plays", ["Posisi waveform"] = "Waveform position",
         ["Lirik di baris ke-2"] = "Lyrics on the 2nd row",
 
-        // pengaturan: musik
+        // settings: music
         ["Tampilkan lirik (tab dan idle)"] = "Show lyrics (tab and idle)", ["Tulisan Latin untuk lirik (romaji, pinyin, dll.)"] = "Latin script for lyrics (romaji, pinyin, etc.)",
         ["Hanya tulisan Latin (sembunyikan lirik asli)"] = "Latin script only (hide original lyrics)", ["Lirik pill idle pakai tulisan Latin"] = "Idle pill lyrics in Latin script", ["Catatan tulisan Latin"] = "About Latin script",
         ["Berlaku untuk lirik Jepang, Mandarin, Korea, Rusia/Kiril, Yunani dan Arab; lagu berhuruf Latin tampil seperti biasa. Arab dan Mandarin berupa perkiraan."] = "Works for Japanese, Mandarin, Korean, Russian/Cyrillic, Greek and Arabic lyrics; Latin-script songs show as usual. Arabic and Mandarin are approximations.",
@@ -130,14 +130,14 @@ public static class Strings
         ["Membaca keluaran suara PC secara lokal hanya saat tab Musik terbuka; tidak direkam atau dikirim"] = "Reads the PC's audio output locally only while the Music tab is open; nothing is recorded or sent",
         ["Tempo isi lirik"] = "Lyric fill pace", ["Offset sinkron lirik"] = "Lyric sync offset", ["Warna latar dari sampul"] = "Background colour from cover",
 
-        // pengaturan: usage, monitor, kalender, sholat
+        // settings: usage, monitor, calendar, prayer
         ["Interval baca kuota"] = "Quota refresh interval", ["Tampilkan perkiraan biaya"] = "Show estimated cost", ["Kolom Code (data Ponytail)"] = "Code column (Ponytail data)",
         ["Peringatan kuning di"] = "Yellow warning at", ["Peringatan merah di"] = "Red warning at", ["Tampilkan GPU"] = "Show GPU", ["Daftar proses teratas"] = "Top processes list",
         ["Minggu dimulai"] = "Week starts on", ["Tampilkan hari libur"] = "Show holidays", ["Sumber lokasi"] = "Location source", ["Otomatis (IP)"] = "Automatic (IP)", ["Perangkat (izin)"] = "Device (permission)",
         ["Cari kota"] = "Search city", ["Kota"] = "City", ["Status lokasi"] = "Location status", ["Deteksi ulang"] = "Detect again", ["Deteksi sekarang"] = "Detect now", ["Metode hitung"] = "Calculation method",
         ["Mazhab Asar"] = "Asr school", ["Syafi'i"] = "Shafi'i", ["Ihtiyat"] = "Safety margin", [" mnt"] = " min", ["Notifikasi waktu sholat"] = "Prayer time alerts", ["Jeda musik saat sholat"] = "Pause music at prayer time",
 
-        // pengaturan: HP, aplikasi, notifikasi
+        // settings: phone, apps, notifications
         ["Server sambungan HP"] = "Phone link server", ["Aktif otomatis saat ZaxLet mulai"] = "Start automatically with ZaxLet", ["Alamat HP"] = "Phone address", ["QR menuju"] = "QR points to",
         ["Jaringan sama"] = "Same network", ["Online (Tailscale)"] = "Online (Tailscale)", ["Perangkat"] = "Devices", ["Aplikasi HP"] = "Phone app", ["Aplikasi tersambung"] = "App connected", ["belum ada"] = "none yet",
         ["Kamera yang dipakai"] = "Camera used", ["Kualitas kamera"] = "Camera quality", ["FPS kamera"] = "Camera FPS", ["Kamera HP (aplikasi)"] = "Phone camera (app)",
@@ -155,7 +155,7 @@ public static class Strings
         ["Notifikasi berjalan (Gojek, dll)"] = "Ongoing notifications (Gojek, etc.)", ["Aplikasi baru langsung tampil"] = "New apps show right away", ["Diterima dari HP"] = "Received from phone",
         ["Uji notifikasi"] = "Test notification", ["Tampilkan contoh"] = "Show example", ["Belum ada notifikasi masuk. Di aplikasi ZaxLet HP: izinkan akses notifikasi."] = "No notifications yet. In the ZaxLet HP app: allow notification access.",
 
-        // pengaturan: alat, minum, addon, tab
+        // settings: tools, water, addons, tabs
         ["Folder tangkapan (kosong = Pictures\\ZaxLet)"] = "Screenshot folder (empty = Pictures\\ZaxLet)", ["Salin tangkapan ke clipboard"] = "Copy screenshots to clipboard", ["FPS rekam layar"] = "Screen recording FPS",
         ["Pomodoro: fokus"] = "Pomodoro: focus", ["Pomodoro: istirahat"] = "Pomodoro: break", ["Pengingat istirahat mata"] = "Eye-break reminder", ["Interval istirahat mata"] = "Eye-break interval",
         ["Pengingat minum"] = "Water reminder", ["Target harian"] = "Daily goal", ["Ukuran satu gelas"] = "Cup size", ["Jam aktif mulai"] = "Active hours start", ["Jam aktif selesai"] = "Active hours end",
@@ -170,7 +170,7 @@ public static class Strings
         ["Mengambil sidik jari…"] = "Fetching checksum…", ["Memeriksa berkas…"] = "Checking file…", ["Memasang ffmpeg…"] = "Installing ffmpeg…", ["Mengunduh ffmpeg… {0}%"] = "Downloading ffmpeg… {0}%",
         ["Mengunduh {0}…"] = "Downloading {0}…", ["Mengunduh {0}… {1}%"] = "Downloading {0}… {1}%", ["Memasang {0}…"] = "Installing {0}…",
 
-        // fitur tambahan: pengaturan
+        // extra features: settings
         ["Gestur island"] = "Island gestures", ["Soal gestur"] = "About gestures",
         ["Scroll di atas island = volume · klik dua kali island tertutup = putar/jeda · sapuan dua jari ke samping = pindah tab"] = "Scroll over the island = volume · double-click the closed island = play/pause · two-finger swipe sideways = switch tab",
         ["Popup OSD (volume, kecerahan, Caps Lock, Bluetooth, mikrofon)"] = "OSD popups (volume, brightness, Caps Lock, Bluetooth, microphone)",
@@ -200,7 +200,7 @@ public static class Strings
         ["Tangkap layar, rekam layar, Pomodoro, istirahat mata, dan riwayat clipboard."] = "Screenshots, screen recording, Pomodoro, eye breaks and clipboard history.",
         ["Urutan dan tab yang ditampilkan."] = "Tab order and which tabs are shown.", ["Unduhan tambahan yang hanya diambil bila kamu memintanya."] = "Extra downloads that are only fetched when you ask.",
 
-        // clipboard, OSD, privasi, unduhan
+        // clipboard, OSD, privacy, downloads
         ["Riwayat clipboard"] = "Clipboard history", ["Hapus semua"] = "Clear all", ["Disalin ✓"] = "Copied ✓",
         ["Belum ada yang disalin. Teks yang kamu salin muncul di sini (hanya di memori)."] = "Nothing copied yet. Text you copy appears here (memory only).",
         ["Riwayat clipboard dimatikan di Pengaturan > Alat."] = "Clipboard history is turned off in Settings > Tools.",
@@ -212,7 +212,7 @@ public static class Strings
         ["Mikrofon dipakai: {0}"] = "Microphone in use: {0}", ["Kamera dipakai: {0}"] = "Camera in use: {0}",
         ["Wi-Fi ini Publik di Windows dan aturan firewall HP belum mencakupnya: HP tidak bisa masuk"] = "This Wi-Fi is Public in Windows and the phone firewall rule does not cover it: the phone cannot connect",
 
-        // pembaruan
+        // updates
         ["Memeriksa pembaruan…"] = "Checking for updates…", ["Belum ada rilis yang bisa diunduh (repo privat atau belum ada rilis)"] = "No downloadable release yet (private repository or no release)",
         ["Rilis terbaru tidak memuat berkas pembaruan"] = "The latest release has no update file", ["ZaxLet sudah versi terbaru"] = "ZaxLet is up to date",
         ["Rilis tidak menyertakan SHA-256: pembaruan ditolak"] = "The release has no SHA-256: update refused", ["Versi {0} tersedia"] = "Version {0} available",
@@ -220,14 +220,14 @@ public static class Strings
         ["Mengunduh pembaruan…"] = "Downloading the update…", ["File unduhan rusak (SHA-256 tidak cocok)"] = "The download is corrupt (SHA-256 mismatch)", ["Memasang pembaruan…"] = "Installing the update…",
         ["Pembaruan gagal: "] = "Update failed: ", ["ZaxLet {0} tersedia · klik untuk memperbarui"] = "ZaxLet {0} available · click to update", ["ZaxLet diperbarui ke {0}"] = "ZaxLet updated to {0}",
 
-        // tur
+        // tour
         ["Selamat datang di ZaxLet"] = "Welcome to ZaxLet", ["Buka dan geser"] = "Open and swipe", ["Sembunyikan"] = "Hide", ["Berikutnya"] = "Next", ["Selesai"] = "Done",
         ["Island di atas layar menampilkan jam, lagu beserta liriknya, timer, dan notifikasi HP, lalu terbuka menjadi panel berisi banyak alat."] = "The island at the top of the screen shows the clock, the song with its lyrics, timers and phone notifications, and opens into a panel of tools.",
         ["Arahkan kursor (atau klik, sesuai Pengaturan) ke island untuk membuka panel. Pindah tab lewat ikon di bawah atau sapuan dua jari ke samping. Scroll di atas island untuk volume; klik dua kali island yang tertutup untuk putar atau jeda."] = "Point at the island (or click, depending on Settings) to open the panel. Switch tabs with the icons below or a two-finger swipe sideways. Scroll over the island for volume; double-click the closed island to play or pause.",
         ["Klik kanan island untuk menyembunyikannya; arahkan kursor ke tepi atas layar untuk mengintip, klik kanan lagi untuk menampilkannya terus. Ctrl+Alt+I dan menu tray juga bisa."] = "Right-click the island to hide it; move the cursor to the top edge to peek, right-click again to keep it shown. Ctrl+Alt+I and the tray menu work too.",
         ["Ikon roda gigi di panel atau ikon ZaxLet di tray membuka Pengaturan: bahasa, tab, lokasi sholat, sambungan HP, pembaruan, dan cadangan."] = "The gear icon in the panel or the ZaxLet tray icon opens Settings: language, tabs, prayer location, phone link, updates and backup.",
 
-        // paket tulisan Latin (satu unduhan)
+        // Latin script pack (single download)
         ["Paket tulisan Latin (semua bahasa)"] = "Latin script pack (all languages)", ["Paket tulisan Latin"] = "Latin script pack",
         ["Satu-satunya unduhan untuk tulisan Latin: kamus kanji Jepang (MeCab + IPAdic) agar lirik berkanji menjadi romaji. Mandarin (pinyin), Korea, Rusia/Kiril, Yunani, dan Arab sudah ada di aplikasi tanpa unduhan."] = "The only download for Latin script: the Japanese kanji dictionary (MeCab + IPAdic) so lyrics with kanji turn into romaji. Mandarin (pinyin), Korean, Russian/Cyrillic, Greek and Arabic are already built into the app, no download.",
         ["Unduh sekali di Pengaturan > Addon agar lirik Jepang berkanji ikut. Kana, Mandarin, Korea, Kiril, Yunani, dan Arab sudah otomatis."] = "Download once in Settings > Add-ons so Japanese lyrics with kanji work too. Kana, Mandarin, Korean, Cyrillic, Greek and Arabic already work automatically.",
@@ -235,7 +235,7 @@ public static class Strings
         ["Satu-satunya unduhan untuk tulisan Latin: kamus kanji Jepang (MeCab + IPAdic) dan tabel pinyin Mandarin. Kana, Korea, Rusia/Kiril, Yunani, dan Arab sudah ada di aplikasi tanpa unduhan."] = "The only download for Latin script: the Japanese kanji dictionary (MeCab + IPAdic) and the Mandarin pinyin table. Kana, Korean, Russian/Cyrillic, Greek and Arabic are already built into the app, no download.",
         ["Tulisan Latin untuk lirik ini butuh Paket tulisan Latin: Pengaturan > Addon"] = "Latin script for these lyrics needs the Latin script pack: Settings > Add-ons",
 
-        // pengaturan: halaman dan bagian
+        // settings: pages and sections
         ["HP"] = "Phone", ["Usage & Monitor"] = "Usage & Monitor", ["Kalender & Sholat"] = "Calendar & Prayer", ["Pengingat"] = "Reminders",
         ["Bahasa, tampilan, pembaruan, dan cadangan."] = "Language, appearance, updates and backup.",
         ["Mode lanjutan"] = "Advanced mode", ["Tampilkan opsi tambahan di semua halaman"] = "Show extra options on every page",
@@ -277,7 +277,7 @@ public static class Strings
         ["Pintasan Meet: mic"] = "Meet shortcut: mic", ["Pintasan Meet: kamera"] = "Meet shortcut: camera",
         ["Format: ctrl+shift+m, ctrl+d, f9"] = "Format: ctrl+shift+m, ctrl+d, f9", ["Atur ulang sambungan Discord"] = "Reset Discord connection",
 
-        // panduan sambung HP
+        // phone connection guide
         ["Langkah {0} dari {1}"] = "Step {0} of {1}", ["Langkah 1 dari 4"] = "Step 1 of 4", ["Langkah 2 dari 4"] = "Step 2 of 4", ["Langkah 3 dari 4"] = "Step 3 of 4", ["Langkah 4 dari 4"] = "Step 4 of 4",
         ["Pasang aplikasi ZaxLet HP"] = "Install the ZaxLet phone app",
         ["Pindai kode ini dengan kamera HP (HP dan laptop harus di Wi-Fi yang sama), buka berkas yang terunduh, lalu izinkan pemasangan dari sumber ini bila Android bertanya."] = "Scan this code with your phone camera (phone and laptop must be on the same Wi-Fi), open the downloaded file, then allow installing from this source if Android asks.",
@@ -294,7 +294,7 @@ public static class Strings
         ["Nyalakan ulang server HP"] = "Restart the phone server",
         ["{0} HP tersambung"] = "{0} phone(s) connected", ["Menunggu aplikasi HP"] = "Waiting for the phone app", ["Tersambung · voice: {0}"] = "Connected · voice: {0}",
 
-        // panduan Discord
+        // Discord guide
         ["Langkah 1 dari 5"] = "Step 1 of 5", ["Langkah 2 dari 5"] = "Step 2 of 5", ["Langkah 3 dari 5"] = "Step 3 of 5", ["Langkah 4 dari 5"] = "Step 4 of 5", ["Langkah 5 dari 5"] = "Step 5 of 5",
         ["Mic dan Deafen di island"] = "Mic and Deafen from the island",
         ["Ada dua cara. Cara cepat tidak perlu pengaturan: ZaxLet memfokuskan Discord sebentar lalu menekan pintasan bawaannya (Ctrl+Shift+M mic, Ctrl+Shift+D deafen); Discord harus terbuka. Cara lengkap menyambungkan ZaxLet ke Discord sekali supaya status voice channel dan tombol Keluar VC ikut bekerja, tanpa berpindah jendela."] = "There are two ways. The quick way needs no setup: ZaxLet briefly focuses Discord and presses its default shortcuts (Ctrl+Shift+M mic, Ctrl+Shift+D deafen); Discord must be open. The full way connects ZaxLet to Discord once so the voice channel status and the Leave VC button work too, without switching windows.",
@@ -310,7 +310,7 @@ public static class Strings
         ["Cara lengkap 3: izinkan di Discord"] = "Full way 3: authorize in Discord",
         ["Setelah keduanya tercentang, Discord menampilkan dialog Authorize. Klik Authorize. Status di bawah berubah hijau saat tersambung; sesudahnya Mic, Deafen, dan Keluar VC di tab Komunikasi bekerja langsung tanpa berpindah jendela."] = "Once both are ticked, Discord shows an Authorize dialog. Click Authorize. The status below turns green when connected; after that Mic, Deafen and Leave VC in the Communication tab work directly without switching windows.",
 
-        // fitur gabungan (tema, rapat, fokus, OTP, teks HP, cuaca, ibadah, lirik)
+        // combined features (theme, meeting, focus, OTP, phone text, weather, worship, lyrics)
         ["Laporkan masalah atau usul fitur"] = "Report a problem or suggest a feature", ["Membuka halaman Issues di GitHub"] = "Opens the Issues page on GitHub",
         ["Tampilan island"] = "Island appearance", ["Hitam"] = "Black", ["Tema"] = "Theme",
         ["Hitam bawaan, atau warna lain; Neon: garis tepi mengikuti warna sampul lagu"] = "Default black, or another colour; Neon: the edge follows the song cover colour",
@@ -416,7 +416,7 @@ public static class Strings
         ["Tempel harga"] = "Paste price", ["Clipboard tidak berisi harga. Salin harganya dulu, mis. Rp149.000."] = "The clipboard has no price. Copy the price first, e.g. Rp149.000.",
         ["Tempel gambar dari clipboard"] = "Paste image from clipboard", ["Clipboard tidak berisi gambar. Salin gambarnya dulu."] = "The clipboard has no image. Copy the image first.",
 
-        // fitur baru (gelombang 4)
+        // new features (wave 4)
         ["t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]"] = "t 10m  ·  fokus 25  ·  catat buy milk  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  open monitor  ·  perf  ·  bt  ·  hide  ·  lock  ·  sleep  ·  sleep music 30  ·  dark  ·  light  ·  wifi off  ·  bluetooth on  ·  power saver/balanced/performance/restore  ·  awake [60/on/off]",
         ["daya hemat / seimbang / performa / kembali"] = "power saver / balanced / performance / restore",
         ["tidur  ·  tidur musik 30 / akhir / mati"] = "sleep  ·  sleep music 30 / end / off",
@@ -454,14 +454,14 @@ public static class Strings
         ["Tidur · mengecil…"] = "Sleep · fading…", ["Volume sedang mengecil (klik untuk batal)"] = "Volume is fading out (click to cancel)",
         ["Pengatur waktu tidur: Mati (klik untuk atur)"] = "Sleep timer: Off (click to set)",
 
-        // utilitas baru (OCR, warna, jaringan, quick command)
+        // new utilities (OCR, color, network, quick command)
         ["t 10m  ·  fokus 25  ·  catat beli susu  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]"] = "t 10m  ·  fokus 25  ·  catat buy milk  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  open monitor  ·  perf  ·  bt  ·  ocr  ·  color  ·  hide  ·  lock  ·  sleep  ·  sleep music 30  ·  dark  ·  light  ·  wifi off  ·  bluetooth on  ·  power saver/balanced/performance/restore  ·  awake [60/on/off]",
         ["OCR area"] = "Area OCR", ["Pipet warna"] = "Color picker",
         ["Bahasa OCR Windows belum terpasang"] = "Windows OCR language is not installed", ["Tidak ada teks terbaca"] = "No text recognised", ["Gagal membaca teks OCR"] = "Could not read OCR text",
         ["OCR disalin: {0}"] = "OCR copied: {0}", ["{0} disalin"] = "{0} copied",
         ["Internet tersambung lagi"] = "Internet reconnected", ["Internet terputus"] = "Internet disconnected", ["Tidak tersambung"] = "Not connected",
 
-        // fitur pilihan baru (pengingat, jendela di atas, flashdisk, waktu layar, quick command)
+        // new selected features (reminders, window on top, USB drive, screen time, quick command)
         ["t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]"] = "t 10m  ·  ingat (remind) 15:30 meeting  ·  fokus 25  ·  catat buy milk  ·  atas (top)  ·  lepas (eject) [e]  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  open monitor  ·  perf  ·  bt  ·  ocr  ·  color  ·  hide  ·  lock  ·  sleep  ·  sleep music 30  ·  dark  ·  light  ·  wifi off  ·  bluetooth on  ·  power saver/balanced/performance/restore  ·  awake [60/on/off]",
         ["t 10m  ·  ingat 15:30 rapat  ·  fokus 25  ·  catat beli susu  ·  atas  ·  lepas [e]  ·  hp <teks>  ·  tp <naskah>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  buka monitor  ·  perf  ·  bt  ·  ocr  ·  warna  ·  sembunyi  ·  kunci  ·  tidur  ·  tidur musik 30  ·  gelap  ·  terang  ·  wifi off  ·  bluetooth on  ·  daya hemat/seimbang/performa/kembali  ·  jaga [60/on/off]"] = "t 10m  ·  ingat (remind) 15:30 meeting  ·  fokus 25  ·  catat buy milk  ·  atas (top)  ·  lepas (eject) [e]  ·  hp <text>  ·  tp <script>  ·  w <link>  ·  minum 250  ·  tema neon  ·  = 12*5  ·  5 km mi  ·  open monitor  ·  perf  ·  bt  ·  ocr  ·  color  ·  hide  ·  lock  ·  sleep  ·  sleep music 30  ·  dark  ·  light  ·  wifi off  ·  bluetooth on  ·  power saver/balanced/performance/restore  ·  awake [60/on/off]",
         ["Kirim ke HP dari klik kanan (SendTo)"] = "Send to phone from the right-click menu (SendTo)", ["Dikirim ke HP: {0}"] = "Sent to phone: {0}", ["Berkas masuk Shelf (HP belum tersambung)"] = "File added to Shelf (phone not connected)", ["Dikirim ke HP"] = "Sent to phone", ["HP belum tersambung"] = "Phone not connected", ["Teks terlalu panjang"] = "Text is too long",
@@ -478,10 +478,10 @@ public static class Strings
         ["Waktu layar per aplikasi"] = "Screen time per app", ["Mencatat nama aplikasi dan durasi pemakaian per hari secara lokal (appusage.json), tanpa judul jendela"] = "Logs app names and daily usage locally (appusage.json), without window titles",
         ["Hari ini (8 teratas):"] = "Today (top 8):", ["Total 7 hari: {0}"] = "7-day total: {0}",
 
-        // lokasi
+        // location
         ["Sensor lokasi tidak tersedia, memakai IP. "] = "Location sensor unavailable, using IP. ", ["Gagal mendeteksi lokasi: "] = "Could not detect location: ", ["Kota \"{0}\" tidak ditemukan"] = "City \"{0}\" not found", ["Pencarian gagal: "] = "Search failed: ",
 
-        // kompresor, teleprompter, dan pencari duplikat
+        // compressor, teleprompter, and duplicate finder
         ["Target tidak tercapai. Ukuran terkecil: {0}."] = "Target size not reached. Smallest size: {0}.",
         ["PDF dilindungi password dan tidak dapat dikompres."] = "Password-protected PDFs cannot be compressed.",
         ["PDF tidak memiliki halaman."] = "PDF has no pages.",
@@ -572,7 +572,7 @@ public static class Strings
         ["Kompres..."] = "Compress...",
         ["Kompres gambar atau PDF ke ukuran target"] = "Compress image or PDF to target size",
 
-        // kompresor PDF/gambar baru
+        // new PDF/image compressor
         ["File sudah paling kecil ({0}); hasil kompresi tidak lebih kecil dari file asli."] = "File is already at its smallest ({0}); compressed output is not smaller than the original.",
         ["Target tidak tercapai pada resolusi penuh. Ukuran terkecil: {0}. Hapus centang \"Pertahankan resolusi\" untuk mengecilkan ukuran piksel."] = "Target not reached at full resolution. Smallest size: {0}. Uncheck \"Keep resolution\" to shrink pixel dimensions.",
         ["Mencoba kualitas {0}/{1}"] = "Trying quality {0}/{1}",
@@ -580,7 +580,7 @@ public static class Strings
         ["Gambar di dalam PDF dikompres ulang; teks dan vektor tetap tajam. Jika target tak tercapai, halaman diubah menjadi gambar (teks tidak bisa diseleksi). PDF berpassword ditolak. File asli tidak diubah."] = "Images inside the PDF are recompressed; text and vectors stay sharp. If the target isn't reached, pages are converted to images (text won't be selectable). Password-protected PDFs are rejected. Original file is unchanged.",
         ["Resolusi piksel dipertahankan secara default dengan menurunkan kualitas JPEG dan penghalusan ringan bila perlu. Hapus centang di atas untuk mengizinkan penurunan resolusi. Keluaran selalu JPEG (transparansi diisi putih). File asli tidak diubah."] = "Pixel resolution is kept by default by lowering JPEG quality and applying light smoothing if needed. Uncheck above to allow downscaling. Output is always JPEG (transparency filled with white). Original file is unchanged.",
 
-        // pengaturan: tab Isi & tab, Pintasan, dan perekam tombol
+        // settings: Content & tabs, Shortcuts, and key recorder
         ["Isi & tab"] = "Content & tabs", ["Pintasan"] = "Shortcuts",
         ["Tampilan island, cara membuka, menyembunyikan, dan gestur."] = "Island appearance, how it opens, hides, and gestures.",
         ["Elemen yang tampil di pill saat diam serta urutan dan visibilitas tab."] = "Items shown on the idle pill, plus tab order and visibility.",

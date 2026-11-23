@@ -17,7 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Pilih aplikasi yang notifikasinya diteruskan ke PC (seperti daftar notifikasi aplikasi di jam pintar). Bawaan: semua mati. */
+/** Choose apps whose notifications are forwarded to the PC (like a smartwatch app notification list). Default: all off. */
 public class AppsActivity extends Activity {
     private static final class Item { String pkg, label; Drawable icon; }
 
@@ -33,7 +33,7 @@ public class AppsActivity extends Activity {
         root.addView(hint);
         list = Ui.card(root, null);
 
-        new Thread(() -> {   // memuat ikon puluhan aplikasi: jangan di main thread
+        new Thread(() -> {   // loading dozens of app icons: keep off the main thread
             final List<Item> items = load();
             ui.post(() -> show(items));
         }).start();

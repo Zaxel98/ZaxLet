@@ -13,9 +13,9 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Fitur romaji untuk kanji, diunduh hanya bila pengguna memintanya (Pengaturan > Musik): pustaka MeCab (LibNMeCab) dan kamus IPAdic
-/// dari nuget.org, ±14 MB, disimpan di %LOCALAPPDATA%\ZaxLet\romaji. Sidik jari paket dipaku agar berkas yang diunduh pasti sama
-/// dengan yang diuji. Pustaka dimuat dalam konteks yang bisa dibuang, jadi kamus tidak menahan RAM setelah selesai dipakai.
+/// Romaji feature for kanji, downloaded only if the user requests it (Settings > Music): MeCab library (LibNMeCab) and IPAdic dictionary
+/// from nuget.org, ~14 MB, stored in %LOCALAPPDATA%\ZaxLet\romaji. Package hashes are pinned so downloaded files match what was tested.
+/// The library is loaded in a collectible context, so the dictionary does not hold RAM after use.
 /// </summary>
 public static class RomajiPack
 {
@@ -31,12 +31,12 @@ public static class RomajiPack
     public static string PinyinFile => Path.Combine(Dir, "pinyin.gz");
     public static bool KanjiInstalled => File.Exists(Path.Combine(Dir, "LibNMeCab.dll")) && File.Exists(Path.Combine(DicDir, "sys.dic"));
     public static bool PinyinInstalled => File.Exists(PinyinFile);
-    /// <summary>Paket lengkap: kamus kanji Jepang dan tabel pinyin Mandarin. Kamus kanji sendiri yang dipakai untuk membaca lirik Jepang (<see cref="KanjiInstalled"/>).</summary>
+    /// <summary>Full pack: Japanese kanji dictionary and Mandarin pinyin table. The kanji dictionary alone is used for reading Japanese lyrics (<see cref="KanjiInstalled"/>).</summary>
     public static bool Installed => KanjiInstalled && PinyinInstalled;
     public static bool Busy;
     public static string Status = "";
 
-    /// <summary>Unduh dan pasang bagian yang belum ada. progress dipanggil dari thread latar. Melempar bila gagal (berkas parsial dibersihkan).</summary>
+    /// <summary>Download and install missing parts. progress is called from a background thread. Throws on failure (partial files are cleaned up).</summary>
     public static async Task DownloadAsync(Action progress)
     {
         if (Busy) return;
@@ -84,7 +84,7 @@ public static class RomajiPack
                     if (e.Length == 0 || !e.FullName.StartsWith(p.Entry, StringComparison.Ordinal)) continue;
                     var dest = p.Entry.EndsWith('/') ? Path.Combine(DicDir, e.FullName[p.Entry.Length..]) : Path.Combine(Dir, Path.GetFileName(e.FullName));
                     dest = Path.GetFullPath(dest);
-                    if (!dest.StartsWith(Path.GetFullPath(Dir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;   // jangan keluar folder
+                    if (!dest.StartsWith(Path.GetFullPath(Dir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;   // do not escape directory
                     Directory.CreateDirectory(Path.GetDirectoryName(dest));
                     e.ExtractToFile(dest, true);
                 }
@@ -94,7 +94,7 @@ public static class RomajiPack
         }
         catch
         {
-            // bagian yang sudah terpasang sebelumnya tidak ikut dihapus
+            // previously installed parts are not deleted
             try { if (!hadKanji) Directory.Delete(Dir, true); else File.Delete(PinyinFile); } catch { }
             Translit.ResetPinyin();
             Status = "";
@@ -109,12 +109,12 @@ public static class RomajiPack
     }
 
     /// <summary>
-    /// Bacaan tiap baris (katakana hasil MeCab, kata dipisah spasi; null bila gagal). Dipanggil dari thread latar. Pustaka dimuat di
-    /// AssemblyLoadContext yang dibuang sesudahnya supaya kamus ±50 MB keluar dari memori.
+    /// Reading of each line (MeCab katakana output, words separated by spaces; null on failure). Called from a background thread. Library is loaded in
+    /// an AssemblyLoadContext that is unloaded afterwards so the ~50 MB dictionary leaves memory.
     /// </summary>
     public static List<(string Line, string Reading)> Read(IEnumerable<string> lines) => ReadCore(lines);
 
-    [MethodImpl(MethodImplOptions.NoInlining)]   // semua objek konteks harus lepas sebelum Unload
+    [MethodImpl(MethodImplOptions.NoInlining)]   // all context objects must be released before Unload
     static List<(string, string)> ReadCore(IEnumerable<string> lines)
     {
         var res = new List<(string, string)>();
@@ -143,12 +143,12 @@ public static class RomajiPack
                                 surf = t.GetProperty("Surface"); pos = t.GetProperty("PartsOfSpeech"); sec1 = t.GetProperty("PartsOfSpeechSection1"); read = t.GetProperty("Reading");
                             }
                             var s = (string)surf.GetValue(n);
-                            if (string.IsNullOrEmpty(s)) continue;   // awal/akhir kalimat
+                            if (string.IsNullOrEmpty(s)) continue;   // start/end of sentence
                             static bool Ok(string x) => !string.IsNullOrEmpty(x) && x != "*";
-                            // bacaan ejaan (オモウ -> omou), bukan bunyi (オモー -> omoo); partikel dibaca menurut bunyinya: は=wa, へ=e
+                            // orthographic reading (オモウ -> omou), not phonetic (オモー -> omoo); particles are read by sound: は=wa, へ=e
                             var w = (string)read.GetValue(n); if (!Ok(w)) w = s;
                             if ((string)pos.GetValue(n) is { } p && p.StartsWith("助詞")) w = s switch { "は" => "ワ", "へ" => "エ", _ => w };
-                            // imbuhan menempel ke kata sebelumnya (aishi+teru -> aishiteru, ik+ou -> ikou); kata lain dipisah spasi, tanda baca menempel
+                            // affixes attach to the previous word (aishi+teru -> aishiteru, ik+ou -> ikou); other words are space-separated, punctuation attaches
                             var pp = (string)pos.GetValue(n) ?? ""; var sec = (string)sec1.GetValue(n) ?? "";
                             bool glue = pp == "助動詞" || pp == "記号" || (pp == "助詞" && sec == "接続助詞") || (pp == "動詞" && sec is "接尾" or "非自立") || (pp == "名詞" && sec == "接尾");
                             if (sb.Length > 0 && !glue) sb.Append(' ');

@@ -4,13 +4,13 @@ const SITES = { origins: ["http://*/*", "https://*/*"] };
 
 api.storage.local.get({ token: "", enabled: true }).then(v => { $("token").value = v.token; $("enabled").checked = v.enabled; });
 
-// Firefox menganggap izin situs opsional: tanpa izin ini ekstensi tidak bisa membaca halaman produk.
+// Firefox treats site permissions as optional: without this permission the extension cannot read product pages.
 async function showPermission() {
   const ok = await api.permissions.contains(SITES);
   $("perm").style.display = ok ? "none" : "block";
 }
 showPermission();
-$("grant").addEventListener("click", async () => { await api.permissions.request(SITES); showPermission(); });   // harus dari klik pengguna
+$("grant").addEventListener("click", async () => { await api.permissions.request(SITES); showPermission(); });   // must be triggered by a user click
 
 $("diag").addEventListener("click", async () => {
   const out = $("diagout"); out.textContent = "Menguji...";

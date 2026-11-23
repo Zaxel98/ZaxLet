@@ -10,7 +10,7 @@ using System.Windows.Media;
 
 namespace ZaxLet;
 
-/// <summary>Pembangun kontrol kecil supaya tampilan tab cukup ditulis dalam kode, tanpa XAML per tab.</summary>
+/// <summary>Small control builders so tab views can be written in code without per-tab XAML.</summary>
 public static class UI
 {
     public static Brush B(string hex)
@@ -20,15 +20,15 @@ public static class UI
         return b;
     }
 
-    // Palet gelap bergaya Raycast: teks putih-keabuan bertingkat, permukaan transparan di atas hitam, garis tepi 1px, status berwarna jenuh.
-    public static readonly Brush Fg = B("#FFF4F4F6"), Dim = B("#A6FFFFFF"), Faint = B("#8CFFFFFF"),   // putih 55%: kontras ≥ 5:1 di atas hitam dan ≥ 5:1 di atas CardOn
-        Card = B("#1FFFFFFF"), CardOn = B("#33FFFFFF"), Hairline = B("#2EFFFFFF"), BadBg = B("#CC9B1C24"),   // Card 12% (chip terbaca di atas hitam), Hairline 18%
+    // Raycast-style dark palette: tiered off-white text, transparent surfaces over black, 1px hairline borders, saturated status colors.
+    public static readonly Brush Fg = B("#FFF4F4F6"), Dim = B("#A6FFFFFF"), Faint = B("#8CFFFFFF"),   // 55% white: contrast >= 5:1 on black and >= 5:1 on CardOn
+        Card = B("#1FFFFFFF"), CardOn = B("#33FFFFFF"), Hairline = B("#2EFFFFFF"), BadBg = B("#CC9B1C24"),   // Card 12% (chip readable over black), Hairline 18%
         Bad = B("#FFFF6161"), Warn = B("#FFFFC533"), Good = B("#FF59D499"), Info = B("#FF57C1FF"), Track = B("#26FFFFFF");
 
-    // permukaan opak untuk jendela biasa (Pengaturan, Duplicate finder): kanvas -> kartu -> garis, tingkatan netral bergaya Raycast
+    // opaque surfaces for regular windows (Settings, Duplicate finder): canvas -> card -> border, Raycast-style neutral tiers
     public static readonly Brush WinBg = B("#FF0D0E10"), WinCard = B("#FF151618"), WinSep = B("#FF242728");
 
-    // warna aksen bisa diganti dari Pengaturan; dibaca saat tampilan digambar ulang
+    // accent color can be changed from Settings; read when the view is redrawn
     public static Brush Accent { get; private set; } = B("#FF2DD4BF");
     public static Brush AccentBg { get; private set; } = B("#2E2DD4BF");
     public static readonly (string Key, string Label, string Hex)[] Accents =
@@ -45,7 +45,7 @@ public static class UI
             if (k?.GetValue("AccentColor") is int v) return AccentColor.FromAbgr(v);
         }
         catch { }
-        return "2DD4BF";   // tidak terbaca: teal bawaan
+        return "2DD4BF";   // unreadable: default teal
     }
 
     public static void SetAccent(string key)
@@ -59,12 +59,12 @@ public static class UI
 
     public static TextBlock T(string s, double size = 13, Brush fg = null, bool bold = false) => new()
     {
-        Text = L.T(s), FontSize = size, Foreground = fg ?? Fg,   // semua label lewat sini: terjemahan otomatis bila teksnya ada di Strings
+        Text = L.T(s), FontSize = size, Foreground = fg ?? Fg,   // all labels go through here: automatic translation if text exists in Strings
         FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
         VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
     };
 
-    /// <summary>Lebar teks dalam DIP untuk font UI (dipakai agar komponen idle punya lebar tetap).</summary>
+    /// <summary>Text width in DIPs for the UI font (used so idle components have fixed width).</summary>
     public static double TextWidth(string s, double size, FontWeight weight) =>
         new FormattedText(s, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
             new Typeface(new FontFamily("Segoe UI Variable Text, Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal), size, Brushes.White, 1.0).WidthIncludingTrailingWhitespace;
@@ -75,7 +75,7 @@ public static class UI
         VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center
     };
 
-    /// <summary>Tombol: bisa difokus (Tab), ditekan dengan Enter/Spasi, dan terbaca sebagai Button oleh pembaca layar (nama dari AutomationProperties.Name, ToolTip, atau teksnya).</summary>
+    /// <summary>Button: focusable (Tab), activatable with Enter/Space, and exposed as Button to screen readers (name from AutomationProperties.Name, ToolTip, or its text).</summary>
     sealed class BtnBorder : Border
     {
         public Action Click;
@@ -98,7 +98,7 @@ public static class UI
 
             static string TextOf(DependencyObject d) => d switch
             {
-                TextBlock t => t.Text.Length > 0 && t.Text[0] < '' ? t.Text : "",   // glif ikon (area privat Unicode) bukan nama
+                TextBlock t => t.Text.Length > 0 && t.Text[0] < '' ? t.Text : "",   // icon glyph (Unicode Private Use Area) is not a name
                 Panel p => string.Join(" ", p.Children.OfType<DependencyObject>().Select(TextOf).Where(s => s.Length > 0)),
                 Decorator x => TextOf(x.Child),
                 _ => ""
@@ -134,7 +134,7 @@ public static class UI
         {
             if (e.Key is Key.Enter or Key.Space) { e.Handled = true; click(); }
         };
-        // umpan balik halus: sedikit meredup saat disorot, menyusut sebentar saat ditekan
+        // subtle feedback: dims slightly on hover, shrinks briefly on press
         var sc = new ScaleTransform(1, 1);
         b.RenderTransform = sc;
         b.RenderTransformOrigin = new Point(.5, .5);
@@ -144,7 +144,7 @@ public static class UI
             sc.BeginAnimation(ScaleTransform.ScaleXProperty, a);
             sc.BeginAnimation(ScaleTransform.ScaleYProperty, a);
         }
-        // sorot: permukaan naik satu tingkat (teks tidak diredupkan); tombol transparan/berwarna hanya sedikit meredup
+        // hover: surface steps up one level (text is not dimmed); transparent/colored buttons only dim slightly
         bool canLift = ReferenceEquals(rest, Card) || ReferenceEquals(rest, Brushes.Transparent);
         bool lifted = false;
         b.MouseEnter += (_, _) =>
@@ -182,7 +182,7 @@ public static class UI
         return g;
     }
 
-    /// <summary>Bungkus ScrollViewer dengan pudar di tepi bawah selama masih ada isi di bawahnya (bar gulir disembunyikan, jadi tanpa ini baris yang terpotong tampak seperti salah tata letak).</summary>
+    /// <summary>Wrap ScrollViewer with a bottom-edge fade while more content remains below (scrollbar is hidden, so without this clipped rows look like a layout bug).</summary>
     public static Grid Fade(ScrollViewer sv)
     {
         var stop = new GradientStop(Colors.White, 1);
@@ -234,7 +234,7 @@ public static class UI
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
 }
 
-/// <summary>Bar progres tipis.</summary>
+/// <summary>Thin progress bar.</summary>
 public sealed class Bar : Grid
 {
     readonly Border _fill;
@@ -259,20 +259,20 @@ public sealed class Bar : Grid
     void Apply() => _fill.Width = ActualWidth * _f;
 }
 
-/// <summary>Dasar semua tab: ukuran yang diinginkan + hook tampil/sembunyi (polling hanya saat terlihat).</summary>
+/// <summary>Base class for all tabs: desired size + show/hide hooks (polling only when visible).</summary>
 public abstract class TabView : Grid
 {
     public abstract string Key { get; }
     public abstract string Glyph { get; }
     public abstract string Label { get; }
     public virtual double H => 190;
-    public virtual bool CenterV => true;   // tab dipaksa setinggi tab lain; true = isi dipusatkan, false = isi mengisi tinggi
+    public virtual bool CenterV => true;   // tab is forced to match other tabs' height; true = center content, false = stretch content
     public virtual void OnShow() { }
     public virtual void OnHide() { }
     protected TabView() { Margin = new Thickness(18, 12, 18, 4); }
 }
 
-/// <summary>Cincin kemajuan kecil (donat) berhuruf di tengah, seperti pada bar BrimDeck.</summary>
+/// <summary>Small progress ring (donut) with centered text, like on the BrimDeck bar.</summary>
 public sealed class RingBadge : Canvas
 {
     readonly System.Windows.Shapes.Path _arc = new() { StrokeThickness = 2.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
@@ -302,7 +302,7 @@ public sealed class RingBadge : Canvas
     }
 }
 
-/// <summary>Grafik garis mini (sparkline) untuk riwayat CPU / jaringan.</summary>
+/// <summary>Mini line chart (sparkline) for CPU / network history.</summary>
 public sealed class Spark : Canvas
 {
     readonly System.Windows.Shapes.Polyline _line = new() { StrokeThickness = 1.4, StrokeLineJoin = PenLineJoin.Round };
@@ -329,7 +329,7 @@ public sealed class Spark : Canvas
     }
 }
 
-/// <summary>Ikon bergambar: baterai berpetir, logo penyedia AI.</summary>
+/// <summary>Drawn icons: battery with lightning bolt, AI provider logos.</summary>
 public static class Icons
 {
     public static readonly Brush BatGood = UI.Good, BatCharge = UI.B("#FF3B82F6");
@@ -356,7 +356,7 @@ public static class Icons
         return c;
     }
 
-    /// <summary>Asterisk koral khas Claude.</summary>
+    /// <summary>Signature coral asterisk for Claude.</summary>
     public static UIElement ClaudeLogo(double s)
     {
         var c = new Canvas { Width = s, Height = s };
@@ -374,14 +374,14 @@ public static class Icons
         return c;
     }
 
-    /// <summary>Kotak biru dengan huruf A untuk Antigravity.</summary>
+    /// <summary>Blue box with letter A for Antigravity.</summary>
     public static UIElement AntigravityLogo(double s) => new Border
     {
         Width = s, Height = s, CornerRadius = new CornerRadius(s * .3), Background = UI.B("#FF4285F4"),
         Child = new TextBlock { Text = "A", FontSize = s * .6, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
     };
 
-    /// <summary>Kotak hijau dengan prompt terminal untuk Codex.</summary>
+    /// <summary>Green box with terminal prompt for Codex.</summary>
     public static UIElement CodexLogo(double s) => new Border
     {
         Width = s, Height = s, CornerRadius = new CornerRadius(s * .3), Background = UI.B("#FF10A37F"),

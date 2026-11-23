@@ -15,8 +15,8 @@ public sealed record DupFile(string Path, long Size, DateTime Modified);
 public sealed record DupGroup(long Size, string Hash, IReadOnlyList<DupFile> Files);
 
 /// <summary>
-/// Pencari file duplikat murni (tanpa UI) dengan penyaringan bertahap:
-/// ukuran persis -> hash cepat (64 KB awal + 64 KB akhir + ukuran) -> SHA-256 penuh streaming.
+/// Pure duplicate file finder (no UI) with staged filtering:
+/// exact size -> quick hash (first 64 KB + last 64 KB + size) -> full streaming SHA-256.
 /// </summary>
 public static class DupFinder
 {
@@ -39,8 +39,8 @@ public static class DupFinder
     }
 
     /// <summary>
-    /// Memastikan folder aman dipindai (menolak root drive, Windows, Program Files, ProgramData, root profil user, dan AppData).
-    /// Mengembalikan path lengkap yang sudah dinormalisasi.
+    /// Ensures the folder is safe to scan (rejects drive roots, Windows, Program Files, ProgramData, user profile root, and AppData).
+    /// Returns the normalized full path.
     /// </summary>
     public static string ValidateFolder(string folder)
     {
@@ -115,7 +115,7 @@ public static class DupFinder
             progress.Report(msg);
         }
 
-        // Tahap 1: enumerasi & kelompokkan berdasarkan ukuran persis
+        // Stage 1: enumerate & group by exact size
         var bySize = new Dictionary<long, List<DupFile>>();
         int enumerated = 0;
 
@@ -153,7 +153,7 @@ public static class DupFinder
             return new List<DupGroup>();
         }
 
-        // Tahap 2: hash cepat (64 KB awal + 64 KB akhir + panjang)
+        // Stage 2: quick hash (first 64 KB + last 64 KB + length)
         var quickCandidates = new List<(long Size, List<DupFile> Files)>();
         var quickBuf = new byte[QuickChunkBytes];
         int checkedCount = 0;
@@ -194,7 +194,7 @@ public static class DupFinder
             return new List<DupGroup>();
         }
 
-        // Tahap 3: SHA-256 penuh dengan streaming buffer 81920 byte
+        // Stage 3: full SHA-256 with 81920-byte streaming buffer
         var result = new List<DupGroup>();
         var streamBuf = new byte[StreamBufferBytes];
         int fullDone = 0;
@@ -299,7 +299,7 @@ public static class DupFinder
         return total;
     }
 
-    /// <summary>Memindahkan daftar file ke Recycle Bin (tidak pernah menghapus permanen).</summary>
+    /// <summary>Moves the file list to the Recycle Bin (never permanently deletes).</summary>
     public static (List<string> Moved, List<(string Path, string Error)> Failed) MoveToRecycleBin(IEnumerable<string> paths)
     {
         var moved = new List<string>();

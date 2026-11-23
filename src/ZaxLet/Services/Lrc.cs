@@ -8,7 +8,7 @@ namespace ZaxLet;
 
 public sealed record LyricLine(TimeSpan At, string Text);
 
-/// <summary>Parser format LRC (lirik tersinkron LRCLIB): "[mm:ss.xx] teks", boleh beberapa stempel waktu per baris.</summary>
+/// <summary>LRC format parser (LRCLIB synced lyrics): "[mm:ss.xx] text", multiple timestamps per line allowed.</summary>
 public static class Lrc
 {
     static readonly Regex Stamp = new(@"\[(\d+):(\d+(?:\.\d+)?)\]", RegexOptions.Compiled);

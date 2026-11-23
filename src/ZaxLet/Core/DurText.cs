@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace ZaxLet;
 
-/// <summary>Teks durasi bebas untuk pengaturan: "45", "30dtk", "10m", "1.5 jam", "1j30m", "500ms".</summary>
+/// <summary>Free-form duration text for settings: "45", "30dtk", "10m", "1.5 jam", "1j30m", "500ms".</summary>
 public static class DurText
 {
     public static string Fmt(double sec)
@@ -18,7 +18,7 @@ public static class DurText
         return mm == 0 ? $"{h} {hr}" : $"{h} {hr} {mm} {mn}";
     }
 
-    /// <summary>Angka tanpa satuan dikali <paramref name="bare"/> detik (1 = detik, 60 = menit). False bila tidak terbaca.</summary>
+    /// <summary>Unitless number multiplied by <paramref name="bare"/> seconds (1 = seconds, 60 = minutes). False if unparseable.</summary>
     public static bool Parse(string text, double bare, out double sec)
     {
         sec = 0;

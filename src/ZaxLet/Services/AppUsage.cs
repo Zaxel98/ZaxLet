@@ -8,15 +8,15 @@ using System.Windows.Threading;
 
 namespace ZaxLet;
 
-/// <summary>Data waktu layar lokal: tanggal (yyyy-MM-dd) -> nama proses -> detik.</summary>
+/// <summary>Local screen time data: date (yyyy-MM-dd) -> process name -> seconds.</summary>
 public sealed class AppUsageData
 {
     public Dictionary<string, Dictionary<string, int>> Days { get; set; } = new();
 }
 
 /// <summary>
-/// Pencatat waktu layar per aplikasi (lokal di appusage.json, opt-in).
-/// Mengambil sampel tiap 5 detik hanya saat aktif dalam 2 menit terakhir dan menyimpan nama proses + detik per hari.
+/// Per-app screen time logger (local in appusage.json, opt-in).
+/// Samples every 5 seconds only when active in the last 2 minutes and stores process name + seconds per day.
 /// </summary>
 public sealed class AppUsage
 {
@@ -41,7 +41,7 @@ public sealed class AppUsage
     DateTime _lastFlush = DateTime.UtcNow;
     bool _dirty;
 
-    /// <summary>Mulai atau hentikan pencatat sesuai pengaturan AppUsageOn.</summary>
+    /// <summary>Start or stop the logger according to the AppUsageOn setting.</summary>
     public void Apply()
     {
         if (Settings.Cur.AppUsageOn)
@@ -162,7 +162,7 @@ public sealed class AppUsage
         return found;
     }
 
-    // ---------- pembantu murni ----------
+    // ---------- pure helpers ----------
 
     public static string DisplayName(string procName) =>
         string.IsNullOrEmpty(procName) ? "" : char.IsLower(procName[0]) ? char.ToUpper(procName[0]) + procName[1..] : procName;

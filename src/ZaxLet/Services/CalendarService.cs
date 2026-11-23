@@ -15,7 +15,7 @@ public sealed class TaskItem
     public string Date { get; set; } = "";   // yyyy-MM-dd
 }
 
-/// <summary>Libur nasional dari iCal publik Google (di-cache seminggu) + to-do per tanggal di tasks.json.</summary>
+/// <summary>National holidays from Google public iCal (cached for a week) + per-date to-dos in tasks.json.</summary>
 public sealed class CalendarService
 {
     public static readonly CalendarService I = new();
@@ -52,7 +52,7 @@ public sealed class CalendarService
     public static Dictionary<DateOnly, string> ParseIcs(string ics)
     {
         var result = new Dictionary<DateOnly, string>();
-        // unfold: baris lanjutan diawali spasi/tab
+        // unfold: continuation lines start with space/tab
         var lines = new List<string>();
         foreach (var raw in ics.Replace("\r\n", "\n").Split('\n'))
         {
@@ -93,7 +93,7 @@ public sealed class CalendarService
 
     void Save()
     {
-        // buang tugas selesai yang lebih tua dari 30 hari
+        // discard completed tasks older than 30 days
         var cut = DateTime.Now.AddDays(-30).ToString("yyyy-MM-dd");
         Tasks.RemoveAll(t => t.Done && string.CompareOrdinal(t.Date, cut) < 0);
         Store.Save("tasks.json", Tasks);

@@ -1,24 +1,24 @@
 const api = typeof browser !== "undefined" ? browser : chrome;   // Firefox: browser.* (promise); Chrome/Edge/Brave: chrome.*
-// ZaxLet Wishlist: membaca halaman produk di browser pemilik dan mengirimnya ke ZaxLet di 127.0.0.1.
-// Tidak ada pemindaian terus-menerus: hanya saat halaman selesai dimuat (atau berganti alamat di aplikasi satu halaman),
-// dan hanya halaman yang terlihat seperti produk yang dikirim. Data tidak keluar dari komputer ini.
+// ZaxLet Wishlist: reads product pages in the owner's browser and sends them to ZaxLet at 127.0.0.1.
+// No continuous scanning: only when a page finishes loading (or changes URL in a single-page app),
+// and only pages that look like a product are sent. Data never leaves this computer.
 const BASE = "http://127.0.0.1:47892";
 const timers = new Map();
-const sentAt = new Map();          // url -> waktu kirim terakhir, supaya halaman yang sama tidak dikirim berulang
-let downUntil = 0;                 // ZaxLet tidak jalan: jangan mencoba lagi sampai waktu ini
+const sentAt = new Map();          // url -> last sent time, so the same page is not sent repeatedly
+let downUntil = 0;                 // ZaxLet not running: do not retry until this time
 
 api.action.onClicked.addListener(() => api.runtime.openOptionsPage());
 
 function schedule(tabId, url) {
   if (!/^https?:/i.test(url || "")) return;
   clearTimeout(timers.get(tabId));
-  timers.set(tabId, setTimeout(() => run(tabId).catch(() => {}), 1800));   // beri waktu halaman JavaScript menggambar harga
+  timers.set(tabId, setTimeout(() => run(tabId).catch(() => {}), 1800));   // give JavaScript pages time to render the price
 }
 api.webNavigation.onCompleted.addListener(d => { if (d.frameId === 0) schedule(d.tabId, d.url); });
 api.webNavigation.onHistoryStateUpdated.addListener(d => { if (d.frameId === 0) schedule(d.tabId, d.url); });
 api.tabs.onRemoved.addListener(id => { clearTimeout(timers.get(id)); timers.delete(id); });
 
-// Dijalankan DI DALAM halaman (harus berdiri sendiri, tanpa rujukan ke luar fungsi ini).
+// Executed INSIDE the page (must be self-contained, with no references outside this function).
 function scanPage() {
   const meta = n => { const e = document.querySelector(`meta[property="${n}"],meta[name="${n}"],meta[itemprop="${n}"]`); return e ? (e.content || "").trim() : ""; };
   const prods = [];
@@ -32,7 +32,7 @@ function scanPage() {
         if (o["@graph"]) walk(o["@graph"]);
       };
       walk(JSON.parse(s.textContent));
-    } catch (e) { /* JSON-LD rusak: lewati */ }
+    } catch (e) { /* malformed JSON-LD: skip */ }
   });
   const p = prods[0];
   let title = "", price = "", currency = "", image = "";
@@ -47,7 +47,7 @@ function scanPage() {
   if (!price) { price = meta("product:price:amount") || meta("og:price:amount"); currency = currency || meta("product:price:currency") || meta("og:price:currency"); }
   const structured = !!p || meta("og:type") === "product" || !!meta("product:price:amount") || !!meta("og:price:amount");
 
-  // Cadangan untuk toko yang menggambar halaman dengan JavaScript: teks "Rp..." terbesar di bagian atas halaman.
+  // Fallback for stores that render pages with JavaScript: largest "Rp..." text near the top of the page.
   let priceText = "";
   if (!price) {
     const re = /^(?:Rp\.?|IDR)\s?\d[\d.,]*(?:\s*[-–]\s*(?:Rp\.?|IDR)?\s?\d[\d.,]*)?$/i;
@@ -66,8 +66,8 @@ function scanPage() {
   }
   const buy = /keranjang|beli sekarang|beli langsung|add to cart|buy now|checkout/i.test(document.body ? document.body.innerText.slice(0, 20000) : "");
   if (!title) { const h = document.querySelector("h1"); title = h ? h.innerText.trim() : ""; }
-  if (!title) title = document.title || "";   // judul tab: toko seperti Shopee tidak punya og:title/h1 yang bisa dibaca
-  if (!image) {                               // gambar terbesar yang terlihat di bagian atas halaman (galeri produk)
+  if (!title) title = document.title || "";   // tab title: stores like Shopee do not have a readable og:title/h1
+  if (!image) {                               // largest visible image near the top of the page (product gallery)
     let bestImg = null, area = 0;
     for (const im of document.images) {
       const r = im.getBoundingClientRect();
@@ -76,8 +76,8 @@ function scanPage() {
     }
     if (bestImg) image = bestImg.currentSrc || bestImg.src || "";
   }
-  const urlLooksProduct = /-i\.\d+\.\d+|\/products?\/|\/product-|\/p\/|\/items?\//i.test(location.pathname);   // pola umum alamat produk (Shopee, Lazada, Bukalapak, Kyou, ...)
-  if (!title || !(structured || priceText && (buy || urlLooksProduct))) {   // bukan halaman produk (alasannya dikembalikan untuk tombol tes di pengaturan)
+  const urlLooksProduct = /-i\.\d+\.\d+|\/products?\/|\/product-|\/p\/|\/items?\//i.test(location.pathname);   // common product URL patterns (Shopee, Lazada, Bukalapak, Kyou, ...)
+  if (!title || !(structured || priceText && (buy || urlLooksProduct))) {   // not a product page (reason returned for the test button in settings)
     return { ok: false, why: !title ? "tidak ada judul halaman" : "terlihat bukan halaman produk (struktur produk: " + structured + ", teks harga: " + (priceText || price || "tidak ada") + ", tombol beli: " + buy + ")" };
   }
   try { if (image) image = new URL(image, location.href).href; } catch (e) { image = ""; }
@@ -94,7 +94,7 @@ async function toDataUrl(imgUrl) {
     const k = Math.min(1, 360 / Math.max(bmp.width, bmp.height));
     const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
     const cv = new OffscreenCanvas(w, h), ctx = cv.getContext("2d");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);   // latar putih: gambar transparan tidak jadi hitam
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);   // white background: transparent images do not turn black
     ctx.drawImage(bmp, 0, 0, w, h);
     const out = await cv.convertToBlob({ type: "image/jpeg", quality: 0.82 });
     const buf = new Uint8Array(await out.arrayBuffer());
@@ -110,7 +110,7 @@ async function post(path, token, body) {
 async function run(tabId) {
   const { token, enabled } = await api.storage.local.get({ token: "", enabled: true });
   if (!enabled || !token || Date.now() < downUntil) return;
-  // Firefox tidak memberi izin situs saat pemasangan: tanpa izin, membaca halaman dan menghubungi ZaxLet gagal (lihat options.html)
+  // Firefox does not grant site permissions on install: without permission, reading pages and contacting ZaxLet fail (see options.html)
   if (!(await api.permissions.contains({ origins: ["http://*/*", "https://*/*"] }))) return;
   const tab = await api.tabs.get(tabId).catch(() => null);
   if (!tab || !/^https?:/i.test(tab.url || "")) return;
@@ -123,12 +123,12 @@ async function run(tabId) {
   try {
     const r = await post("/product", token, info);
     if (r.ok) sentAt.set(info.url, Date.now());
-    else if (r.status === 401) downUntil = Date.now() + 5 * 60 * 1000;   // token salah: jangan membanjiri
-  } catch (e) { downUntil = Date.now() + 60 * 1000; }   // ZaxLet tidak jalan
+    else if (r.status === 401) downUntil = Date.now() + 5 * 60 * 1000;   // wrong token: do not flood
+  } catch (e) { downUntil = Date.now() + 60 * 1000; }   // ZaxLet not running
 }
 
-// Halaman yang sudah terbuka sebelum ekstensi dipasang, diberi izin, atau diberi token tidak akan memicu peristiwa navigasi:
-// periksa tab aktif sekarang supaya tidak perlu memuat ulang.
+// Pages already open before the extension was installed, granted permission, or given a token will not fire navigation events:
+// check active tabs now so they do not need to be reloaded.
 const SITES = { origins: ["http://*/*", "https://*/*"] };
 async function rescanActive() { for (const t of await api.tabs.query({ active: true })) schedule(t.id, t.url); }
 api.runtime.onStartup.addListener(() => rescanActive().catch(() => {}));
@@ -136,7 +136,7 @@ api.runtime.onInstalled.addListener(() => rescanActive().catch(() => {}));
 api.permissions.onAdded.addListener(() => { downUntil = 0; rescanActive().catch(() => {}); });
 api.storage.onChanged.addListener(() => { downUntil = 0; rescanActive().catch(() => {}); });
 
-// Tes dari halaman pengaturan: izin, token, sambungan ke ZaxLet, dan apa yang terbaca di tab web yang terakhir dibuka.
+// Test from the settings page: permission, token, connection to ZaxLet, and what was read from the most recently opened web tab.
 async function diagnose() {
   const { token } = await api.storage.local.get({ token: "" });
   const out = { token: !!token, perm: await api.permissions.contains(SITES) };

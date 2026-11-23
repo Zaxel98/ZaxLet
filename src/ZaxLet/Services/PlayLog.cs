@@ -6,15 +6,15 @@ using System.Linq;
 namespace ZaxLet;
 
 /// <summary>
-/// Mencatat lagu yang didengarkan (judul, artis, lama) ke playlog.tsv di folder data, hanya di PC ini. Dihitung dari peralihan putar/jeda dan ganti lagu,
-/// jadi tidak butuh pengatur waktu: dipanggil dari MediaService.Changed. Catatan lebih dari 90 hari dibuang saat pertama dipakai.
+/// Logs listened songs (title, artist, duration) to playlog.tsv in the data folder, on this PC only. Computed from play/pause transitions and track changes,
+/// so no timer is needed: called from MediaService.Changed. Entries older than 90 days are pruned on first use.
 /// </summary>
 public static class PlayLog
 {
     static string _title = "", _artist = "";
     static bool _playing;
-    static DateTime _since;   // awal segmen putar yang sedang berjalan
-    static double _acc;       // detik terkumpul dari segmen yang sudah selesai
+    static DateTime _since;   // start of the currently playing segment
+    static double _acc;       // accumulated seconds from completed segments
     static bool _trimmed;
     static string PathOf => Path.Combine(Settings.Dir, "playlog.tsv");
 
@@ -46,7 +46,7 @@ public static class PlayLog
         catch (Exception ex) { App.Log(ex); }
     }
 
-    /// <summary>Lagu yang sedang diputar ikut dicatat (dipanggil sebelum membuka rekap dan saat aplikasi ditutup).</summary>
+    /// <summary>Flush the currently playing song to the log (called before opening recap and on app exit).</summary>
     public static void Flush()
     {
         if (!Settings.Cur.PlayLogOn) return;
@@ -57,7 +57,7 @@ public static class PlayLog
 
     public static List<PlayEntry> Load()
     {
-        try { return File.Exists(PathOf) ? File.ReadLines(PathOf).Select(PlayStats.FromLine).Where(e => e != null && !MediaFilter.IsAd(null, e.Title, e.Artist)).ToList() : new(); }   // iklan dari catatan lama tidak ikut rekap
+        try { return File.Exists(PathOf) ? File.ReadLines(PathOf).Select(PlayStats.FromLine).Where(e => e != null && !MediaFilter.IsAd(null, e.Title, e.Artist)).ToList() : new(); }   // ads from older logs are excluded from recap
         catch { return new(); }
     }
 

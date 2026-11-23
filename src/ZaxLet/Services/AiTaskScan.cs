@@ -9,11 +9,11 @@ namespace ZaxLet;
 public sealed record WorkerRow(WorkerInfo Info, string State);
 
 /// <summary>
-/// Pemindai file lokal untuk status worker Hydrogen (~/.config/ponytail/workers/*.json).
+/// Local file scanner for Hydrogen worker status (~/.config/ponytail/workers/*.json).
 /// </summary>
 public static class AiTaskScan
 {
-    /// <summary>Memindai folder worker JSON, menyaring yang aktif atau selesai <= 1 jam, dan mengurutkannya.</summary>
+    /// <summary>Scans the worker JSON folder, filters for active or finished <= 1 hour ago, and sorts them.</summary>
     public static List<WorkerRow> Workers(string dir, DateTimeOffset now, Func<int, bool> pidAlive)
     {
         var list = new List<WorkerRow>();
@@ -34,7 +34,7 @@ public static class AiTaskScan
                     || (w.Updated != DateTimeOffset.MinValue && now - w.Updated <= TimeSpan.FromHours(1));
                 if (keep) list.Add(new WorkerRow(w, eff));
             }
-            catch { /* file sedang ditulis atau terkunci dilewati */ }
+            catch { /* skip files currently being written or locked */ }
         }
 
         list.Sort((a, b) =>
@@ -52,7 +52,7 @@ public static class AiTaskScan
         _ => 2,
     };
 
-    /// <summary>Memilih maksimal <paramref name="max"/> baris halaman 1 (BERJALAN tahap tertinggi lalu Started terawal dulu) serta sisa BERJALAN.</summary>
+    /// <summary>Selects up to <paramref name="max"/> page-1 rows (BERJALAN highest stage then earliest Started first) plus remaining BERJALAN count.</summary>
     public static (List<WorkerRow> Shown, int MoreRunning) PageOne(List<WorkerRow> rows, int max)
     {
         if (rows == null || rows.Count == 0) return (new List<WorkerRow>(), 0);
@@ -69,7 +69,7 @@ public static class AiTaskScan
         return (shown, moreRunning);
     }
 
-    /// <summary>Mengelompokkan worker per tugas (GroupKey, tanpa membedakan huruf besar/kecil), kelompok terbaru di atas; di tiap kelompok BERJALAN dulu lalu terbaru dulu.</summary>
+    /// <summary>Groups workers by task (GroupKey, case-insensitive), newest group first; within each group BERJALAN first then newest first.</summary>
     public static List<(string Title, List<WorkerRow> Rows)> Groups(List<WorkerRow> rows)
     {
         var result = new List<(string Title, List<WorkerRow> Rows)>();
@@ -90,7 +90,7 @@ public static class AiTaskScan
             .ToList();
     }
 
-    /// <summary>Memeriksa apakah proses dengan PID tersebut masih berjalan.</summary>
+    /// <summary>Checks whether the process with the given PID is still running.</summary>
     public static bool PidAlive(int pid)
     {
         if (pid <= 0) return false;

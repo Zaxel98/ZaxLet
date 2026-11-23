@@ -15,11 +15,11 @@ public sealed class WishItem
     public string Title { get; set; }
     public string Price { get; set; } = "";
     public string Source { get; set; } = "";
-    public string Image { get; set; }   // nama file di folder wish, kosong bila tidak ada
+    public string Image { get; set; }   // filename in the wish folder, empty if none
     public DateTime Added { get; set; }
 }
 
-/// <summary>Daftar produk incaran. Item langsung masuk dengan sumber dan judul dari link; judul asli, gambar, dan harga menyusul bila halamannya bisa dibaca.</summary>
+/// <summary>Target product list. Items are added immediately with source and title from the link; real title, image, and price follow if the page can be read.</summary>
 public static class Wishlist
 {
     public static event Action Changed;
@@ -29,8 +29,8 @@ public static class Wishlist
     static readonly HttpClient Http = MakeHttp();
     static HttpClient MakeHttp()
     {
-        // identitas jujur: ZaxLet hanya membaca pratinjau (meta tag) satu link yang ditempel pemilik. Toko yang menolak (403, tantangan bot,
-        // halaman JavaScript) tidak dipaksa; judul dari link tetap tampil dan harga serta gambar diisi manual.
+        // honest identity: ZaxLet only reads preview (meta tags) of a single link pasted by the owner. Stores that reject it (403, bot challenge,
+        // JavaScript-only pages) are not forced; the link-derived title stays and price/image are filled manually.
         var h = new HttpClient(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(8) };
         h.DefaultRequestHeaders.UserAgent.ParseAdd("ZaxLet/1.1 (link preview for a personal wishlist; +https://github.com/Zaxel98/ZaxLet)");
         h.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9,image/*;q=0.8,*/*;q=0.5");
@@ -38,19 +38,19 @@ public static class Wishlist
         return h;
     }
 
-    /// <summary>Gambar manual dari clipboard (mis. salin gambar produk di Shopee, yang menolak dibaca otomatis). False bila clipboard tidak berisi gambar.</summary>
+    /// <summary>Manual image from clipboard (e.g. copy product image on Shopee, which blocks automated reading). False if clipboard has no image.</summary>
     public static bool SetImageFromClipboard(WishItem it)
     {
         try
         {
             System.Windows.Media.Imaging.BitmapSource bmp = null;
-            // Chrome/Edge menaruh format "PNG" (alfa benar); aplikasi lain hanya DIB, yang sering beralfa 0 dan tampil transparan
+            // Chrome/Edge put "PNG" format (proper alpha); other apps only put DIB, which often has alpha 0 and renders transparent
             if (System.Windows.Clipboard.GetDataObject() is { } d && d.GetDataPresent("PNG") && d.GetData("PNG") is MemoryStream png)
                 bmp = new System.Windows.Media.Imaging.PngBitmapDecoder(png, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad).Frames[0];
             if (bmp == null)
             {
                 if (!System.Windows.Clipboard.ContainsImage() || System.Windows.Clipboard.GetImage() is not { } dib) return false;
-                bmp = new System.Windows.Media.Imaging.FormatConvertedBitmap(dib, System.Windows.Media.PixelFormats.Bgr32, null, 0);   // buang alfa
+                bmp = new System.Windows.Media.Imaging.FormatConvertedBitmap(dib, System.Windows.Media.PixelFormats.Bgr32, null, 0);   // drop alpha
             }
             Directory.CreateDirectory(Dir);
             var name = it.Id + ".png";
@@ -65,26 +65,26 @@ public static class Wishlist
 
     public static bool IsWeb(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
 
-    /// <summary>False bila teksnya bukan link http(s). Pengambilan info halaman berjalan di latar dan memperbarui item sendiri.</summary>
+    /// <summary>False if text is not an http(s) link. Page info fetching runs in the background and updates the item itself.</summary>
     public static bool Add(string url)
     {
         url = (url ?? "").Trim();
         if (!IsWeb(url)) return false;
         var key = WishBridgeCore.Key(url);
         var dup = Items.FirstOrDefault(i => i.Url == url || key != null && WishBridgeCore.Key(i.Url) == key);
-        if (dup != null)   // tempel link yang sama lagi = isi info yang masih kosong (dari ekstensi, atau dibaca langsung)
+        if (dup != null)   // pasting the same link again = fill in still-empty info (from extension, or fetched directly)
         {
             if (string.IsNullOrEmpty(dup.Image) || dup.Price == "") { if (WishBridge.TryGet(url) is { } known) { Fill(dup, known); Save(); } else _ = Fetch(dup); }
             return true;
         }
         var it = new WishItem { Id = Guid.NewGuid().ToString("N"), Url = url, Source = WishParse.Source(url), Title = WishParse.SlugTitle(url), Added = DateTime.Now };
         Items.Insert(0, it);
-        if (WishBridge.TryGet(url) is { } page) { Fill(it, page); Save(); }   // ekstensi sudah membaca halamannya di browser pemilik: lengkap tanpa jaringan
+        if (WishBridge.TryGet(url) is { } page) { Fill(it, page); Save(); }   // extension already read the page in owner's browser: complete without network
         else { Save(); _ = Fetch(it); }
         return true;
     }
 
-    /// <summary>Isi item dari info halaman yang dikirim ekstensi. Yang kosong di kiriman tidak menimpa yang sudah ada.</summary>
+    /// <summary>Fill item from page info sent by the extension. Empty fields in the payload do not overwrite existing ones.</summary>
     static void Fill(WishItem it, WishBridgeCore.Page p)
     {
         if (p.Title != "") it.Title = p.Title;
@@ -103,7 +103,7 @@ public static class Wishlist
         }
     }
 
-    /// <summary>Ekstensi baru mengirim halaman (UI thread): item yang sudah ada untuk link itu dan masih kosong dilengkapi; link baru tidak ditambahkan sendiri.</summary>
+    /// <summary>Extension newly sent a page (UI thread): existing item for that link with missing fields is completed; new links are not added automatically.</summary>
     public static void OnPageSeen(WishBridgeCore.Page p)
     {
         var key = WishBridgeCore.Key(p.Url);
@@ -142,11 +142,11 @@ public static class Wishlist
                 it.Image = it.Id;
             }
         }
-        catch (Exception ex) { App.Log(ex); }   // gagal baca (mis. Shopee) bukan kesalahan: item tetap ada dan bisa diisi manual
+        catch (Exception ex) { App.Log(ex); }   // read failure (e.g. Shopee) is not an error: item remains and can be filled manually
         if (Items.Contains(it)) Save();
     }
 
-    /// <summary>Uji pengambilan satu link tanpa menyentuh daftar (flag --wish-probe=URL): laporan status, meta yang ditemukan, dan unduhan gambar.</summary>
+    /// <summary>Test fetching a single link without touching the list (flag --wish-probe=URL): reports status, found meta, and image download.</summary>
     public static async Task<string> Probe(string url)
     {
         var sb = new System.Text.StringBuilder();
@@ -165,7 +165,7 @@ public static class Wishlist
         return sb.ToString();
     }
 
-    /// <summary>Baca respons paling banyak <paramref name="max"/> byte; sisanya dibuang.</summary>
+    /// <summary>Read at most <paramref name="max"/> bytes of the response; the rest is discarded.</summary>
     static async Task<byte[]> Read(string url, int max, CancellationToken ct)
     {
         using var rsp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);

@@ -2,10 +2,10 @@ using System;
 
 namespace ZaxLet;
 
-/// <summary>FFT kecil untuk analisis vokal (tanpa pustaka).</summary>
+/// <summary>Small FFT for vocal analysis (no external library).</summary>
 public static class Dsp
 {
-    /// <summary>FFT radix-2 di tempat; panjang harus pangkat dua.</summary>
+    /// <summary>In-place radix-2 FFT; length must be a power of two.</summary>
     public static void Fft(float[] re, float[] im)
     {
         int n = re.Length;
@@ -35,7 +35,7 @@ public static class Dsp
         }
     }
 
-    /// <summary>Daya tiap bin (0..n/2-1) dari satu bingkai yang di-window.</summary>
+    /// <summary>Power of each bin (0..n/2-1) from a single windowed frame.</summary>
     public static double[] Power(float[] frame, float[] window)
     {
         int n = frame.Length;
@@ -54,7 +54,7 @@ public static class Dsp
         return w;
     }
 
-    /// <summary>Daya spektrum satu bingkai (sudah di-window) di pita [loHz, hiHz] dan di seluruh pita [allLo, allHi].</summary>
+    /// <summary>Spectral power of a single (already windowed) frame in band [loHz, hiHz] and across [allLo, allHi].</summary>
     public static (double Band, double All) BandPower(float[] frame, float[] window, int sampleRate, double loHz, double hiHz, double allLo, double allHi)
     {
         int n = frame.Length;

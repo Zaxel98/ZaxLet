@@ -22,8 +22,8 @@ import java.nio.ByteBuffer;
 import org.json.JSONObject;
 
 /**
- * Menangkap layar lewat MediaProjection yang sudah ada, mengompres JPEG adaptif (maks 12 fps, hanya bingkai terbaru),
- * mengirim ke PC (/scr/ws), dan menerima perintah kontrol dari PC untuk diteruskan ke ZaxAccess.
+ * Captures the screen via an existing MediaProjection, compresses adaptive JPEG (max 12 fps, latest frame only),
+ * sends to PC (/scr/ws), and receives control commands from PC to forward to ZaxAccess.
  */
 final class ScreenStream {
     private static final long MIN_FRAME_MS = 83;   // <= 12 fps
@@ -37,9 +37,9 @@ final class ScreenStream {
     private final Runnable onStopped;
 
     private volatile boolean stopping;
-    private volatile int level = 2;   // mulai ringan: bingkai 36-40 KB (tingkat 0) memicu macet 5 dtk di hotspot laptop, 12-17 KB hanya 1-2 dtk
+    private volatile int level = 2;   // start light: 36-40 KB frames (level 0) cause 5s stalls on laptop hotspot, 12-17 KB only 1-2s
     private int curW, curH, curRot = -1;
-    private volatile int capN;   // bingkai yang dikompres, untuk log diagnostik
+    private volatile int capN;   // compressed frames, for diagnostics log
     private int sentN; private long sentBytes, maxSendMs, lastLogMs;
     private String infoJson;
     private long lastCaptureMs;
@@ -121,7 +121,7 @@ final class ScreenStream {
             if (vdisplay == null) {
                 vdisplay = mp.createVirtualDisplay("zaxlet-scr", w, h, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, nr.getSurface(), null, capHandler);
             } else {
-                // Android 14+: satu MediaProjection hanya boleh membuat satu VirtualDisplay, jadi ukuran diubah di tempat
+                // Android 14+: one MediaProjection may create only one VirtualDisplay, so resize in place
                 vdisplay.resize(w, h, dpi);
                 vdisplay.setSurface(nr.getSurface());
             }
@@ -130,7 +130,7 @@ final class ScreenStream {
             if (old != null) try { old.close(); } catch (Exception ignored) { }
             if (reusableBmp != null) { reusableBmp.recycle(); reusableBmp = null; }
         } catch (Throwable e) {
-            // jangan biarkan galat di thread tangkap mematikan aplikasi; video berhenti, audio lanjut
+            // don't let errors on the capture thread crash the app; stop video, keep audio running
             new Thread(this::stop, "zaxlet-scr-stop").start();
             return;
         }
@@ -206,7 +206,7 @@ final class ScreenStream {
                 w = new Ws("/scr/ws");
                 if (stopping) { w.close(); break; }
                 w.sock.setTcpNoDelay(true);
-                w.sock.setSendBufferSize(32768);   // kecil: 256 KB di kernel = 20 bingkai usang yang tetap terkirim setelah macet (layar tampak ngebut/tertinggal)
+                w.sock.setSendBufferSize(32768);   // small: 256 KB in kernel = 20 stale frames still sent after a stall (screen looks sped-up/lagging)
                 backoff = 1000;
                 ws = w;
 
@@ -228,7 +228,7 @@ final class ScreenStream {
                     synchronized (frameLock) {
                         long waitFrom = SystemClock.elapsedRealtime();
                         while (!stopping && ws == w && latestFrame == null && !infoDirty) {
-                            // layar diam = tak ada bingkai baru; PC menutup soket yang diam >75 dtk, jadi kirim detak tiap 15 dtk
+                            // static screen = no new frames; PC closes idle sockets >75s, so send heartbeat every 15s
                             if (SystemClock.elapsedRealtime() - waitFrom >= 15000) { keepAlive = true; break; }
                             try { frameLock.wait(15000); } catch (InterruptedException e) { return; }
                         }
@@ -244,7 +244,7 @@ final class ScreenStream {
                     if (pendingInfo != null) w.sendText(pendingInfo);
                     if (frame == null) continue;
                     if (AudioService.audioQueued >= 5) {
-                        // Antrean audio penuh: tunda video (hanya simpan bingkai terbaru) agar audio tidak kalah di Wi-Fi
+                        // Audio queue full: defer video (keep only latest frame) so audio isn't starved over Wi-Fi
                         synchronized (wake) {
                             if (!stopping && ws == w) {
                                 try { wake.wait(25); } catch (InterruptedException e) { return; }
@@ -326,12 +326,12 @@ final class ScreenStream {
                     }
                 } catch (Exception ignored) { }
             }
-            // PC menutup soket video dengan bersih: hentikan video, biarkan audio tetap berjalan
+            // PC closed video socket cleanly: stop video, keep audio running
             if (!stopping && ws == w) {
                 new Thread(this::stop, "zaxlet-scr-stop").start();
             }
         } catch (Throwable ignored) {
-            // Putus jaringan: sendLoop akan menyambung ulang jika !stopping
+            // Network drop: sendLoop will reconnect if !stopping
             synchronized (frameLock) {
                 if (ws == w) { ws = null; frameLock.notifyAll(); }
             }

@@ -8,7 +8,7 @@ namespace ZaxLet;
 public static partial class SongId
 {
 
-    /// <summary>Tangkap cuplikan lalu kenali. <paramref name="position"/> dibaca saat cuplikan selesai (posisi putar pemutar).</summary>
+    /// <summary>Capture a clip then recognize it. <paramref name="position"/> is read when the clip finishes (player playback position).</summary>
     public static async Task<(Hit Hit, TimeSpan EndPos)> RecognizeAsync(string token, Func<TimeSpan> position)
     {
         var pcm = new List<float>();
@@ -33,7 +33,7 @@ public static partial class SongId
         lock (lk) snap = pcm.ToArray();
         double peak = 0;
         foreach (var s in snap) peak = Math.Max(peak, Math.Abs(s));
-        if (rate == 0 || snap.Length < rate * Seconds / 2 || peak < 0.003) return (null, end);   // hening: tidak ada yang bisa dikenali
+        if (rate == 0 || snap.Length < rate * Seconds / 2 || peak < 0.003) return (null, end);   // silent: nothing to recognize
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         var wav = new ByteArrayContent(ToWav16k(snap, rate));

@@ -20,13 +20,13 @@ public sealed record WorkerInfo(
     string Group = "");
 
 /// <summary>
-/// Parser murni untuk status worker Hydrogen (JSON di ~/.config/ponytail/workers). Tanpa WPF atau Settings.
+/// Pure parser for Hydrogen worker status (JSON in ~/.config/ponytail/workers). No WPF or Settings.
 /// </summary>
 public static class AiTaskParse
 {
     static readonly Regex TokenRx = new(@"^Durasi: \d+ s; token: (\d+)", RegexOptions.Multiline | RegexOptions.Compiled);
 
-    /// <summary>Mem-parse JSON status worker (tahan BOM UTF-8 dan file terpotong).</summary>
+    /// <summary>Parses worker status JSON (tolerant of UTF-8 BOM and truncated files).</summary>
     public static WorkerInfo ParseWorker(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
@@ -65,7 +65,7 @@ public static class AiTaskParse
         catch { return null; }
     }
 
-    /// <summary>Menentukan status efektif worker: BERJALAN menjadi MATI bila PID mati atau diam melebihi TimeoutMin + 10 menit.</summary>
+    /// <summary>Determines effective worker status: BERJALAN becomes MATI if PID is dead or idle past TimeoutMin + 10 minutes.</summary>
     public static string Effective(WorkerInfo w, DateTimeOffset now, Func<int, bool> pidAlive)
     {
         if (w == null) return "MATI";
@@ -75,7 +75,7 @@ public static class AiTaskParse
         return "BERJALAN";
     }
 
-    /// <summary>Memetakan teks fase worker ke tahap 1..4, atau 0 bila tidak dikenal.</summary>
+    /// <summary>Maps worker phase text to stage 1..4, or 0 if unknown.</summary>
     public static int Stage(string phase)
     {
         if (string.IsNullOrEmpty(phase)) return 0;
@@ -86,7 +86,7 @@ public static class AiTaskParse
         return 0;
     }
 
-    /// <summary>Mengambil vonis reviewer ("OK" atau "PERIKSA") dari baris detail, atau null bila tidak ada.</summary>
+    /// <summary>Extracts reviewer verdict ("OK" or "PERIKSA") from detail lines, or null if absent.</summary>
     public static string Verdict(string[] detail)
     {
         if (detail == null) return null;
@@ -106,7 +106,7 @@ public static class AiTaskParse
         return verdict;
     }
 
-    /// <summary>Mengambil jumlah token worker utama dari baris detail ("Durasi: ...; token: N"), 0 bila tidak ada.</summary>
+    /// <summary>Extracts main worker token count from detail lines ("Durasi: ...; token: N"), 0 if absent.</summary>
     public static long Tokens(string[] detail)
     {
         if (detail == null || detail.Length == 0) return 0;
@@ -114,7 +114,7 @@ public static class AiTaskParse
         return m.Success && long.TryParse(m.Groups[1].Value, out long tok) ? tok : 0;
     }
 
-    /// <summary>Mengelompokkan jenis worker berdasarkan awalan nama ("audit", "verify", atau "other").</summary>
+    /// <summary>Categorizes worker kind by name prefix ("audit", "verify", or "other").</summary>
     public static string Kind(string name)
     {
         if (string.IsNullOrEmpty(name)) return "other";
@@ -124,7 +124,7 @@ public static class AiTaskParse
         return "other";
     }
 
-    /// <summary>Kunci pengelompokan tugas: Group bila ada, selain itu Repo, selain itu Name.</summary>
+    /// <summary>Task grouping key: Group if present, otherwise Repo, otherwise Name.</summary>
     public static string GroupKey(WorkerInfo w)
     {
         if (w == null) return "";
@@ -134,7 +134,7 @@ public static class AiTaskParse
         return w.Name ?? "";
     }
 
-    /// <summary>Label tampilan untuk jenis worker.</summary>
+    /// <summary>Display label for the worker kind.</summary>
     public static string KindTitle(string kind) => kind switch
     {
         "audit" => "Audit",
@@ -142,7 +142,7 @@ public static class AiTaskParse
         _ => "Lainnya",
     };
 
-    /// <summary>Keterangan ringkas worker dari Title atau nama yang dirapikan.</summary>
+    /// <summary>Short worker description from Title or cleaned-up name.</summary>
     public static string Describe(WorkerInfo w)
     {
         if (w == null) return "";

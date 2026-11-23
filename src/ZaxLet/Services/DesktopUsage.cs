@@ -7,15 +7,15 @@ using System.Text.Json;
 namespace ZaxLet;
 
 /// <summary>
-/// Kuota paket Claude yang dicatat aplikasi Claude Desktop sendiri (plan-usage-history.json, tiap ±15 menit): persentase jendela 5 jam ("fh")
-/// dan mingguan ("sd"). Berkas biasa tanpa token, jadi ZaxLet cukup membacanya bila Claude Code di terminal tidak punya login sendiri.
-/// Tidak ada waktu reset di dalamnya, dan umur cuplikan terakhir ditampilkan supaya angka basi tidak tampak segar.
+/// Claude plan quota recorded by the Claude Desktop app itself (plan-usage-history.json, every ±15 minutes): 5-hour window ("fh")
+/// and weekly ("sd") percentages. Plain file without a token, so ZaxLet can read it when Claude Code in the terminal has no login of its own.
+/// No reset time inside, and the age of the last snapshot is shown so stale numbers do not look fresh.
 /// </summary>
 public static class DesktopUsage
 {
     public sealed record Sample(long T, double FiveHour, double Weekly);
 
-    /// <summary>Cuplikan terbaru yang berisi angka, atau null. Tahan terhadap berkas kosong, format lain, dan beberapa organisasi (terbaru menang).</summary>
+    /// <summary>Latest snapshot containing numbers, or null. Resilient to empty files, other formats, and multiple organizations (newest wins).</summary>
     public static Sample ParseLatest(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -33,7 +33,7 @@ public static class DesktopUsage
 
     static double Num(JsonElement u, string name) => u.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : -1;
 
-    /// <summary>Berkas terbaru dari semua jenis pemasangan: versi Store (Claude-Data\…), pemasang biasa (%APPDATA%\Claude), dan folder paket.</summary>
+    /// <summary>Newest file across all install types: Store version (Claude-Data\…), regular installer (%APPDATA%\Claude), and package folder.</summary>
     public static string FindFile()
     {
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -46,7 +46,7 @@ public static class DesktopUsage
 
     public static string ReadAll(string path)
     {
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);   // aplikasi Claude bisa sedang menulisnya
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);   // Claude app may be writing to it
         using var rd = new StreamReader(fs);
         return rd.ReadToEnd();
     }

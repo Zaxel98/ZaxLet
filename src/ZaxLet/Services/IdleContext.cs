@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace ZaxLet;
 
-/// <summary>Baris tambahan di pill idle menurut waktu: pagi cuaca + sholat berikutnya, siang tugas hari ini, sore sholat + sisa minum, malam jadwal besok. Null bila tidak ada isinya.</summary>
+/// <summary>Extra line in the idle pill by time of day: morning weather + next prayer, noon today's tasks, afternoon prayer + remaining water, night tomorrow's schedule. Null if empty.</summary>
 public static class IdleContext
 {
     public static string Compose(DateTime now, string weather, (string Name, DateTime At)? prayer, int waterLeftMl, int tasksToday, string tomorrow)

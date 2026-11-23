@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace ZaxLet;
 
-/// <summary>Transformasi teks murni untuk item riwayat clipboard (tanpa ketergantungan UI).</summary>
+/// <summary>Pure text transformations for clipboard history items (no UI dependencies).</summary>
 public static class TextTransforms
 {
     static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -19,7 +19,7 @@ public static class TextTransforms
     public static string ToTitleCase(string text) =>
         CultureInfo.CurrentCulture.TextInfo.ToTitleCase((text ?? "").ToLower(CultureInfo.CurrentCulture));
 
-    /// <summary>Pangkas tepi, padatkan spasi/tab berulang menjadi satu spasi, dan batasi baris baru 3+ menjadi 2.</summary>
+    /// <summary>Trim edges, collapse repeated spaces/tabs to a single space, and cap 3+ newlines to 2.</summary>
     public static string CleanSpaces(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -29,7 +29,7 @@ public static class TextTransforms
         return s.Trim();
     }
 
-    /// <summary>Ganti semua baris baru menjadi satu spasi.</summary>
+    /// <summary>Replace all newlines with a single space.</summary>
     public static string SingleLine(string text) =>
         Regex.Replace((text ?? "").Trim(), @"[\r\n]+", " ");
 
@@ -39,7 +39,7 @@ public static class TextTransforms
         catch { return text ?? ""; }
     }
 
-    /// <summary>Mengembalikan true hanya bila teks adalah Base64 valid yang menghasilkan teks UTF-8 valid.</summary>
+    /// <summary>Returns true only if the text is valid Base64 that decodes to valid UTF-8 text.</summary>
     public static bool TryDecodeBase64(string text, out string decoded)
     {
         decoded = null;

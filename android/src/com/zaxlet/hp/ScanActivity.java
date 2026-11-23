@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Pindai QR pasangan dari ZaxLet PC: begitu terbaca, langsung dipasangkan dan layar ini menutup sendiri (tanpa tautan atau clipboard). */
+/** Scan pairing QR from ZaxLet PC: once read, pairs immediately and closes this screen automatically (no links or clipboard). */
 public class ScanActivity extends Activity implements TextureView.SurfaceTextureListener {
     private TextureView tv;
     private Camera cam;
@@ -65,16 +65,16 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
     private void open(SurfaceTexture st) {
         if (cam != null) return;
         try {
-            cam = Camera.open();   // kamera belakang; gagal bila kamera sedang dipakai kirim video ke PC
+            cam = Camera.open();   // rear camera; fails if camera is currently in use streaming video to PC
             Camera.Parameters p = cam.getParameters();
-            Camera.Size best = null;   // pratinjau 1280x720 atau terdekat: cukup tajam untuk QR, ringan untuk diurai
+            Camera.Size best = null;   // 1280x720 preview or closest: sharp enough for QR, light to decode
             for (Camera.Size s : p.getSupportedPreviewSizes())
                 if (best == null || Math.abs(s.width * s.height - 1280 * 720) < Math.abs(best.width * best.height - 1280 * 720)) best = s;
             p.setPreviewSize(best.width, best.height);
             if (p.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) p.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             cam.setParameters(p);
             cam.setDisplayOrientation(90);
-            // pratinjau potret: lebar tampilan = sisi pendek sensor
+            // portrait preview: display width = sensor short side
             int vw = getResources().getDisplayMetrics().widthPixels;
             tv.setLayoutParams(new FrameLayout.LayoutParams(vw, (int) ((long) vw * best.width / best.height), Gravity.CENTER));
             cam.setPreviewTexture(st);
@@ -90,7 +90,7 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
     private void decode(final byte[] data, final int w, final int h) {
         if (busy || done) return;
         busy = true;
-        final byte[] copy = data.clone();   // buffer kamera dipakai ulang
+        final byte[] copy = data.clone();   // camera buffer is reused
         worker.execute(() -> {
             try {
                 Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
@@ -100,7 +100,7 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
                     done = true;
                     runOnUiThread(() -> found(text));
                 }
-            } catch (Exception e) { /* tidak ada QR di bingkai ini */ }
+            } catch (Exception e) { /* no QR in this frame */ }
             busy = false;
         });
     }

@@ -16,12 +16,12 @@ using Windows.Media.Control;
 namespace ZaxLet;
 
 
-/// <summary>Now-playing lewat SMTC (semua pemutar yang tampil di kartu media Windows) + lirik tersinkron dari LRCLIB.</summary>
+/// <summary>Now-playing via SMTC (all players shown in the Windows media card) + synced lyrics from LRCLIB.</summary>
 public sealed class MediaService
 {
     static readonly int[] SleepPresets = { 15, 30, 45, 60 };
     const int SleepFadeSec = 20;
-    const int SleepFadeSteps = 40;   // 500 ms per langkah selama ~20 detik
+    const int SleepFadeSteps = 40;   // 500 ms per step for ~20 seconds
 
     public enum SleepModeKind { Off, Timed, EndOfTrack, Fading }
     public SleepModeKind SleepMode { get; private set; } = SleepModeKind.Off;
@@ -55,7 +55,7 @@ public sealed class MediaService
     public BitmapSource Cover;
     public Color? CoverColor;
     public TimeSpan RawDuration;
-    /// <summary>Durasi lagu yang sedang diputar; pada video kompilasi bersegmen = panjang segmen, bukan seluruh video.</summary>
+    /// <summary>Duration of the currently playing song; on segmented compilation videos = segment length, not the whole video.</summary>
     public TimeSpan Duration => _chap != null && _chapIdx >= 0 ? _chapEnd == TimeSpan.MaxValue ? TimeSpan.Zero : _chapEnd - _chapAt : RawDuration;
     public List<LyricLine> Lyrics = new();
     public string LyricState = "";   // "", "loading", "none", "ok"
@@ -67,10 +67,10 @@ public sealed class MediaService
     readonly object _posLk = new();
     string _key = "", _rawTitle = "", _rawArtist = "", _baseKey = "", _vidTitle = "", _vidArtist = "";
     int _coverTries, _propTries;
-    List<YtChapters.Chapter> _chap;          // segmen video kompilasi (null = video biasa)
+    List<YtChapters.Chapter> _chap;          // compilation video segments (null = regular video)
     int _chapIdx = -1;
     TimeSpan _chapAt, _chapEnd;
-    bool _chapOpen;                          // lagu hasil pengenalan: panjangnya tidak diketahui
+    bool _chapOpen;                          // recognized song: length unknown
     DateTime _seekAt = DateTime.MinValue;
     static bool _packHinted;
 
@@ -84,8 +84,8 @@ public sealed class MediaService
 
     static void Ui(Action a) => Application.Current?.Dispatcher.BeginInvoke(a);
 
-    // geseran waktu lirik per lagu (kunci "artis|judul"); lagu tanpa geseran sendiri memakai nilai bawaan di Pengaturan.
-    // Referensi Title/Artist dibandingkan supaya pencarian kamus tidak jalan di tiap bingkai karaoke.
+    // per-song lyric time offset (key "artist|title"); songs without their own offset use the default in Settings.
+    // Title/Artist references are compared so dictionary lookup does not run on every karaoke frame.
     string _offT, _offA; int _offV;
     readonly object _offLk = new();
     string OffKey => $"{Artist}|{Title}".ToLowerInvariant();
@@ -114,7 +114,7 @@ public sealed class MediaService
         }
     }
 
-    // lirik yang ditandai salah oleh pengguna (hash isi): tidak dipakai lagi, jadi sumber berikutnya yang menang
+    // lyrics marked wrong by the user (content hash): no longer used, so the next source wins
     static readonly HashSet<string> Rejected = LoadRejected();
     static string RejectedFile => Path.Combine(Settings.Dir, "lyrics", "rejected.txt");
     static HashSet<string> LoadRejected()
@@ -126,7 +126,7 @@ public sealed class MediaService
     static string CachePath(string artist, string title) => Path.Combine(Settings.Dir, "lyrics",
         Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes($"{artist}|{title}".ToLowerInvariant()))) + ".lrc");
 
-    /// <summary>"Liriknya salah": buang lirik yang tampil dari cache, ingat supaya tidak dipakai lagi, lalu cari versi dari sumber lain.</summary>
+    /// <summary>"Wrong lyrics": drop the displayed lyrics from cache, remember not to use them again, then search for a version from another source.</summary>
     public void RejectLyrics()
     {
         if (!HasSession || Lyrics.Count == 0 || string.IsNullOrWhiteSpace(Title)) return;
@@ -148,7 +148,7 @@ public sealed class MediaService
         _ = LoadLyrics(_key, Title, Artist, Album);
     }
 
-    /// <summary>"Cari ulang" saat lirik tidak ada atau gagal dimuat: lupakan hasil negatif sementara dan tanya sumber lagi.</summary>
+    /// <summary>"Search again" when lyrics are missing or failed to load: forget temporary negative result and query sources again.</summary>
     public void RetryLyrics()
     {
         if (!HasSession || string.IsNullOrWhiteSpace(Title) || LyricState is "loading" or "retry" or "listen") return;
@@ -158,7 +158,7 @@ public sealed class MediaService
         _ = LoadLyrics(_key, Title, Artist, Album);
     }
 
-    /// <summary>Dipanggil saat lirik dinyalakan lagi di tengah lagu: cari lirik lagu yang sedang diputar.</summary>
+    /// <summary>Called when lyrics are turned back on mid-song: search lyrics for the currently playing track.</summary>
     public void EnsureLyrics()
     {
         if (!Settings.Cur.MusicLyrics || !HasSession || Lyrics.Count > 0 || LyricState is "loading" or "retry" or "listen" || string.IsNullOrWhiteSpace(Title)) return;
@@ -169,22 +169,22 @@ public sealed class MediaService
     public async Task StartAsync()
     {
         Settings.Applied += () => Ui(EnsureLyrics);
-        Settings.Applied += () => { if (Settings.Cur.MediaIgnore != _ignoreSig) Ui(async () => { _ignoreSig = Settings.Cur.MediaIgnore; await RefreshAll(); }); };   // daftar abaikan berubah: pilih ulang sesi
+        Settings.Applied += () => { if (Settings.Cur.MediaIgnore != _ignoreSig) Ui(async () => { _ignoreSig = Settings.Cur.MediaIgnore; await RefreshAll(); }); };   // ignore list changed: re-pick session
         try
         {
             if (Application.Current != null) Application.Current.Exit += (_, _) => RestoreSleepVolume();
             _ignoreSig = Settings.Cur.MediaIgnore;
-            _uiaT = new System.Threading.Timer(_ => PollYouTube(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);   // jalan hanya saat ada sesi (SyncPoll)
+            _uiaT = new System.Threading.Timer(_ => PollYouTube(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);   // runs only while a session exists (SyncPoll)
             Settings.Applied += () => Ui(SyncPoll);
             _mgr = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
             _mgr.CurrentSessionChanged += (_, _) => Ui(async () => await RefreshAll());
-            _mgr.SessionsChanged += (_, _) => Ui(async () => await RefreshAll());   // sesi yang diabaikan sedang aktif lalu sesi lain mulai: pilih ulang
+            _mgr.SessionsChanged += (_, _) => Ui(async () => await RefreshAll());   // ignored session was active and another session started: re-pick
             await RefreshAll();
         }
         catch (Exception ex) { App.Log(ex); }
     }
 
-    /// <summary>Sesi media yang dipakai island: yang sedang aktif, kecuali aplikasinya ada di daftar abaikan (lalu sesi lain yang tidak diabaikan, bila ada).</summary>
+    /// <summary>Media session used by the island: the active one, unless its app is in the ignore list (then another non-ignored session, if any).</summary>
     GlobalSystemMediaTransportControlsSession Pick()
     {
         var cur = _mgr?.GetCurrentSession();
@@ -246,13 +246,13 @@ public sealed class MediaService
 
     async Task RefreshProps()
     {
-        var s = _s;   // _s bisa berganti selama await di bawah
+        var s = _s;   // _s may change during the await below
         if (s == null) return;
         GlobalSystemMediaTransportControlsSessionMediaProperties p;
         try { p = await s.TryGetMediaPropertiesAsync(); _propTries = 0; }
         catch (Exception ex)
         {
-            // sesi baru kadang belum siap (0x80070015): coba lagi sebentar lagi
+            // new session is sometimes not ready yet (0x80070015): retry shortly
             if (_propTries++ >= 5) { App.Log(ex); return; }
             _ = Task.Delay(1000).ContinueWith(_ => Ui(async () => { await RefreshProps(); Changed?.Invoke(); }));
             return;
@@ -260,13 +260,13 @@ public sealed class MediaService
         var key = $"{p.Artist}|{p.Title}";
         bool newTrack = key != _baseKey;
         if (newTrack) { _vidTitle = p.Title ?? ""; _vidArtist = p.Artist ?? ""; _chap = null; _chapIdx = -1; _chapOpen = false; lock (_posLk) { _goodTimeline = false; _uiaValAt = DateTime.MinValue; } }
-        if (_chapIdx < 0)   // pada video bersegmen, judul dan artis mengikuti segmen yang sedang diputar
+        if (_chapIdx < 0)   // on segmented videos, title and artist follow the currently playing segment
         {
             _rawTitle = _vidTitle; _rawArtist = _vidArtist;
-            var shown = TrackId.Parse(_rawTitle, _rawArtist).Show;   // judul YouTube "Artis - Judul (Audio)" + kanal "artisVEVO" -> pasangan yang rapi
+            var shown = TrackId.Parse(_rawTitle, _rawArtist).Show;   // YouTube title "Artist - Title (Audio)" + channel "artistVEVO" -> clean pair
             Title = shown.Title; Artist = shown.Artist; Album = p.AlbumTitle ?? "";
             IsAd = MediaFilter.IsAd(s.SourceAppUserModelId, p.Title, p.Artist) || MediaFilter.ShortSpotifyAd(s.SourceAppUserModelId, RawDuration);
-            if (IsAd) { Title = ZaxLet.L.T("Iklan"); Album = ""; }   // teks templat Spotify di slot judul diganti keterangan iklan
+            if (IsAd) { Title = ZaxLet.L.T("Iklan"); Album = ""; }   // Spotify template text in title slot replaced with ad label
         }
         if (newTrack)
         {
@@ -279,7 +279,7 @@ public sealed class MediaService
             if (hadBase) OnTrackChangedForSleep();
             _ = BeginTrack(key);
         }
-        // sebagian pemutar mengirim sampul terlambat: coba lagi beberapa kali selama lagunya sama
+        // some players send cover art late: retry a few times while the song is the same
         if (p.Thumbnail == null && Cover == null && _coverTries++ < 3)
             _ = Task.Delay(1500).ContinueWith(_ => Ui(async () => { if (key == _baseKey) { await RefreshProps(); Changed?.Invoke(); } }));
         if (p.Thumbnail != null && Cover == null)
@@ -307,12 +307,12 @@ public sealed class MediaService
     void RefreshPlayback()
     {
         var s = _s;
-        if (s == null) return;   // event datang setelah sesi hilang
+        if (s == null) return;   // event arrived after session disappeared
         var i = s.GetPlaybackInfo();
         if (i == null) return;
         bool wasPlaying = Playing;
         Playing = i.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-        Shuffle = i.Controls.IsShuffleEnabled ? i.IsShuffleActive : null;   // null: pemutar ini tidak mendukung acak lewat Windows
+        Shuffle = i.Controls.IsShuffleEnabled ? i.IsShuffleActive : null;   // null: this player does not support shuffle via Windows
         if (wasPlaying && !Playing && !_pausingForSleep && SleepMode is SleepModeKind.Timed or SleepModeKind.Fading)
             CancelSleepTimer();
     }
@@ -320,19 +320,19 @@ public sealed class MediaService
     public bool? Shuffle;
     public void ToggleShuffle() { var s = _s; if (s != null && Shuffle is { } on) _ = s.TryChangeShuffleActiveAsync(!on); }
 
-    /// <summary>Baca ulang durasi/posisi dari Windows. Peramban (YouTube) sering terlambat atau tidak mengirim event timeline, jadi dipanggil berkala.</summary>
+    /// <summary>Re-read duration/position from Windows. Browsers (YouTube) often delay or omit timeline events, so this is called periodically.</summary>
     public void PollTimeline()
     {
-        if ((DateTime.Now - _seekAt).TotalSeconds < 1.5) return;   // beri waktu peramban menerapkan lompatan sebelum pembacaan menimpa posisi baru
+        if ((DateTime.Now - _seekAt).TotalSeconds < 1.5) return;   // give the browser time to apply the seek before reading overwrites the new position
         try { RefreshTimeline(); } catch (Exception ex) { App.Log(ex); }
     }
 
-    /// <summary>Pemutar mengizinkan lompat posisi (YouTube di peramban mengizinkan bila halamannya mengirim durasi).</summary>
+    /// <summary>Player allows seeking (YouTube in browsers allows it when the page sends duration).</summary>
     public bool CanSeek => _s != null && Duration > TimeSpan.Zero;
 
     /// <summary>
-    /// Kenali lagu yang sedang terdengar (seperti Shazam) saat judulnya tidak ada atau salah: tangkap ±12 dtk keluaran suara PC, kirim ke AudD
-    /// dengan token pengguna, lalu jadikan hasilnya lagu yang sedang diputar (judul, lirik, dan penyelarasan posisi lirik).
+    /// Recognize the currently audible song (like Shazam) when its title is missing or wrong: capture ~12 s of PC audio output, send to AudD
+    /// with the user's token, then set the result as the currently playing track (title, lyrics, and lyric position sync).
     /// </summary>
     public async Task Identify()
     {
@@ -345,9 +345,9 @@ public sealed class MediaService
         try
         {
             var (hit, endPos) = await SongId.RecognizeAsync(token, RawPosition);
-            if (baseKey != _baseKey) return;   // ganti lagu selagi mendengarkan
+            if (baseKey != _baseKey) return;   // track changed while listening
             if (hit == null) { State("norec"); return; }
-            // posisi awal lagu itu di dalam aliran: akhir cuplikan dikurangi (menit di lagu + panjang cuplikan)
+            // start position of that song in the stream: snippet end minus (offset in song + snippet length)
             var start = endPos - TimeSpan.FromSeconds(hit.At + SongId.Seconds);
             _chapOpen = true;
             _chap = new List<YtChapters.Chapter> { new(start < TimeSpan.Zero ? TimeSpan.Zero : start, hit.Artist + " · " + hit.Title) };
@@ -361,21 +361,21 @@ public sealed class MediaService
     {
         var s = _s;
         if (s == null) return;
-        lock (_posLk) if ((DateTime.Now - _uiaAt).TotalSeconds < 6) return;   // posisi dari halaman YouTube sedang segar: lebih tepercaya daripada laporan peramban
+        lock (_posLk) if ((DateTime.Now - _uiaAt).TotalSeconds < 6) return;   // position from YouTube page is fresh: more reliable than browser report
         var t = s.GetTimelineProperties();
-        if (t == null) return;   // sesi sedang ditutup: WinRT bisa mengembalikan null
+        if (t == null) return;   // session closing: WinRT can return null
         var len = t.EndTime - t.StartTime;
         lock (_posLk)
         {
-            // peramban kadang melaporkan timeline kosong (posisi 0, durasi 0) di tengah lagu, mis. saat halaman mengosongkan state media:
-            // abaikan, lanjutkan dari perkiraan terakhir yang sah daripada melompat ke awal
+            // browser sometimes reports an empty timeline (position 0, duration 0) mid-song, e.g., when the page clears media state:
+            // ignore it, continue from the last valid estimate rather than jumping to the start
             if (len <= TimeSpan.Zero && _goodTimeline) return;
             if (len > TimeSpan.Zero) _goodTimeline = true;
             RawDuration = len;
             _pos = t.Position - t.StartTime;
             _posAt = t.LastUpdatedTime;
         }
-        if (!IsAd && MediaFilter.ShortSpotifyAd(s.SourceAppUserModelId, len))   // iklan yang teksnya tak dikenal: ketahuan dari durasinya
+        if (!IsAd && MediaFilter.ShortSpotifyAd(s.SourceAppUserModelId, len))   // ad with unrecognized text: detected by its duration
         {
             IsAd = true; Title = ZaxLet.L.T("Iklan"); Album = ""; Lyrics = new(); LyricState = "ad";
             Changed?.Invoke();
@@ -384,9 +384,9 @@ public sealed class MediaService
 
     bool _goodTimeline;
 
-    // ---------- posisi asli dari halaman YouTube ----------
+    // ---------- actual position from YouTube page ----------
     DateTime _uiaAt = DateTime.MinValue;
-    double _uiaVal; DateTime _uiaValAt = DateTime.MinValue;   // bacaan bilah sebelumnya, untuk mengenali nilai yang macet
+    double _uiaVal; DateTime _uiaValAt = DateTime.MinValue;   // previous bar reading, to detect stuck values
     int _uiaBusy;
     System.Threading.Timer _uiaT;
 
@@ -399,7 +399,7 @@ public sealed class MediaService
         _uiaT.Change(on ? 2000 : System.Threading.Timeout.Infinite, on ? 2000 : System.Threading.Timeout.Infinite);
     }
 
-    /// <summary>Tiap 2 dtk baca bilah progres YouTube (bila tab videonya aktif) dan jadikan itu posisi sebenarnya; juga mengisi durasi yang tidak dikirim peramban.</summary>
+    /// <summary>Every 2 s read the YouTube progress bar (if its video tab is active) and use that as the true position; also fills in duration omitted by the browser.</summary>
     void PollYouTube()
     {
         if (!Settings.Cur.YtProgress || !HasSession || string.IsNullOrEmpty(_vidTitle) || Interlocked.Exchange(ref _uiaBusy, 1) == 1) return;
@@ -411,15 +411,15 @@ public sealed class MediaService
             if (r == null) return;
             lock (_posLk)
             {
-                if ((DateTime.Now - _seekAt).TotalSeconds < 2) return;   // setelah lompatan kita, tunggu halaman menerapkannya
-                // tab yang tertutup/tak tampil: YouTube berhenti memperbarui bilahnya, nilainya macet. Bacaan yang tidak ikut maju sejak pembacaan lalu
-                // diabaikan: posisi terus diperkirakan dari bacaan sah terakhir. Laporan Windows (SMTC) dari Firefox juga basi (diukur: tak diperbarui
-                // 351 dtk sementara video jalan), jadi tidak boleh mengambil alih (_uiaAt tetap segar); kalau tidak, posisi diputar ulang ke nilai basi.
+                if ((DateTime.Now - _seekAt).TotalSeconds < 2) return;   // after our seek, wait for the page to apply it
+                // closed/hidden tabs: YouTube stops updating its bar, so the value freezes. Readings that did not advance since the last read
+                // are ignored: position keeps being estimated from the last valid reading. Windows (SMTC) reports from Firefox are also stale (measured: not updated
+                // for 351 s while video plays), so it must not take over (_uiaAt stays fresh); otherwise position rewinds to a stale value.
                 var now = DateTime.Now;
-                bool live = !Playing || _uiaValAt == DateTime.MinValue || Math.Abs((r.Pos - _uiaVal) - (now - _uiaValAt).TotalSeconds) <= 1.2;   // bilah memuat detik utuh: selisih sah = jeda ±1; macet = 0
+                bool live = !Playing || _uiaValAt == DateTime.MinValue || Math.Abs((r.Pos - _uiaVal) - (now - _uiaValAt).TotalSeconds) <= 1.2;   // bar holds whole seconds: valid diff = interval ±1; stuck = 0
                 _uiaVal = r.Pos; _uiaValAt = now;
                 if (!live) { _uiaAt = now; return; }
-                _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bilah memuat detik yang dibulatkan ke bawah
+                _pos = TimeSpan.FromSeconds(r.Pos + 0.5);   // bar holds floored seconds
                 _posAt = DateTimeOffset.Now; _uiaAt = DateTime.Now; _goodTimeline = true;
                 if (RawDuration <= TimeSpan.Zero) RawDuration = TimeSpan.FromSeconds(r.Max);
             }
@@ -437,7 +437,7 @@ public sealed class MediaService
         return p < TimeSpan.Zero ? TimeSpan.Zero : p;
     }
 
-    /// <summary>Posisi di lagu yang sedang diputar (pada video bersegmen: sejak awal segmen).</summary>
+    /// <summary>Position in the currently playing song (on segmented videos: since the start of the segment).</summary>
     public TimeSpan Position()
     {
         var p = RawPosition();
@@ -446,15 +446,15 @@ public sealed class MediaService
         return p > _chapAt ? p - _chapAt : TimeSpan.Zero;
     }
 
-    // ---------- segmen video kompilasi ----------
+    // ---------- compilation video segments ----------
     /// <summary>
-    /// Awal lagu baru: video panjang (≥ 8 menit) dicari daftar segmennya di YouTube; bila ada, tiap segmen diperlakukan sebagai lagu sendiri
-    /// (judul, lirik, bilah progres, lompat sebelumnya/berikutnya). Tanpa itu, lirik dicari untuk judul videonya seperti biasa.
+    /// Start of a new track: long videos (≥ 8 min) are checked for YouTube chapters; if found, each segment is treated as its own song
+    /// (title, lyrics, progress bar, prev/next skip). Otherwise, lyrics are searched for the video title as usual.
     /// </summary>
     async Task BeginTrack(string key)
     {
-        await Task.Delay(700);   // beri waktu agar durasi terisi
-        // peramban kadang tidak mengirim durasi sama sekali: beri waktu pembacaan langsung dari halaman YouTube mengisinya
+        await Task.Delay(700);   // give time for duration to populate
+        // browsers sometimes omit duration altogether: give direct YouTube page reading time to fill it in
         for (int i = 0; i < 10 && key == _key && Settings.Cur.YtChapters && RawDuration <= TimeSpan.Zero; i++) await Task.Delay(300);
         if (key != _key) return;
         if (Settings.Cur.YtChapters && RawDuration >= TimeSpan.FromMinutes(8))
@@ -467,8 +467,8 @@ public sealed class MediaService
             catch (Exception ex) { App.Log(ex); }
         }
         if (key != _key) return;
-        if (IsAd) { LyricState = "ad"; return; }   // iklan tidak punya lirik: jangan mengunduh
-        if (Settings.Cur.MusicLyrics) await LoadLyrics(key, Title, Artist, Album); else LyricState = "off";   // lirik dimatikan: tidak mengunduh
+        if (IsAd) { LyricState = "ad"; return; }   // ads have no lyrics: do not download
+        if (Settings.Cur.MusicLyrics) await LoadLyrics(key, Title, Artist, Album); else LyricState = "off";   // lyrics disabled: do not download
     }
 
     void SyncChapter(TimeSpan p)
@@ -481,7 +481,7 @@ public sealed class MediaService
         _chapIdx = i; _chapAt = chap[i].At;
         _chapEnd = i + 1 < chap.Count ? chap[i + 1].At : _chapOpen ? TimeSpan.MaxValue : RawDuration > _chapAt ? RawDuration : _chapAt + TimeSpan.FromMinutes(5);
         _rawTitle = chap[i].Text; _rawArtist = "";
-        var shown = TrackId.Parse(_rawTitle, "").Show;   // "Artis · Judul"
+        var shown = TrackId.Parse(_rawTitle, "").Show;   // "Artist · Title"
         Title = shown.Title; Artist = shown.Artist; Album = "";
         Lyrics = new(); Translit.Begin(Array.Empty<string>());
         _key = _baseKey + "#" + i;
@@ -496,7 +496,7 @@ public sealed class MediaService
         return i < 0 ? "" : Lyrics[i].Text;
     }
 
-    /// <summary>Perkiraan lama baris yang sedang tampil (detik), untuk menyetel kecepatan running text.</summary>
+    /// <summary>Estimated duration of the currently displayed line (seconds), for setting marquee speed.</summary>
     public double CurrentLineSpan()
     {
         int i = CurrentIndex();
@@ -517,8 +517,8 @@ public sealed class MediaService
     }
 
     /// <summary>
-    /// Posisi karaoke: baris yang sedang dinyanyikan dan seberapa jauh (0..1). LRCLIB hanya punya waktu per baris, jadi lamanya
-    /// menyanyikan baris diperkirakan dari panjang teks (tempo bisa diatur) dan tidak melewati awal baris berikutnya.
+    /// Karaoke position: the line currently being sung and how far through (0..1). LRCLIB only has per-line timestamps, so singing
+    /// duration is estimated from text length (pace is configurable) and does not pass the start of the next line.
     /// </summary>
     public (int Index, double Progress) Karaoke()
     {
@@ -530,13 +530,13 @@ public sealed class MediaService
         double elapsed = (t - l.At).TotalSeconds, timeP = Math.Clamp(elapsed / sung, 0, 1);
         DbgK = (i, l.Text, sung, timeP, 0, 0, false);
 
-        // Mode vokal: progres = lama vokal benar-benar bersuara sejak baris mulai / perkiraan lama bernyanyi. Jeda instrumental menahan isi,
-        // intro panjang tidak mengisi lebih dulu, dan baris yang selesai lebih awal (vokal berhenti) langsung penuh. Tanpa data audio: waktu.
+        // Vocal mode: progress = actual voiced duration since line start / expected singing duration. Instrumental breaks hold the fill,
+        // long intros don't pre-fill, and lines that finish early (vocals stop) fill immediately. Without audio data: time-based.
         var af = AudioFlow.I;
         if (!Settings.Cur.LyricFlow || !af.Fresh || elapsed <= 0 || af.CapturingFor < elapsed + 0.1) { _kIdx = -1; return (i, timeP); }
 
-        // Keandalan: bila selama 12 dtk terakhir hampir selalu "bersuara" (instrumen/lagu keras menutupi vokal) atau hampir tak pernah,
-        // pembacaan vokal tidak bisa dipercaya untuk lagu ini dan progres kembali ke hitungan waktu.
+        // Reliability: if over the last 12 s it was almost always "voiced" (loud instruments/track masking vocals) or almost never,
+        // vocal detection cannot be trusted for this song and progress falls back to time-based.
         double win = Math.Min(12, af.CapturingFor);
         double vr = win > 4 ? af.VoicedSince(win) / win : 0.5;
         if (vr > 0.88 || vr < 0.12) { _kIdx = -1; return (i, timeP); }
@@ -544,7 +544,7 @@ public sealed class MediaService
         double voiced = af.VoicedSince(elapsed);
         DbgK = (i, l.Text, sung, timeP, voiced, vr, true);
         var now = DateTime.UtcNow;
-        if (i != _kIdx)   // pindah baris: belajar dari baris sebelumnya seberapa besar bagian jaraknya yang benar-benar bersuara
+        if (i != _kIdx)   // line changed: learn from the previous line how much of its gap was actually voiced
         {
             if (_kIdx >= 0 && _kBase > 0 && _kVoiced > 0.5)
             {
@@ -558,19 +558,19 @@ public sealed class MediaService
         double expect = Math.Max(0.6, vexp);
         double p = Math.Min(voiced / expect, 0.97);
 
-        // Batas toleransi: hasil audio hanya boleh menyimpang ±FlowTolSec dari hitungan waktu, jadi bagian lagu yang lebih keras dari vokal
-        // (atau vokal yang tak terbaca) tidak bisa menarik isi terlalu jauh ke depan atau menahannya terlalu lama.
-        // Dibatasi juga sebagai bagian baris (±18% untuk baris bersambung yang waktunya bisa diandalkan, ±35% lainnya): toleransi dalam detik saja
-        // terlalu longgar untuk baris pendek.
-        // Asimetris: hasil audio cenderung mendahului (instrumen keras terbaca sebagai vokal), jadi batas atas lebih ketat dari batas bawah.
+        // Tolerance bounds: audio result may only deviate ±FlowTolSec from time-based, so sections louder than vocals
+        // (or missed vocals) cannot pull the fill too far ahead or hold it back too long.
+        // Also bounded as a fraction of the line (±18% for contiguous lines with reliable timing, ±35% otherwise): seconds-only tolerance
+        // is too loose for short lines.
+        // Asymmetric: audio tends to lead (loud instruments read as vocals), so the upper bound is tighter than the lower bound.
         double tolS = Math.Clamp(Settings.Cur.FlowTolSec, 0.3, 8) / sung;
         p = Math.Clamp(p, timeP - Math.Min(tolS, contig ? 0.20 : 0.35), timeP + Math.Min(tolS, contig ? 0.12 : 0.30));
-        bool done = (voiced >= expect * 0.55 && af.SilentFor > 0.45 && elapsed >= sung * 0.6)   // vokal sudah berhenti: baris selesai
-                    || (contig && elapsed >= sung);                                              // baris bersambung: penuh saat jatah waktunya habis
+        bool done = (voiced >= expect * 0.55 && af.SilentFor > 0.45 && elapsed >= sung * 0.6)   // vocals stopped: line finished
+                    || (contig && elapsed >= sung);                                              // contiguous line: full when its time budget ends
         if (done) p = 1;
         else
         {
-            // tidak pernah mundur dalam satu baris, dan maju paling cepat 2,5x kecepatan normal (tanpa lompatan)
+            // never move backward within a line, and advance at most 2.5x normal speed (no jumps)
             double dt = Math.Min(1, (now - _kAt).TotalSeconds);
             p = Math.Max(p, _kP);
             if (_kP > 0) p = Math.Min(p, _kP + dt * 2.5 / sung);
@@ -579,12 +579,12 @@ public sealed class MediaService
         return (i, Math.Clamp(p, 0, 1));
     }
 
-    double _gapFrac = 0.75;   // bagian jarak ke baris berikutnya yang benar-benar bersuara (dipelajari dari audio)
+    double _gapFrac = 0.75;   // fraction of the gap to the next line that is actually voiced (learned from audio)
     double _kBase; bool _kContig;
 
     /// <summary>
-    /// Perkiraan lama baris: (rentang tampil, lama bersuara yang diharapkan, bersambung?). Baris yang disusul baris lain dalam 7 dtk dianggap
-    /// mengisi jaraknya (lagu lambat/panjang tidak lagi terisi terlalu cepat); baris sebelum jeda panjang memakai panjang teks.
+    /// Estimated line duration: (display span, expected voiced duration, contiguous?). A line followed by another within 7 s is assumed
+    /// to fill its gap (slow/long songs no longer fill too early); lines before a long pause use text length.
     /// </summary>
     (double Span, double VoicedExpect, bool Contiguous) Est(int i, List<LyricLine> L = null)
     {
@@ -595,33 +595,33 @@ public sealed class MediaService
         if (hasNext && gap <= 7)
         {
             double basis = Math.Max(0.8, gap - 0.25);
-            return (Math.Max(0.8, basis * 1.0), Math.Max(0.6, basis * _gapFrac), true);   // 1,0: jalan tengah; 0,97 → isi cenderung dini (t90 0,84), 1,06 → 31% baris tak sempat penuh (diukur pada 7 lagu)
+            return (Math.Max(0.8, basis * 1.0), Math.Max(0.6, basis * _gapFrac), true);   // 1.0: middle ground; 0.97 -> fills early (t90 0.84), 1.06 -> 31% of lines never finish filling (measured on 7 songs)
         }
         double perChar = Settings.Cur.LyricPace switch { "fast" => 0.11, "slow" => 0.18, _ => 0.14 };
         double span = Math.Max(0.8, Math.Min(gap - 0.2, Math.Max(1.5, l.Text.Length * perChar)));
         return (span, Math.Max(0.6, span * _ratio), false);
     }
 
-    /// <summary>Nilai antara terakhir Karaoke() untuk diagnosis (flag --karaoke-trace).</summary>
+    /// <summary>Last intermediate values of Karaoke() for diagnostics (--karaoke-trace flag).</summary>
     public (int Idx, string Text, double Sung, double TimeP, double Voiced, double VoicedRatio, bool Flow) DbgK;
 
     string _lblKey = "";
 
     /// <summary>
-    /// Label untuk belajar pola vokal (dipanggil dari thread audio): 1 = pasti ada vokal, 0 = pasti instrumen, -1 = tidak yakin (batas baris).
-    /// Vokal: bagian tengah baris yang dinyanyikan. Instrumen: intro sebelum baris pertama, baris kosong/♪, dan jeda panjang setelah baris selesai.
+    /// Label for learning vocal patterns (called from audio thread): 1 = definitely vocals, 0 = definitely instrumental, -1 = uncertain (line boundary).
+    /// Vocals: middle portion of a sung line. Instrumental: intro before first line, empty/♪ lines, and long gaps after a line ends.
     /// </summary>
     public int VocalLabel()
     {
         var L = Lyrics;
         var key = _key;
         if (L.Count == 0 || !Playing) return -1;
-        if (_lblKey != key) { _lblKey = key; AudioFlow.I.ResetModel(); }   // lagu baru: mulai belajar dari nol
+        if (_lblKey != key) { _lblKey = key; AudioFlow.I.ResetModel(); }   // new song: start learning from scratch
         var p = RawPosition();
         if (_chap != null)
         {
             var chapAt = _chapAt;
-            // perpindahan bab harus di thread UI; kembalikan -1 dulu agar model tidak dilatih dengan lirik bab lama
+            // chapter switch must happen on UI thread; return -1 first so the model is not trained on old chapter lyrics
             if (_chapIdx < 0 || p < chapAt || p >= _chapEnd) { Ui(() => SyncChapter(RawPosition())); return -1; }
             p = p > chapAt ? p - chapAt : TimeSpan.Zero;
         }
@@ -640,25 +640,25 @@ public sealed class MediaService
         return -1;
     }
 
-    int _kIdx = -1; double _kVoiced, _ratio = 1, _kP; DateTime _kAt;   // pembelajaran rasio dan keadaan progres karaoke vokal
+    int _kIdx = -1; double _kVoiced, _ratio = 1, _kP; DateTime _kAt;   // ratio learning and vocal karaoke progress state
 
-    // ---------- kontrol ----------
+    // ---------- controls ----------
     public void PlayPause() => _ = _s?.TryTogglePlayPauseAsync();
 
-    /// <summary>Jeda pemutaran jika sedang memutar; mengembalikan true bila perintah jeda berhasil dikirim.</summary>
+    /// <summary>Pause playback if currently playing; returns true if the pause command was sent successfully.</summary>
     public async Task<bool> PauseIfPlayingAsync()
     {
         try { return Playing && _s != null && await _s.TryPauseAsync(); }
         catch (Exception ex) { App.Log(ex); return false; }
     }
 
-    /// <summary>Lanjutkan pemutaran jika sedang terjeda.</summary>
+    /// <summary>Resume playback if currently paused.</summary>
     public async Task<bool> ResumeAsync()
     {
         try { return !Playing && _s != null && await _s.TryPlayAsync(); }
         catch (Exception ex) { App.Log(ex); return false; }
     }
-    // pada video bersegmen, berikutnya/sebelumnya melompat antar segmen (lagu), bukan antar video
+    // on segmented videos, next/previous skips between segments (songs), not between videos
     public void Next()
     {
         if (_chap != null && _chapIdx >= 0 && _chapIdx + 1 < _chap.Count) SeekAbs(_chap[_chapIdx + 1].At);
@@ -669,13 +669,13 @@ public sealed class MediaService
     {
         if (_chap != null && _chapIdx >= 0)
         {
-            if (_chapIdx == 0 || RawPosition() - _chapAt > TimeSpan.FromSeconds(3)) SeekAbs(_chapAt);   // seperti pemutar biasa: ulang lagu dulu
+            if (_chapIdx == 0 || RawPosition() - _chapAt > TimeSpan.FromSeconds(3)) SeekAbs(_chapAt);   // like a regular player: restart song first
             else SeekAbs(_chap[_chapIdx - 1].At);
         }
         else _ = _s?.TrySkipPreviousAsync();
     }
 
-    /// <summary>Lompat ke posisi di lagu yang sedang diputar (pada video bersegmen: relatif terhadap awal segmen).</summary>
+    /// <summary>Seek to a position in the currently playing song (on segmented videos: relative to segment start).</summary>
     public void Seek(TimeSpan to)
     {
         if (Duration > TimeSpan.Zero) to = to > Duration ? Duration : to < TimeSpan.Zero ? TimeSpan.Zero : to;
@@ -690,21 +690,21 @@ public sealed class MediaService
         _ = s.TryChangePlaybackPositionAsync(to.Ticks);
     }
 
-    // ---------- lirik ----------
+    // ---------- lyrics ----------
     /// <summary>
-    /// Cari lirik tersinkron di LRCLIB. /api/get (tepat) kadang 503, jadi selalu ada cadangan /api/search (judul+artis, lalu
-    /// judul yang dibersihkan + pencarian bebas). Gangguan server dicoba ulang beberapa kali sebelum menyerah.
+    /// Search synced lyrics on LRCLIB. /api/get (exact) sometimes 503s, so there is always a /api/search fallback (title+artist, then
+    /// cleaned title + free-text search). Server errors are retried a few times before giving up.
     /// </summary>
     async Task LoadLyrics(string key, string title, string artist, string album)
     {
-        await Task.Delay(600); // beri waktu agar durasi terisi
+        await Task.Delay(600); // give time for duration to populate
         if (string.IsNullOrWhiteSpace(title)) return;
 
-        // cache disk: lagu yang sudah pernah dicari langsung tampil dan tidak bergantung pada server LRCLIB
+        // disk cache: previously searched songs appear immediately without depending on LRCLIB
         var cache = CachePath(artist, title);
         try
         {
-            // cache lama yang tidak wajar (cap waktu palsu dari versi sebelumnya) diabaikan dan dicari ulang
+            // unreasonable old cache (fake timestamps from an earlier version) is ignored and re-fetched
             if (File.Exists(cache) && LrcSane(File.ReadAllText(cache), Duration > TimeSpan.Zero ? (int)Duration.TotalSeconds : 0) && Lrc.Parse(File.ReadAllText(cache)) is { Count: > 0 } cached && key == _key)
             {
                 Lyrics = StripHeader(cached, title); LyricState = "ok";
@@ -713,9 +713,9 @@ public sealed class MediaService
                 return;
             }
         }
-        catch { /* cache rusak: cari ulang */ }
+        catch { /* corrupt cache: re-fetch */ }
 
-        // lagu yang baru saja dipastikan tidak ada di sumber mana pun: jangan tanya server lagi untuk sementara (NetEase pun menolak kueri berulang)
+        // songs recently confirmed missing across all sources: don't query servers again for a while (NetEase also rejects repeated queries)
         var negKey = $"{artist}|{title}".ToLowerInvariant();
         if (NoLyrics.TryGetValue(negKey, out var until) && DateTime.UtcNow < until)
         {
@@ -728,7 +728,7 @@ public sealed class MediaService
             if (key != _key) return;
             bool error = false, answered = false;
             string synced = null;
-            // kandidat judul/artis dari pengenalan judul (YouTube sering "Artis - Judul"); yang pertama mendapat lirik dipakai
+            // title/artist candidates from title parsing (YouTube often uses "Artist - Title"); the first one to return lyrics is used
             var cands = TrackId.Parse(_rawTitle, _rawArtist).Search;
             for (int ci = 0; ci < cands.Count && synced == null && key == _key; ci++)
             {
@@ -737,7 +737,7 @@ public sealed class MediaService
                 catch (Exception ex) { bad = true; App.Log(ex); }
                 if (bad) error = true; else answered = true;
             }
-            error = error && !answered;   // satu kandidat yang dijawab sumber (walau kosong) berarti lagunya memang tidak ketemu, bukan server sibuk
+            error = error && !answered;   // one candidate answered by a source (even empty) means the song wasn't found, not that the server is busy
             if (key != _key) return;
             if (synced != null)
             {
@@ -749,7 +749,7 @@ public sealed class MediaService
                 Ui(() => Changed?.Invoke());
                 return;
             }
-            if (!error) { NoLyrics[negKey] = DateTime.UtcNow.AddMinutes(20); break; }   // ada sumber yang menjawab: memang tidak ada lirik bersinkron
+            if (!error) { NoLyrics[negKey] = DateTime.UtcNow.AddMinutes(20); break; }   // a source answered: there really are no synced lyrics
             LyricState = "retry";
             Ui(() => Changed?.Invoke());
             await Task.Delay(TimeSpan.FromSeconds(4 * (attempt + 1)));
@@ -764,9 +764,9 @@ public sealed class MediaService
     void PrefetchRomaji()
     {
         var lines = Lyrics.Select(l => l.Text).ToList();
-        Translit.Begin(lines, Title, Artist);   // Jepang atau Mandarin ditentukan per lagu: keduanya memakai aksara Han
+        Translit.Begin(lines, Title, Artist);   // Japanese or Mandarin is determined per song: both use Han characters
         if ((Settings.Cur.LyricRomaji || Settings.Cur.IdleRomaji) && Translit.Lang == "ja") Romaji.Prefetch(lines);
-        // lirik yang butuh paket unduhan (kanji Jepang, atau Mandarin): beri tahu sekali per sesi, jangan diam-diam tanpa tulisan Latin
+        // lyrics requiring a download pack (Japanese kanji, or Mandarin): notify once per session, don't silently omit romanization
         if (Settings.Cur.LyricRomaji && !_packHinted && lines.Count > 0 && (Translit.Lang == "zh" && !Translit.PinyinReady || Translit.Lang == "ja" && !RomajiPack.KanjiInstalled && lines.Any(Translit.HasHan)))
         {
             _packHinted = true;
@@ -775,10 +775,10 @@ public sealed class MediaService
     }
 
     /// <summary>
-    /// Tiga sumber dengan "hedging" bertahap: LRCLIB mulai langsung; NetEase baru mulai bila LRCLIB belum menjawab dalam 1 dtk atau menjawab
-    /// kosong; Kugou bila keduanya belum menghasilkan dalam 2 dtk. Lagu yang ada di LRCLIB (kasus umum) tidak memicu permintaan tambahan,
-    /// sedangkan lagu yang tidak ada langsung pindah ke sumber berikutnya tanpa menunggu pencarian LRCLIB yang lambat habis. Hasil tetap
-    /// dipilih menurut prioritas (LRCLIB > NetEase > Kugou).
+    /// Three sources with staged hedging: LRCLIB starts immediately; NetEase starts only if LRCLIB has not answered within 1 s or returned
+    /// empty; Kugou if neither produced a result within 2 s. Songs present on LRCLIB (common case) trigger no extra requests,
+    /// while missing songs move straight to the next source without waiting for a slow LRCLIB search to time out. Results are still
+    /// picked by priority (LRCLIB > NetEase > Kugou).
     /// </summary>
     async Task<string> Fetch(string title, string artist, string album, Action markError, int? durOverride = null)
     {
@@ -786,23 +786,23 @@ public sealed class MediaService
         var clean = CleanTitle(title);
         var art = CleanArtist(artist);
 
-        // "Sibuk" hanya bila SEMUA sumber yang dicoba gagal berkomunikasi; satu sumber yang menjawab (walau kosong) berarti lagunya memang tidak ada.
+        // "Busy" only if ALL attempted sources failed to communicate; one source answering (even empty) means the song is missing.
         int attempted = 0, failed = 0;
         async Task<string> First()
         {
             Interlocked.Increment(ref attempted);
             try { var r = await FetchLrclib(title, artist, album, dur); return r != null && LrcSane(r, dur) && !IsRejected(r) ? r : null; }
-            catch (Exception) { Interlocked.Increment(ref failed); return null; }   // LRCLIB sibuk / dilewati pemutus sirkuit: tidak menunda sumber lain
+            catch (Exception) { Interlocked.Increment(ref failed); return null; }   // LRCLIB busy / skipped by circuit breaker: don't delay other sources
         }
         var main = MainTitle(title);
         var t1 = First();
         async Task<string> Backup(Func<string, string, int, Task<string>> src, Func<bool> hit, int delayMs, params Task[] waitFor)
         {
             await Task.WhenAny(Task.WhenAll(waitFor), Task.Delay(delayMs));
-            if (hit()) return null;                                   // sumber yang lebih utama sudah dapat: tidak perlu meminta
+            if (hit()) return null;                                   // higher-priority source already succeeded: no need to query
             Interlocked.Increment(ref attempted);
             bool answered = false;
-            // varian kueri: judul lengkap + artis bersih, judul utama (tanpa subjudul "-…-"/"~…~") + artis, judul utama saja; durasi tetap penyaring
+            // query variants: full title + clean artist, main title (without "-…-"/"~…~" subtitle) + artist, main title only; duration still filters
             foreach (var (tt, a) in new[] { (clean, art), (main, art), (main, "") }.Distinct())
             {
                 try { if (await src(tt, a, dur) is { } lrc && LrcSane(lrc, dur) && !IsRejected(lrc)) return lrc; answered = true; }
@@ -812,15 +812,15 @@ public sealed class MediaService
             return null;
         }
         bool Got(params Task<string>[] ts) => ts.Any(t => t.IsCompletedSuccessfully && t.Result != null);
-        // Daftar sumber cadangan berurutan (maksimal 10): tiap sumber baru dimulai 1 dtk setelah yang sebelumnya bila belum ada hasil.
+        // Sequential backup source list (max 10): each new source starts 1 s after the previous one if no result yet.
         var chain = new List<Task<string>> { t1 };
         foreach (var (src, k) in new Func<string, string, int, Task<string>>[] { FetchLyricsPlus, FetchNetease, FetchQQ, FetchKugou }.Select((s, k) => (s, k)))
         {
             var prev = chain.ToArray();
             chain.Add(Backup(src, () => Got(prev), 1000 * (k + 1), prev));
         }
-        // Pilih menurut prioritas urutan di atas. Bila sumber yang lebih rendah sudah dapat tetapi yang lebih utama masih mencari,
-        // yang utama diberi masa tenggang 0,8 dtk lalu hasil yang ada dipakai (LRCLIB kadang butuh beberapa detik untuk menyimpulkan "tidak ada").
+        // Pick by the priority order above. If a lower-priority source already succeeded while a higher-priority one is still searching,
+        // give the higher-priority one an 0.8 s grace period then use the available result (LRCLIB sometimes takes seconds to conclude "not found").
         var all = chain.ToArray();
         static string Res(Task<string> t) => t.IsCompletedSuccessfully ? t.Result : null;
         var graceEnd = DateTime.MaxValue;
@@ -829,15 +829,15 @@ public sealed class MediaService
             bool pending = false; string best = null;
             foreach (var t in all)
             {
-                if (!t.IsCompleted) { pending = true; break; }   // yang lebih utama belum selesai
+                if (!t.IsCompleted) { pending = true; break; }   // higher-priority source not finished yet
                 if ((best = Res(t)) != null) break;
             }
             if (best != null) return best;
             if (!pending)
             {
                 if (attempted > 0 && failed >= attempted) { markError(); return null; }
-                // Putaran terakhir: belum ada yang cocok → ulangi sumber Asia dengan toleransi durasi ±15 dtk (versi lain/durasi Spotify berbeda),
-                // tetapi lirik harus mencakup 60%–105% lagu agar tidak salah versi.
+                // Final pass: no match yet -> retry Asian sources with ±15 s duration tolerance (other version/different Spotify duration),
+                // but lyrics must cover 60%–105% of the song to avoid picking the wrong version.
                 if (dur > 0)
                 {
                     try
@@ -847,7 +847,7 @@ public sealed class MediaService
                                 try
                                 {
                                 {
-                                    var got = await src(tt, a, 0);   // tanpa penyaring durasi sumber; kecocokan dinilai dari cakupan lirik terhadap durasi sebenarnya di bawah
+                                    var got = await src(tt, a, 0);   // without source duration filter; match is judged by lyric coverage against actual duration below
                                     if (got != null && LrcSane(got, dur) && !IsRejected(got) && Lrc.Parse(got) is { Count: > 0 } pl
                                         && pl[^1].At.TotalSeconds >= dur * 0.6 && pl[^1].At.TotalSeconds <= dur + 8) return got;
                                 }
@@ -868,8 +868,8 @@ public sealed class MediaService
         }
     }
 
-    // Pemutus sirkuit LRCLIB: server sering 503/429. Setelah gagal, LRCLIB dilewati sementara (15, 30, 60, 120, 180 dtk) sehingga sumber cadangan
-    // langsung dipakai dan server yang sedang sibuk tidak terus ditembak; sekali berhasil, hitungan gagal diulang dari nol.
+    // LRCLIB circuit breaker: server often returns 503/429. After a failure, LRCLIB is skipped temporarily (15, 30, 60, 120, 180 s) so backup sources
+    // are used immediately and the busy server is not hammered; once it succeeds, failure count resets to zero.
     static DateTime _lrDownUntil; static int _lrFails;
 
     static void LrTrip()
@@ -878,7 +878,7 @@ public sealed class MediaService
         _lrDownUntil = DateTime.UtcNow.AddSeconds(Math.Min(180, 15 * (1 << (_lrFails - 1))));
     }
 
-    /// <summary>Satu permintaan LRCLIB: null = 404 (tidak ada); melempar bila server sibuk/gagal (5xx, 429, timeout 6 dtk) dan memutus sirkuit.</summary>
+    /// <summary>Single LRCLIB request: null = 404 (not found); throws if server is busy/failing (5xx, 429, 6 s timeout) and trips the circuit breaker.</summary>
     static async Task<JsonDocument> LrAsk(string url)
     {
         try
@@ -898,14 +898,14 @@ public sealed class MediaService
         if (DateTime.UtcNow < _lrDownUntil) throw new InvalidOperationException("LRCLIB dilewati sementara (gangguan sebelumnya)");
         string E(string s) => Uri.EscapeDataString(s ?? "");
 
-        // 1) pencocokan tepat
+        // 1) exact match
         var get = $"https://lrclib.net/api/get?track_name={E(title)}&artist_name={E(artist)}";
         if (!string.IsNullOrWhiteSpace(album)) get += $"&album_name={E(album)}";
         if (dur > 0) get += $"&duration={dur}";
         using (var exact = await LrAsk(get))
             if (exact != null && ReadSynced(exact.RootElement) is { } ex0) return ex0;
 
-        // 2) pencarian: judul+artis, lalu judul bersih, lalu kueri bebas
+        // 2) search: title+artist, then clean title, then free-text query
         var clean = CleanTitle(title);
         var urls = new List<string>
         {
@@ -918,7 +918,7 @@ public sealed class MediaService
         {
             using var doc = await LrAsk(u);
             if (doc == null) continue;
-            // pilih yang durasinya paling dekat; tanpa durasi, ambil hasil bersinkron pertama
+            // pick the one with closest duration; without duration, take the first synced result
             string best = null; double bestDiff = double.MaxValue;
             foreach (var el in doc.RootElement.EnumerateArray())
             {
@@ -927,13 +927,13 @@ public sealed class MediaService
                 double diff = dur > 0 && el.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number ? Math.Abs(d.GetDouble() - dur) : 0;
                 if (diff < bestDiff) { best = s; bestDiff = diff; }
             }
-            if (best != null && (dur <= 0 || bestDiff <= 10)) return best;   // versi lain (durasi jauh) = sinkron meleset: lanjut ke kueri/sumber berikutnya
+            if (best != null && (dur <= 0 || bestDiff <= 10)) return best;   // another version (far duration) = out of sync: continue to next query/source
         }
 
         return null;
     }
 
-    // "Artis (CV. Pengisi Suara)", "A, B", "A feat. B", "A & B" -> artis pertama tanpa keterangan
+    // "Artist (CV. Voice Actor)", "A, B", "A feat. B", "A & B" -> first artist without notes
     static string CleanArtist(string a)
     {
         var s = System.Text.RegularExpressions.Regex.Replace(a ?? "", @"\s*[\(（\[].*?[\)）\]]", "");
@@ -941,12 +941,12 @@ public sealed class MediaService
         return s.Trim();
     }
 
-    /// <summary>Uji sumber cadangan satu per satu (flag --lyrics-test): jumlah baris dari NetEase dan Kugou.</summary>
+    /// <summary>Test backup sources one by one (--lyrics-test flag): line counts from NetEase and Kugou.</summary>
     public async Task<string> DebugSources(string title, string artist, int dur)
     {
         string R(string name, string lrc) => $"{name}: {(lrc == null ? "tidak ada" : Lrc.Parse(lrc).Count + " baris")}";
         string a, b, c;
-        var sw = System.Diagnostics.Stopwatch.StartNew();   // gabungan dulu: pengujian satuan sesudahnya memanggil server yang sama lagi
+        var sw = System.Diagnostics.Stopwatch.StartNew();   // combined first: unit tests afterward hit the same servers again
         bool busy = false;
         try { c = R("Gabungan (hedging)", await Fetch(title, artist, null, () => busy = true, dur)) + $", {sw.ElapsedMilliseconds} ms, sibuk={busy}, LRCLIB dilewati={DateTime.UtcNow < _lrDownUntil}"; } catch (Exception ex) { c = "Gabungan error " + ex.Message; }
         try { a = R("NetEase", await FetchNetease(CleanTitle(title), CleanArtist(artist), dur)); } catch (Exception ex) { a = "NetEase error " + ex.Message; }
@@ -958,8 +958,8 @@ public sealed class MediaService
     }
 
     /// <summary>
-    /// Lirik bersinkron yang wajar? Menolak (1) cap waktu buatan: jarak antar baris nyaris seragam dan pendek (lirik polos yang diberi [00:01],
-    /// [00:02]…) dan (2) cakupan waktu yang jauh lebih pendek dari lagu (versi lain / TV-size), yang membuat karaoke macet di baris terakhir.
+    /// Are the synced lyrics sane? Rejects (1) synthetic timestamps: nearly uniform short intervals between lines (plain lyrics given [00:01],
+    /// [00:02]…) and (2) time coverage much shorter than the song (another version / TV-size), which makes karaoke get stuck on the last line.
     /// </summary>
     static bool LrcSane(string lrc, int dur)
     {
@@ -970,14 +970,14 @@ public sealed class MediaService
         for (int i = 1; i < L.Count; i++) d.Add((L[i].At - L[i - 1].At).TotalSeconds);
         var sorted = d.OrderBy(x => x).ToList();
         double med = sorted[sorted.Count / 2];
-        if (med <= 2.5 && d.Count(x => Math.Abs(x - med) < 0.02) >= d.Count * 0.85) return false;   // jarak seragam = cap waktu palsu
-        if (dur > 30 && L[^1].At.TotalSeconds < dur * 0.4) return false;                           // berhenti jauh sebelum lagu selesai
+        if (med <= 2.5 && d.Count(x => Math.Abs(x - med) < 0.02) >= d.Count * 0.85) return false;   // uniform spacing = fake timestamps
+        if (dur > 30 && L[^1].At.TotalSeconds < dur * 0.4) return false;                           // ends well before the song finishes
         return true;
     }
 
-    volatile int _durTol = 6;   // toleransi durasi kandidat (detik); dilonggarkan hanya pada putaran terakhir
+    volatile int _durTol = 6;   // candidate duration tolerance (seconds); relaxed only on the final pass
 
-    /// <summary>Baris pertama "Artis - Judul" yang dipasang sumber lirik sebagai kepala bukan bagian lagu: buang.</summary>
+    /// <summary>First line "Artist - Title" inserted by lyric sources as a header rather than part of the song: strip it.</summary>
     static List<LyricLine> StripHeader(List<LyricLine> l, string title)
     {
         var key = Norm(title);
@@ -997,17 +997,17 @@ public sealed class MediaService
         return JsonDocument.Parse(await r.Content.ReadAsStringAsync());
     }
 
-    // buang baris kredit (作词/作曲/詞/曲…) dan baris judul "Judul - Artis" di awal; hasil harus punya ≥3 baris bersinkron
+    // drop credit lines (作词/作曲/詞/曲…) and leading "Title - Artist" title lines; result must have ≥3 synced lines
     static string CleanLrc(string lrc)
     {
         var kept = lrc.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => !System.Text.RegularExpressions.Regex.IsMatch(l, @"^\[[^\]]*\]\s*(作词|作曲|编曲|制作|作詞|編曲|词|曲|詞|Lyrics|Music|Arrange|Composer)[^:：]{0,6}[:：]")).ToList();
-        int first = kept.FindIndex(l => l.StartsWith("[00:0") && l.Contains(" - "));   // "[00:00.00]Judul (Live) - Artis"
+        int first = kept.FindIndex(l => l.StartsWith("[00:0") && l.Contains(" - "));   // "[00:00.00]Title (Live) - Artist"
         if (first >= 0 && first < 4) kept.RemoveAt(first);
         var joined = string.Join("\n", kept);
         return Lrc.Parse(joined).Count >= 3 ? joined : null;
     }
 
-    /// <summary>NetEase: judul cocok dan durasi dalam ±6 detik (bila diketahui).</summary>
+    /// <summary>NetEase: title matches and duration within ±6 seconds (when known).</summary>
     async Task<string> FetchNetease(string title, string artist, int dur)
     {
         const string Ref = "https://music.163.com/";
@@ -1026,7 +1026,7 @@ public sealed class MediaService
         return null;
     }
 
-    // "AXIA -Daisuki de Daikirai-" / "Judul ~Sub~" / "Judul - Remaster" -> "AXIA" / "Judul": subjudul sering membuat pencarian katalog Asia kosong
+    // "AXIA -Daisuki de Daikirai-" / "Title ~Sub~" / "Title - Remaster" -> "AXIA" / "Title": subtitles often make Asian catalog searches return empty
     static string MainTitle(string t)
     {
         var c = CleanTitle(t);
@@ -1035,12 +1035,12 @@ public sealed class MediaService
     }
 
     /// <summary>
-    /// LyricsPlus (lyricsplus.binimum.org): agregator komunitas tanpa kunci yang mengambil dari Apple Music, QQ Music, dan Deezer; lirik
-    /// per baris dengan waktu profesional. 404 = tidak ada. Judul yang dikembalikan harus cocok agar tidak salah lagu.
+    /// LyricsPlus (lyricsplus.binimum.org): keyless community aggregator pulling from Apple Music, QQ Music, and Deezer; per-line
+    /// lyrics with professional timing. 404 = not found. Returned title must match to avoid wrong-song hits.
     /// </summary>
     async Task<string> FetchLyricsPlus(string title, string artist, int dur)
     {
-        if (string.IsNullOrWhiteSpace(artist)) return null;   // API mewajibkan artis (400 bila kosong)
+        if (string.IsNullOrWhiteSpace(artist)) return null;   // API requires artist (400 if empty)
         var url = $"https://lyricsplus.binimum.org/v2/lyrics/get?title={Uri.EscapeDataString(title)}&artist={Uri.EscapeDataString(artist ?? "")}" + (dur > 0 ? $"&duration={dur}" : "");
         using var r = await Http.GetAsync(url);
         if ((int)r.StatusCode == 404) return null;
@@ -1064,7 +1064,7 @@ public sealed class MediaService
         return sb.Length == 0 ? null : sb.ToString();
     }
 
-    /// <summary>QQ Music: pencarian lewat smartbox (judul cocok), lirik LRC langsung (tanpa base64); katalog kuat untuk lagu Jepang/Mandarin.</summary>
+    /// <summary>QQ Music: search via smartbox (title match), direct LRC lyrics (no base64); strong catalog for Japanese/Mandarin songs.</summary>
     async Task<string> FetchQQ(string title, string artist, int dur)
     {
         const string Ref = "https://y.qq.com/";
@@ -1085,7 +1085,7 @@ public sealed class MediaService
         return null;
     }
 
-    /// <summary>Kugou: kandidat lirik (judul cocok, durasi ±6 dtk), unduh sebagai LRC (base64).</summary>
+    /// <summary>Kugou: lyric candidates (title match, duration ±6 s), downloaded as LRC (base64).</summary>
     async Task<string> FetchKugou(string title, string artist, int dur)
     {
         using var search = await GetJson($"https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword={Uri.EscapeDataString((artist + " " + title).Trim())}&duration={(dur > 0 && _durTol <= 6 ? dur * 1000 : "")}&hash=");
@@ -1106,7 +1106,7 @@ public sealed class MediaService
         return null;
     }
 
-    // "Judul - Remastered 2011", "Judul (feat. X)" -> "Judul"
+    // "Title - Remastered 2011", "Title (feat. X)" -> "Title"
     static string CleanTitle(string t)
     {
         var cut = System.Text.RegularExpressions.Regex.Replace(t ?? "", @"\s*[\(\[].*?[\)\]]", "");
@@ -1117,7 +1117,7 @@ public sealed class MediaService
     static string ReadSynced(JsonElement e) =>
         e.TryGetProperty("syncedLyrics", out var v) && v.ValueKind == JsonValueKind.String && v.GetString().Length > 0 ? v.GetString() : null;
 
-    // ---------- warna dominan sampul ----------
+    // ---------- dominant cover color ----------
     static Color? Dominant(BitmapSource src)
     {
         try
@@ -1133,19 +1133,19 @@ public sealed class MediaService
                 double B = px[i], G = px[i + 1], R = px[i + 2];
                 double mx = Math.Max(R, Math.Max(G, B)), mn = Math.Min(R, Math.Min(G, B));
                 double sat = mx == 0 ? 0 : (mx - mn) / mx;
-                double weight = sat * (mx / 255.0) + 0.02; // utamakan piksel berwarna dan terang
+                double weight = sat * (mx / 255.0) + 0.02; // favor colorful and bright pixels
                 r += R * weight; g += G * weight; b += B * weight; wt += weight;
             }
             if (wt <= 0) return null;
             r /= wt; g /= wt; b /= wt;
             double max = Math.Max(r, Math.Max(g, b));
-            double k = max > 0 ? Math.Min(1.0, 210 / max) : 1; // jaga tidak terlalu terang
+            double k = max > 0 ? Math.Min(1.0, 210 / max) : 1; // keep from getting too bright
             return Color.FromRgb((byte)(r * k), (byte)(g * k), (byte)(b * k));
         }
         catch { return null; }
     }
 
-    // ---------- pengatur waktu tidur musik ----------
+    // ---------- music sleep timer ----------
     public void CycleSleepTimer()
     {
         int nextMin = 0;
@@ -1260,7 +1260,7 @@ public sealed class MediaService
                 try { cur = AudioEndpoint.Volume(); } catch (Exception ex) { App.Log(ex); }
                 if (cur is float cv && _fadeLastSetVol is float lv && Math.Abs(cv - lv) > 0.05f)
                 {
-                    // Pengguna menggeser volume sendiri: hentikan fade tanpa menimpa pilihan pengguna
+                    // User adjusted volume manually: stop fading without overwriting user's choice
                     SleepMode = SleepModeKind.Off;
                     SleepPresetMinutes = 0;
                     _sleepT?.Change(Timeout.Infinite, Timeout.Infinite);

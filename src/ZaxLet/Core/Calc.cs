@@ -5,15 +5,15 @@ using System.Globalization;
 namespace ZaxLet;
 
 /// <summary>
-/// Kalkulator dan konversi satuan untuk Aksi cepat. Murni, bisa dites.
-/// "12*5+3", "2^10", "(1+2)*3" dan "5 km mi", "100 c f", "2 gb mb".
-/// shortcut: titik sebagai desimal saja dan satuan terbatas pada tabel di bawah; tambah baris bila perlu.
+/// Calculator and unit converter for Quick Actions. Pure, testable.
+/// "12*5+3", "2^10", "(1+2)*3" and "5 km mi", "100 c f", "2 gb mb".
+/// shortcut: dot as decimal separator only and units limited to the table below; add rows if needed.
 /// </summary>
 public static class Calc
 {
     static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    // satuan: kelompok + faktor ke satuan dasar kelompoknya (suhu ditangani terpisah)
+    // units: group + factor to the group's base unit (temperature handled separately)
     static readonly Dictionary<string, (string Grp, double F)> U = new()
     {
         ["mm"] = ("len", 0.001), ["cm"] = ("len", 0.01), ["m"] = ("len", 1), ["km"] = ("len", 1000), ["in"] = ("len", 0.0254), ["ft"] = ("len", 0.3048), ["mi"] = ("len", 1609.344),
@@ -36,7 +36,7 @@ public static class Calc
     static (string, double)? Convert(string s)
     {
         var t = s.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        // "5 km mi" atau "5 km to mi" / "ke" / "in"
+        // "5 km mi" or "5 km to mi" / "ke" / "in"
         if (t.Length == 4 && (t[2] == "to" || t[2] == "ke" || t[2] == "in")) t = new[] { t[0], t[1], t[3] };
         if (t.Length != 3 || !double.TryParse(t[0], NumberStyles.Float, Inv, out var n) || !U.TryGetValue(t[1], out var a) || !U.TryGetValue(t[2], out var b) || a.Grp != b.Grp) return null;
         double r;
@@ -49,7 +49,7 @@ public static class Calc
         return ($"{Fmt(n)} {t[1]} = {Fmt(r)} {t[2]}", r);
     }
 
-    // pemisah: + - * / ^ dan kurung; unary minus. Kiri-ke-kanan dengan prioritas biasa.
+    // operators: + - * / ^ and parentheses; unary minus. Left-to-right with standard precedence.
     static bool Eval(string s, out double v)
     {
         int i = 0; v = 0;
@@ -86,7 +86,7 @@ public static class Calc
     {
         double v = Unary(s, ref i);
         Skip(s, ref i);
-        if (i < s.Length && s[i] == '^') { i++; v = Math.Pow(v, Pow(s, ref i)); }   // kanan-ke-kiri
+        if (i < s.Length && s[i] == '^') { i++; v = Math.Pow(v, Pow(s, ref i)); }   // right-to-left
         return v;
     }
 

@@ -5,8 +5,8 @@ using System.Globalization;
 namespace ZaxLet;
 
 /// <summary>
-/// Jadwal ibadah mingguan buatan sendiri (untuk yang bukan sholat), satu entri per baris atau dipisah titik koma:
-/// "hari jam nama", mis. "min 08:00 Kebaktian; jum,sab 18.30 Latihan koor; tiap 21:00 Doa malam". Murni, tanpa WPF, jadi bisa dites.
+/// Custom weekly worship schedule (for non-Islamic prayer items), one entry per line or separated by semicolons:
+/// "day time name", e.g., "min 08:00 Kebaktian; jum,sab 18.30 Latihan koor; tiap 21:00 Doa malam". Pure, no WPF, so it is testable.
 /// </summary>
 public static class Worship
 {
@@ -23,7 +23,7 @@ public static class Worship
         ["min"] = DayOfWeek.Sunday, ["minggu"] = DayOfWeek.Sunday, ["ahad"] = DayOfWeek.Sunday, ["sun"] = DayOfWeek.Sunday, ["sunday"] = DayOfWeek.Sunday,
     };
 
-    /// <summary>Entri yang tidak terbaca dilewati (tidak melempar).</summary>
+    /// <summary>Unparseable entries are skipped (does not throw).</summary>
     public static List<Item> Parse(string text)
     {
         var r = new List<Item>();
@@ -45,7 +45,7 @@ public static class Worship
         return r;
     }
 
-    /// <summary>Entri yang jatuh pada waktu <paramref name="now"/> (dalam jendela dua menit sejak jamnya).</summary>
+    /// <summary>Entries due at <paramref name="now"/> (within a two-minute window from their scheduled time).</summary>
     public static IEnumerable<Item> Due(IEnumerable<Item> items, DateTime now)
     {
         foreach (var i in items)

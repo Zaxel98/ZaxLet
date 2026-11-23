@@ -5,8 +5,8 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Mode Fokus: notifikasi HP ditahan (tidak muncul di pill) selama hitung mundur manual, atau selama fase kerja Pomodoro bila diizinkan.
-/// Kode OTP tetap lewat. Saat selesai, pill memberi ringkasan jumlah notifikasi yang tertahan; isinya tetap ada di tab Komunikasi.
+/// Focus Mode: phone notifications are held (hidden from the pill) during a manual countdown, or during Pomodoro work phases if enabled.
+/// OTP codes still pass through. When finished, the pill summarizes how many notifications were held; their contents remain in the Comms tab.
 /// </summary>
 public sealed class FocusService
 {
@@ -24,7 +24,7 @@ public sealed class FocusService
     {
         _t.Tick += (_, _) => Check();
         _quietT.Tick += (_, _) => Check();
-        TimerService.I.Tick += Check;   // fase Pomodoro berganti atau dijeda
+        TimerService.I.Tick += Check;   // Pomodoro phase changed or paused
         MeetingService.I.Changed += Check;
         Settings.Applied += Check;
         _was = Active;
@@ -51,7 +51,7 @@ public sealed class FocusService
 
     public void Stop() { Manual = false; Check(); }
 
-    /// <summary>True bila notifikasi ini ditahan (dipanggil sebelum ditampilkan di pill).</summary>
+    /// <summary>True if this notification is held (called before showing it in the pill).</summary>
     public bool Hold(PhoneNotif n)
     {
         if (!Active || Otp.Find(n.Title, n.Text) != null) return false;

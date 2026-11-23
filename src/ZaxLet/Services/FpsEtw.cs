@@ -10,15 +10,15 @@ using System.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// FPS tanpa menyuntik DLL ke game (beda dengan RTSS): mendengarkan peristiwa Present dari penyedia ETW Microsoft-Windows-DXGI, sama seperti PresentMon.
-/// Jumlah Present per detik per proses = FPS. Mencakup DirectX 9/10/11/12 lewat DXGI (windowed, borderless, dan fullscreen); Vulkan/OpenGL murni tidak.
-/// Sesi ETW butuh hak admin atau keanggotaan grup "Performance Log Users"; tanpa itu <see cref="Start"/> mengembalikan 5 (akses ditolak).
+/// FPS without injecting a DLL into games (unlike RTSS): listens for Present events from the Microsoft-Windows-DXGI ETW provider, like PresentMon.
+/// Present count per second per process = FPS. Covers DirectX 9/10/11/12 via DXGI (windowed, borderless, and fullscreen); pure Vulkan/OpenGL are not covered.
+/// ETW sessions require admin rights or membership in "Performance Log Users"; without it <see cref="Start"/> returns 5 (access denied).
 /// </summary>
 public sealed class FpsEtw : IDisposable
 {
     const string Session = "ZaxLetFpsTrace";
     static readonly Guid Dxgi = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
-    const ushort PresentStart = 42;   // Microsoft-Windows-DXGI: IDXGISwapChain::Present dimulai
+    const ushort PresentStart = 42;   // Microsoft-Windows-DXGI: IDXGISwapChain::Present started
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint StartTraceW(out ulong handle, string name, IntPtr props);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint ControlTraceW(ulong handle, string name, IntPtr props, uint code);
@@ -34,16 +34,16 @@ public sealed class FpsEtw : IDisposable
     DateTime _since = DateTime.UtcNow;
     ulong _session, _open = ulong.MaxValue;
     Thread _thread;
-    RecordCb _cb;   // dipegang supaya tidak dikumpulkan GC selagi ETW memanggilnya
+    RecordCb _cb;   // kept alive so GC does not collect it while ETW calls it
 
-    /// <summary>0 = berjalan; 5 = akses ditolak (butuh hak admin/grup); lainnya = kode Win32.</summary>
+    /// <summary>0 = running; 5 = access denied (needs admin/group rights); others = Win32 error code.</summary>
     public uint Start()
     {
         var props = Props();
         try
         {
             uint r = StartTraceW(out _session, Session, props);
-            if (r == 183)   // 183 = sesi lama masih ada (ZaxLet sebelumnya mati mendadak): hentikan lalu mulai lagi
+            if (r == 183)   // 183 = old session still exists (previous ZaxLet crashed): stop and restart
             {
                 var stop = Props();
                 ControlTraceW(0, Session, stop, 1);
@@ -53,7 +53,7 @@ public sealed class FpsEtw : IDisposable
             if (r != 0) return r;
 
             var g = Dxgi;
-            r = EnableTraceEx2(_session, ref g, 1, 5, ulong.MaxValue, 0, 0, IntPtr.Zero);   // enable, verbose, semua keyword
+            r = EnableTraceEx2(_session, ref g, 1, 5, ulong.MaxValue, 0, 0, IntPtr.Zero);   // enable, verbose, all keywords
             if (r != 0) { Dispose(); return r; }
 
             _cb = OnRecord;
@@ -82,20 +82,20 @@ public sealed class FpsEtw : IDisposable
         finally { Marshal.FreeHGlobal(props); }
     }
 
-    // EVENT_TRACE_PROPERTIES (x64, 120 byte) + nama sesi di belakangnya
+    // EVENT_TRACE_PROPERTIES (x64, 120 bytes) + session name appended
     static IntPtr Props()
     {
         int total = 120 + (Session.Length + 1) * 2;
         var p = Marshal.AllocHGlobal(total);
         for (int i = 0; i < total; i++) Marshal.WriteByte(p, i, 0);
         Marshal.WriteInt32(p, 0, total);          // Wnode.BufferSize
-        Marshal.WriteInt32(p, 40, 1);             // Wnode.ClientContext: timestamp QPC
+        Marshal.WriteInt32(p, 40, 1);             // Wnode.ClientContext: QPC timestamp
         Marshal.WriteInt32(p, 44, 0x20000);       // Wnode.Flags: WNODE_FLAG_TRACED_GUID
         Marshal.WriteInt32(p, 48, 64);            // BufferSize (KB)
         Marshal.WriteInt32(p, 52, 4);             // MinimumBuffers
         Marshal.WriteInt32(p, 56, 16);            // MaximumBuffers
         Marshal.WriteInt32(p, 64, 0x100);         // LogFileMode: EVENT_TRACE_REAL_TIME_MODE
-        Marshal.WriteInt32(p, 68, 1);             // FlushTimer: 1 detik
+        Marshal.WriteInt32(p, 68, 1);             // FlushTimer: 1 second
         Marshal.WriteInt32(p, 116, 120);          // LoggerNameOffset
         var name = System.Text.Encoding.Unicode.GetBytes(Session);
         Marshal.Copy(name, 0, p + 120, name.Length);
@@ -104,13 +104,13 @@ public sealed class FpsEtw : IDisposable
 
     void OnRecord(IntPtr rec)
     {
-        // EVENT_RECORD.EventHeader: ProcessId di offset 12, EventDescriptor.Id di offset 40
+        // EVENT_RECORD.EventHeader: ProcessId at offset 12, EventDescriptor.Id at offset 40
         if ((ushort)Marshal.ReadInt16(rec, 40) != PresentStart) return;
         int pid = Marshal.ReadInt32(rec, 12);
         lock (_gate) { _counts[pid] = _counts.GetValueOrDefault(pid) + 1; }
     }
 
-    /// <summary>FPS per proses sejak pemanggilan terakhir (hanya yang menampilkan frame).</summary>
+    /// <summary>FPS per process since last call (only processes presenting frames).</summary>
     public Dictionary<int, double> Snapshot()
     {
         Dictionary<int, int> c;
@@ -125,7 +125,7 @@ public sealed class FpsEtw : IDisposable
         if (_session != 0)
         {
             var p = Props();
-            try { ControlTraceW(_session, null, p, 1); } finally { Marshal.FreeHGlobal(p); }   // stop sesi: ProcessTrace kembali
+            try { ControlTraceW(_session, null, p, 1); } finally { Marshal.FreeHGlobal(p); }   // stop session: ProcessTrace returns
             _session = 0;
         }
         if (_open != ulong.MaxValue) { CloseTrace(_open); _open = ulong.MaxValue; }
@@ -133,8 +133,8 @@ public sealed class FpsEtw : IDisposable
 }
 
 /// <summary>
-/// Sumber FPS untuk overlay. Langsung bila ZaxLet boleh membuat sesi ETW; bila tidak, pengguna bisa mengizinkan lewat UAC sekali per sesi ZaxLet
-/// (proses pembantu `ZaxLet.exe --fps-helper` berjalan sebagai admin dan mengirim angka lewat named pipe), atau masuk grup "Performance Log Users" supaya tanpa UAC.
+/// FPS source for the overlay. Direct when ZaxLet can create an ETW session; otherwise the user can allow via UAC once per ZaxLet session
+/// (helper process `ZaxLet.exe --fps-helper` runs as admin and sends numbers over a named pipe), or join the "Performance Log Users" group to avoid UAC.
 /// </summary>
 public static class FpsSource
 {
@@ -149,7 +149,7 @@ public static class FpsSource
     public static bool Available => _direct != null || _pipe != null;
     public static bool Denied => _tried && !Available;
 
-    /// <summary>Coba sesi langsung (tanpa UAC). Aman dipanggil berulang.</summary>
+    /// <summary>Try direct session (no UAC). Safe to call repeatedly.</summary>
     public static void TryDirect()
     {
         if (_direct != null) return;
@@ -160,10 +160,10 @@ public static class FpsSource
 
     static bool _refused;
 
-    /// <summary>FPS dipilih, belum ada izin, dan pengguna belum menolak: tombol Overlay menawarkan "Izinkan FPS".</summary>
+    /// <summary>FPS selected, no permission yet, and user hasn't refused: Overlay button offers "Allow FPS".</summary>
     public static bool NeedsAsk => !Available && !_refused && PerfFormat.Items(Settings.Cur.PerfItems).Contains("fps");
 
-    /// <summary>Dari aksi pengguna (tombol Overlay, Pengaturan): coba langsung, lalu UAC. Ditolak = pill menjelaskan cara mengulang.</summary>
+    /// <summary>From user action (Overlay button, Settings): try direct, then UAC. Denied = pill explains how to retry.</summary>
     public static bool Ask()
     {
         _refused = false;
@@ -175,7 +175,7 @@ public static class FpsSource
         return false;
     }
 
-    /// <summary>Minta izin admin sekali (UAC) untuk proses pembantu. False bila ditolak/dibatalkan.</summary>
+    /// <summary>Request admin permission once (UAC) for helper process. False if denied/cancelled.</summary>
     public static bool StartElevated()
     {
         if (Available) return true;
@@ -189,7 +189,7 @@ public static class FpsSource
             new Thread(() => ReadLoop(pipe)) { IsBackground = true, Name = "fps-pipe" }.Start();
             return true;
         }
-        catch (Exception ex)   // 1223 = pengguna menolak UAC
+        catch (Exception ex)   // 1223 = user declined UAC
         {
             _pipe?.Dispose(); _pipe = null;
             if (ex is not System.ComponentModel.Win32Exception) App.Log(ex);
@@ -224,10 +224,10 @@ public static class FpsSource
         }
     }
 
-    /// <summary>FPS proses yang sedang di depan; bila tidak ada, proses lain yang paling lancar (≥ 10 fps), selain ZaxLet sendiri. Null bila tidak ada frame.</summary>
+    /// <summary>FPS of the foreground process; if none, the smoothest other process (>= 10 fps), excluding ZaxLet itself. Null if no frames.</summary>
     static double _ema;
 
-    /// <summary>Penghalusan: ETW mengirim peristiwa dalam gumpalan (flush 1 dtk), jadi hitungan per detik berayun (25-90 pada game 60 fps); rata-rata bergerak menenangkannya.</summary>
+    /// <summary>Smoothing: ETW sends events in bursts (1 s flush), so per-second counts swing (25-90 in a 60 fps game); moving average steadies it.</summary>
     public static double? Read()
     {
         var raw = ReadRaw();
@@ -252,7 +252,7 @@ public static class FpsSource
     public static void Stop() { _direct?.Dispose(); _direct = null; _pipe?.Dispose(); _pipe = null; }
 }
 
-/// <summary>`ZaxLet.exe --fps-helper NAMA_PIPE`: berjalan sebagai admin, menulis "pid=fps;pid=fps" tiap detik ke pipe milik ZaxLet, berhenti bila pipe putus.</summary>
+/// <summary>`ZaxLet.exe --fps-helper PIPE_NAME`: runs as admin, writes "pid=fps;pid=fps" every second to ZaxLet's pipe, exits when pipe breaks.</summary>
 public static class FpsHelper
 {
     public static void Run(string pipeName)
@@ -268,7 +268,7 @@ public static class FpsHelper
             {
                 Thread.Sleep(1000);
                 var s = etw.Snapshot();
-                w.WriteLine(string.Join(";", s.Select(k => $"{k.Key}={k.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}")));   // IOException saat ZaxLet menutup pipe: keluar
+                w.WriteLine(string.Join(";", s.Select(k => $"{k.Key}={k.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}")));   // IOException when ZaxLet closes pipe: exit
             }
         }
         catch { }

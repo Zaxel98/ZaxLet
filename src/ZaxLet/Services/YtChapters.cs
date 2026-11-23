@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Daftar lagu (segmen/bab) dari video YouTube panjang seperti kompilasi atau album penuh. SMTC hanya memberi judul video, kanal dan
-/// durasi, jadi videonya dicari lewat halaman hasil pencarian YouTube (cocok bila judulnya mirip dan durasinya selisih ≤ 3 dtk), lalu
-/// stempel waktu di deskripsinya dibaca ("00:04:55 Artis · Judul"). Tanpa kunci API; hanya judul dan nama kanal yang dikirim ke youtube.com.
+/// Tracklist (segments/chapters) from long YouTube videos like compilations or full albums. SMTC only gives video title, channel and
+/// duration, so the video is searched via YouTube search results (matches if title is similar and duration differs by ≤ 3s), then
+/// timestamps in its description are parsed ("00:04:55 Artist · Title"). No API key; only title and channel name are sent to youtube.com.
 /// </summary>
 public static class YtChapters
 {
@@ -20,7 +20,7 @@ public static class YtChapters
     static readonly Regex Line = new(@"^[\s\-–•·\[\(]*(?:(?<h>\d{1,2}):)?(?<m>\d{1,2}):(?<s>\d{2})[\]\)]?\s*[-–—:.|]?\s*(?<t>\S.*)$", RegexOptions.Compiled);
     static readonly Regex Numbering = new(@"^\d{1,3}[\.\)]\s+", RegexOptions.Compiled);
 
-    /// <summary>Baris berstempel waktu di deskripsi. Syarat seperti bab YouTube: sedikitnya 3, naik terus, dimulai dekat 0:00; selain itu null.</summary>
+    /// <summary>Timestamped lines in the description. Same rules as YouTube chapters: at least 3, strictly increasing, starting near 0:00; otherwise null.</summary>
     public static List<Chapter> ParseChapters(string description)
     {
         var list = new List<Chapter>();
@@ -59,7 +59,7 @@ public static class YtChapters
             foreach (var i in e.EnumerateArray()) foreach (var x in Renderers(i)) yield return x;
     }
 
-    /// <summary>ID video pertama di halaman hasil pencarian yang judulnya cocok dan durasinya ≤ 3 dtk dari durasi pemutar.</summary>
+    /// <summary>First video ID on the search results page whose title matches and duration is within ≤ 3s of the player duration.</summary>
     public static string PickVideo(string html, string title, double durSec)
     {
         var m = Regex.Match(html ?? "", @"var ytInitialData = (\{.*?\});</script>", RegexOptions.Singleline);
@@ -83,11 +83,11 @@ public static class YtChapters
         var h = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
         h.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36");
         h.DefaultRequestHeaders.Add("Accept-Language", "en");
-        h.DefaultRequestHeaders.Add("Cookie", "CONSENT=YES+1; SOCS=CAI");   // lewati halaman persetujuan cookie
+        h.DefaultRequestHeaders.Add("Cookie", "CONSENT=YES+1; SOCS=CAI");   // bypass cookie consent page
         return h;
     }
 
-    /// <summary>Segmen video yang sedang diputar, atau null bila videonya tidak ketemu / tidak punya daftar lagu.</summary>
+    /// <summary>Segments of the currently playing video, or null if the video wasn't found / has no tracklist.</summary>
     public static async Task<List<Chapter>> FetchAsync(string title, string channel, double durSec)
     {
         var q = Uri.EscapeDataString((title + " " + channel).Trim());

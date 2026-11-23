@@ -14,7 +14,7 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Jendela hasil pemindaian file duplikat dengan pemindahan aman ke Recycle Bin.
+/// Duplicate file scan results window with safe move to Recycle Bin.
 /// </summary>
 public sealed class DupWindow : Window
 {
@@ -33,7 +33,7 @@ public sealed class DupWindow : Window
         return t;
     }
 
-    /// <summary>Checkbox gelap: kotak 16px bertepi tipis, terisi aksen + centang saat dicentang (bawaan Windows: kotak putih yang tidak serasi dengan jendela gelap).</summary>
+    /// <summary>Dark checkbox: 16px thin-bordered box, filled with accent + checkmark when checked (Windows default: white box that clashes with dark windows).</summary>
     static ControlTemplate DarkCheckTemplate()
     {
         var box = new FrameworkElementFactory(typeof(Border), "box");
@@ -90,14 +90,14 @@ public sealed class DupWindow : Window
     readonly List<GroupState> _groups = new();
 
     const int RenderChunkSize = 20;
-    const double PathColW = 300;   // perkiraan lebar kolom path (jendela 680 - padding - kolom centang/Simpan/ukuran/tanggal)
+    const double PathColW = 300;   // approximate path column width (680 window - padding - check/Keep/size/date columns)
 
     string _folder;
     CancellationTokenSource _cts;
     bool _scanning, _recycling, _rendering, _closed;
     int _scanId, _renderVersion;
 
-    /// <summary>Untuk <c>--ui-test</c>: isi jendela (tanpa ditampilkan) dengan grup contoh, lalu serahkan kontennya untuk dirender ke PNG.</summary>
+    /// <summary>For <c>--ui-test</c>: populate window (without showing) with sample groups, then hand off its content for PNG rendering.</summary>
     internal static FrameworkElement Preview(string baseFolder, List<DupGroup> groups)
     {
         var w = new DupWindow(null) { _folder = baseFolder };
@@ -136,7 +136,7 @@ public sealed class DupWindow : Window
 
         var root = UI.Rows(0, -1, 0);
 
-        // Header (bisa diseret untuk memindahkan jendela): judul, status, dan path dalam 3 baris Auto
+        // Header (draggable to move window): title, status, and path in 3 Auto rows
         var head = UI.Cols(-1, 0, 0);
         head.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         head.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -179,7 +179,7 @@ public sealed class DupWindow : Window
         head.Children.Add(closeBtn.At(0, 2));
         root.Children.Add(head.At(0));
 
-        // Daftar grup duplikat
+        // Duplicate group list
         var listBox = new Border
         {
             Background = Brushes.Transparent,
@@ -193,7 +193,7 @@ public sealed class DupWindow : Window
         };
         root.Children.Add(listBox.At(1));
 
-        // Footer: total hemat + tombol aksi
+        // Footer: total savings + action buttons
         var foot = UI.Cols(-1, 0, 0);
         foot.Margin = new Thickness(0, 10, 0, 0);
         _savingsLabel = UI.T("Bisa dihemat: 0 KB", 12.5, UI.Accent, true);
@@ -401,7 +401,7 @@ public sealed class DupWindow : Window
         for (int i = 0; i < g.Files.Count; i++)
         {
             var file = g.Files[i];
-            bool newest = i == 0;   // DupFinder mengurutkan terbaru lebih dulu
+            bool newest = i == 0;   // DupFinder sorts newest first
 
             var cb = new CheckBox
             {
@@ -411,7 +411,7 @@ public sealed class DupWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Center
             };
 
-            // penanda "Simpan" sebagai chip (sebelumnya teks aksen 10.5px yang nyaris tak terbaca)
+            // "Simpan" badge as a chip (previously 10.5px accent text that was barely readable)
             var keepBadge = new Border
             {
                 Background = UI.AccentBg, CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 1, 6, 2),
@@ -436,7 +436,7 @@ public sealed class DupWindow : Window
             rowGrid.Children.Add(cb);
             rowGrid.Children.Add(keepBadge.At(0, 1));
 
-            // folder (redup, dipotong di ujung) + nama berkas (terang, selalu terlihat): path panjang tidak lagi menghilangkan nama berkasnya
+            // folder (dim, truncated at end) + filename (bright, always visible): long paths no longer hide the filename
             var rel = ShortenPath(file.Path, _folder);
             var dirPart = Path.GetDirectoryName(rel);
             var pathBox = UI.Cols(0, 0);
@@ -447,7 +447,7 @@ public sealed class DupWindow : Window
             nameTxt.MaxWidth = PathColW;
             if (!string.IsNullOrEmpty(dirPart))
             {
-                // lebar kolom path tetap: folder mengisi sisa setelah nama berkas, sehingga keduanya berdampingan dan yang dipotong hanya folder
+                // fixed path column width: folder fills remaining space after filename, so both sit side by side and only folder is truncated
                 var dirTxt = RawText(dirPart + Path.DirectorySeparatorChar, 11.5, CaptionFg);
                 dirTxt.MaxWidth = Math.Max(36, PathColW - nameW - 4);
                 pathBox.Children.Add(dirTxt);
@@ -517,7 +517,7 @@ public sealed class DupWindow : Window
         var kept = gs.Entries.Where(e => e.Box.IsChecked != true).ToList();
         if (kept.Count == 0 && gs.Entries.Count > 0)
         {
-            // Jaga agar minimal satu berkas selalu tersimpan
+            // Ensure at least one file is always kept
             gs.Entries[0].Box.IsChecked = false;
             kept.Add(gs.Entries[0]);
         }
@@ -587,7 +587,7 @@ public sealed class DupWindow : Window
             if (_closed) return;
             var movedSet = new HashSet<string>(moved, StringComparer.OrdinalIgnoreCase);
 
-            // Segarkan daftar grup yang tersisa
+            // Refresh remaining group list
             var remainingGroups = new List<DupGroup>();
             foreach (var gs in _groups)
             {

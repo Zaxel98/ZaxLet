@@ -21,8 +21,8 @@ using Windows.Storage.Streams;
 namespace ZaxLet;
 
 /// <summary>
-/// Kompresi gambar dan PDF ke ukuran target di folder temp per-pengguna (%LOCALAPPDATA%\ZaxLet\compressed\).
-/// File asli tidak pernah diubah atau dihapus.
+/// Compress images and PDFs to a target size in the per-user temp folder (%LOCALAPPDATA%\ZaxLet\compressed\).
+/// Original files are never modified or deleted.
 /// </summary>
 public static class FileCompress
 {
@@ -60,7 +60,7 @@ public static class FileCompress
         return Math.Max(1, (long)Math.Round(bytes / 1024.0)).ToString(inv) + " KB";
     }
 
-    /// <summary>Kompres gambar ke JPEG dengan ukuran <= targetBytes. Keluaran selalu JPEG.</summary>
+    /// <summary>Compress image to JPEG with size <= targetBytes. Output is always JPEG.</summary>
     public static string ImageToTarget(string src, long targetBytes, CancellationToken ct) =>
         ImageToTarget(src, targetBytes, ct, keepResolution: true, out _);
 
@@ -226,7 +226,7 @@ public static class FileCompress
         (40, 800),
     };
 
-    /// <summary>Kompres PDF dengan mengompres ulang gambar di dalam PDF (teks &amp; vektor tetap tajam); fallback ke raster halaman bila target tidak tercapai.</summary>
+    /// <summary>Compress PDF by recompressing images inside the PDF (text &amp; vectors stay sharp); fall back to page rasterization if target is not reached.</summary>
     public static string PdfToTarget(string src, long targetBytes, CancellationToken ct) =>
         PdfToTarget(src, targetBytes, ct, null, out _);
 
@@ -249,7 +249,7 @@ public static class FileCompress
         catch (InvalidOperationException) { throw; }
         catch
         {
-            // Bila PDFsharp gagal mem-parsing struktur PDF (bukan password), lanjutkan ke fallback raster
+            // If PDFsharp fails to parse the PDF structure (not a password error), fall back to rasterization
         }
 
         if (recompressed != null)
@@ -373,7 +373,7 @@ public static class FileCompress
         byte[] origStream = dict.Stream.Value;
         if (origStream == null || origStream.Length < 20 * 1024) return;
 
-        // Lewati jika menggunakan /Mask array (color-key masking tidak cocok dengan JPEG lossy) atau /Decode terbalik
+        // Skip if using /Mask array (color-key masking is incompatible with lossy JPEG) or inverted /Decode
         if (dict.Elements.GetObject("/Mask") is PdfArray) return;
         if (HasInvertedDecode(dict)) return;
 
@@ -635,7 +635,7 @@ public static class FileCompress
         var outPath = UniqueOutputPath(src, pdfBytes.Length, ".pdf");
         await File.WriteAllBytesAsync(outPath, pdfBytes, ct);
 
-        // Validasi dengan membuka ulang PDF keluaran dan memastikan jumlah halaman sama
+        // Validate by reopening the output PDF and verifying the page count matches
         try
         {
             var outFile = await StorageFile.GetFileFromPathAsync(outPath);
@@ -658,7 +658,7 @@ public static class FileCompress
 
     static bool IsPasswordError(Exception ex)
     {
-        // Windows.Data.Pdf throws HRESULT 0x8007052B (ERROR_WRONG_PASSWORD) atau UnauthorizedAccessException
+        // Windows.Data.Pdf throws HRESULT 0x8007052B (ERROR_WRONG_PASSWORD) or UnauthorizedAccessException
         int hr = ex.HResult;
         return hr == unchecked((int)0x8007052B) || hr == unchecked((int)0x80070005) ||
                ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase);
@@ -919,11 +919,11 @@ public static class FileCompress
         return dst;
     }
 
-    // Konstanta SSIM standar (Wang et al., 2004) untuk piksel 8-bit [0..255]:
+    // Standard SSIM constants (Wang et al., 2004) for 8-bit pixels [0..255]:
     // C1 = (0.01 * 255)^2 = 6.5025, C2 = (0.03 * 255)^2 = 58.5225.
     const double SsimC1 = (0.01 * 255.0) * (0.01 * 255.0);
     const double SsimC2 = (0.03 * 255.0) * (0.03 * 255.0);
-    // Penalti kesalahan chroma (rata-rata |dCb|+|dCr| pada skala 0..255) terhadap SSIM luma [0..1].
+    // Chroma error penalty (average |dCb|+|dCr| on 0..255 scale) against luma SSIM [0..1].
     const double ChromaErrorWeight = 0.002;
     const int SsimMaxLongSide = 1600;
 
@@ -1248,7 +1248,7 @@ public static class FileCompress
 
     static string UniqueOutputPath(string src, long outBytes, string ext)
     {
-        // Folder yang sama dengan sumber: surat.pdf -> surat_compressed.pdf; bila tak bisa ditulis, pakai folder cadangan di LocalAppData.
+        // Same folder as source: surat.pdf -> surat_compressed.pdf; if not writable, use fallback folder in LocalAppData.
         string orig = Path.GetFileNameWithoutExtension(src);
         if (string.IsNullOrWhiteSpace(orig)) orig = "file";
         string dir = Path.GetDirectoryName(src);

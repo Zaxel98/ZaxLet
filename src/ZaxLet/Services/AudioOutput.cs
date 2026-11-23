@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace ZaxLet;
 
-/// <summary>Daftar dan pengalih perangkat keluaran suara aktif Windows (Core Audio + IPolicyConfig, tanpa paket tambahan).</summary>
+/// <summary>List and switch active Windows audio output devices (Core Audio + IPolicyConfig, no extra packages).</summary>
 public static class AudioOutput
 {
     public sealed record Device(string Id, string Name, bool IsDefault);
@@ -65,7 +65,7 @@ public static class AudioOutput
     [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")]
     class PolicyConfigCom { }
 
-    // Antarmuka COM tidak resmi Windows (Win7-Win11) untuk mengganti perangkat audio bawaan.
+    // Undocumented Windows COM interface (Win7-Win11) to switch the default audio device.
     [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface IPolicyConfig
     {
@@ -112,10 +112,10 @@ public static class AudioOutput
         return null;
     }
 
-    /// <summary>Daftar perangkat keluaran suara aktif beserta penanda perangkat bawaan saat ini.</summary>
+    /// <summary>List of active audio output devices with a marker for the current default device.</summary>
     public static List<Device> List() => TryList(out var devices) ? devices : new List<Device>();
 
-    /// <summary>Baca daftar perangkat keluaran suara aktif; kembalikan false bila enumerasi gagal.</summary>
+    /// <summary>Read the list of active audio output devices; return false if enumeration fails.</summary>
     public static bool TryList(out List<Device> devices)
     {
         devices = new List<Device>();
@@ -124,7 +124,7 @@ public static class AudioOutput
         IMMDevice defDev = null;
         try
         {
-            // Pakai tipe RCW tunggal AudioEndpoint.MMDeviceEnumeratorCom agar tidak bentrok dengan cache RCW COM singleton.
+            // Use the single RCW type AudioEndpoint.MMDeviceEnumeratorCom to avoid colliding with the singleton COM RCW cache.
             en = (IMMDeviceEnumerator)new AudioEndpoint.MMDeviceEnumeratorCom();
             string defaultId = null;
             if (en.GetDefaultAudioEndpoint(FlowRender, RoleConsole, out defDev) == 0 && defDev != null)
@@ -162,7 +162,7 @@ public static class AudioOutput
         }
     }
 
-    /// <summary>Jadikan perangkat dengan id tertentu sebagai keluaran suara utama (Console, Multimedia, Communications).</summary>
+    /// <summary>Set the device with the given id as the default audio output (Console, Multimedia, Communications).</summary>
     public static bool SetDefault(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;

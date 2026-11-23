@@ -5,8 +5,8 @@ using System.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Diagnostik jeda proses: thread khusus tidur 100 ms dan mencatat kalau bangunnya telat (proses/OS membeku)
-/// atau kalau pekerjaan yang diantrekan ke thread pool telat dijalankan (thread pool kehabisan thread). Hanya aktif saat HP tersambung.
+/// Process stall diagnostics: dedicated thread sleeps 100 ms and logs if it wakes up late (process/OS freeze)
+/// or if work queued to the thread pool runs late (thread pool starvation). Only active while phone is connected.
 /// </summary>
 static class StallWatch
 {

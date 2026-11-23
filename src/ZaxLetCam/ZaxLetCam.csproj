@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Media source COM untuk kamera virtual "ZaxLet HP" (dimuat Windows Frame Server lewat comhost). Daftarkan dengan regsvr32 pada ZaxLetCam.comhost.dll. -->
+  <!-- COM media source for the "ZaxLet HP" virtual camera (loaded by Windows Frame Server via comhost). Register with regsvr32 on ZaxLetCam.comhost.dll. -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <EnableComHosting>true</EnableComHosting>

@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace ZaxLet;
 
-/// <summary>Volume per aplikasi lewat API sesi audio Windows (IAudioSessionManager2), pada perangkat keluaran bawaan. Sesi dijumlahkan per nama proses.</summary>
+/// <summary>Per-app volume via Windows audio session API (IAudioSessionManager2), on the default output device. Sessions are aggregated per process name.</summary>
 public static class AppMixer
 {
     public sealed record Row(string Name, string Path, float Vol, bool Mute);
@@ -54,7 +54,7 @@ public static class AppMixer
     static AudioEndpoint.IEnumerator _enum;
     static readonly Dictionary<uint, (string Name, string Path)> _proc = new();
 
-    /// <summary>Panggil f untuk tiap sesi aktif/tidak aktif (bukan kedaluwarsa) milik proses nyata. Kembalikan true dari f untuk menahan objek COM sesi.</summary>
+    /// <summary>Call f for each active/inactive (non-expired) session of a real process. Return true from f to retain the session COM object.</summary>
     static void Walk(Func<uint, IVol, bool> f)
     {
         AudioEndpoint.IDevice dev = null; object o = null; IEnum list = null;
@@ -73,13 +73,13 @@ public static class AppMixer
                 {
                     if (list.GetSession(i, out s) != 0) continue;
                     var c = (IControl2)s;
-                    if (c.GetState(out int st) != 0 || st == 2 || c.GetProcessId(out uint pid) != 0 || pid == 0) continue;   // 2 = kedaluwarsa; pid 0 = suara sistem
+                    if (c.GetState(out int st) != 0 || st == 2 || c.GetProcessId(out uint pid) != 0 || pid == 0) continue;   // 2 = expired; pid 0 = system sounds
                     keep = f(pid, (IVol)s);
                 }
                 finally { if (s != null && !keep) Marshal.ReleaseComObject(s); }
             }
         }
-        catch { ResetEnum(); /* perangkat hilang atau sesi tertutup di tengah jalan */ }
+        catch { ResetEnum(); /* device lost or session closed mid-walk */ }
         finally
         {
             if (list != null) Marshal.ReleaseComObject(list);
@@ -141,7 +141,7 @@ public static class AppMixer
         return rows;
     }
 
-    /// <summary>Atur volume semua sesi milik aplikasi ber-nama itu; level di atas 0 sekaligus membuka bisu.</summary>
+    /// <summary>Set volume for all sessions of the named app; levels above 0 also unmute.</summary>
     public static void Set(string name, float level)
     {
         var g = Guid.Empty;
@@ -157,7 +157,7 @@ public static class AppMixer
         });
     }
 
-    /// <summary>Bisukan atau bunyikan semua sesi milik aplikasi ber-nama itu.</summary>
+    /// <summary>Mute or unmute all sessions of the named app.</summary>
     public static void SetMute(string name, bool mute)
     {
         var g = Guid.Empty;
@@ -169,7 +169,7 @@ public static class AppMixer
         });
     }
 
-    /// <summary>Pegangan sesi audio selama menyeret slider agar tidak membaca ulang semua proses tiap gerakan.</summary>
+    /// <summary>Holds audio session handles while dragging a slider to avoid re-enumerating all processes on every move.</summary>
     public sealed class DragHandle : IDisposable
     {
         readonly List<IVol> _vols = new();

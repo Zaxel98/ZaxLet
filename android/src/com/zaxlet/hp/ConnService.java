@@ -14,29 +14,29 @@ import android.os.IBinder;
 import android.os.PowerManager;
 
 /**
- * Layanan latar depan: tetap tersambung ke PC lewat /ctl (LAN dulu, lalu Tailscale) walau layar mati.
- * Tahan putus: ping/pong dengan batas waktu (soket setengah mati ikut ditutup), sambung ulang seketika saat jaringan
- * berganti, dan jeda coba ulang naik bertahap. Dihidupkan lagi oleh BootReceiver / NotifService bila pengguna sudah mengaktifkannya.
+ * Foreground service: stays connected to the PC via /ctl (LAN first, then Tailscale) even when the screen is off.
+ * Resilient to disconnects: ping/pong with timeout (half-dead sockets are closed), reconnects immediately on network
+ * changes, and uses exponential backoff for retries. Restarted by BootReceiver / NotifService if the user had enabled it.
  */
 public class ConnService extends Service {
     static volatile String status = "Belum aktif";
     static volatile boolean alive;
-    static volatile int state;   // 0 mati, 1 menyambung/menunggu, 2 tersambung
+    static volatile int state;   // 0 off, 1 connecting/waiting, 2 connected
     private static volatile long lastTry;
     private Thread loop;
     private Cam cam;
     private PowerManager.WakeLock wl;
     private WifiManager.WifiLock wifi;
     private volatile Ws ctl;
-    private static volatile Ws ctlWs;   // untuk NotifService
+    private static volatile Ws ctlWs;   // for NotifService
     private final Object wake = new Object();
     private boolean kick;
     private volatile long lastRx;
-    private volatile boolean sawPong;   // PC lama tidak membalas ping: batas waktu baru berlaku setelah pong pertama
+    private volatile boolean sawPong;   // older PCs do not reply to ping: timeout only applies after the first pong
     private volatile boolean camType;
     private ConnectivityManager.NetworkCallback netCb;
 
-    /** Kirim teks JSON ke PC lewat kanal kontrol; false bila belum tersambung. */
+    /** Send JSON text to the PC over the control channel; false if not connected. */
     static boolean send(String s) {
         Ws w = ctlWs;
         if (w == null) return false;
@@ -45,7 +45,7 @@ public class ConnService extends Service {
     static boolean connected() { Ws w = ctlWs; return w != null && !w.closed; }
     private volatile boolean stopping;
 
-    /** Hidupkan layanan dari latar (boot, NotifService) bila pengguna pernah mengaktifkannya; tipe kamera tidak diminta. */
+    /** Start the service from the background (boot, NotifService) if the user had enabled it; camera type is not requested. */
     static void ensure(Context c) {
         long now = System.currentTimeMillis();
         if (alive || now - lastTry < 20000) return;
@@ -67,9 +67,9 @@ public class ConnService extends Service {
     @Override public int onStartCommand(Intent in, int flags, int startId) {
         Net.init(this);
         if (in != null && "STOP".equals(in.getAction())) { Net.sp.edit().putBoolean("auto", false).apply(); shutdown(); return START_NOT_STICKY; }
-        boolean bg = in != null && in.getBooleanExtra("bg", false);   // null = restart otomatis oleh sistem: juga dari latar
+        boolean bg = in != null && in.getBooleanExtra("bg", false);   // null = automatic system restart: also from background
         if (alive) {
-            if (!bg && !camType && Build.VERSION.SDK_INT >= 29) {   // pengguna membuka aplikasi: naikkan ke tipe kamera
+            if (!bg && !camType && Build.VERSION.SDK_INT >= 29) {   // user opened the app: upgrade to camera type
                 try { startForeground(1, note(status), fgType(true)); camType = true; } catch (Exception e) { }
             }
             return START_STICKY;
@@ -83,7 +83,7 @@ public class ConnService extends Service {
         try {
             if (Build.VERSION.SDK_INT >= 29) {
                 try { startForeground(1, n, fgType(!bg)); camType = !bg; }
-                catch (Exception e) { startForeground(1, n, fgType(false)); }   // dari latar Android melarang tipe kamera
+                catch (Exception e) { startForeground(1, n, fgType(false)); }   // Android forbids camera type from background
             } else startForeground(1, n);
         } catch (Exception e) { alive = false; stopSelf(); return START_NOT_STICKY; }
 
@@ -98,7 +98,7 @@ public class ConnService extends Service {
         return START_STICKY;
     }
 
-    /** Ganti jaringan (Wi-Fi <-> data, Wi-Fi lain): buang sambungan lama dan coba lagi sekarang, bukan menunggu timeout. */
+    /** Network switch (Wi-Fi <-> cellular, another Wi-Fi): drop the old connection and retry now instead of waiting for timeout. */
     private void watchNetwork() {
         try {
             ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
@@ -111,7 +111,7 @@ public class ConnService extends Service {
     }
 
     private static volatile ConnService self;
-    /** Sambung ulang sekarang (mis. setelah pasangan diganti), tanpa menunggu jeda coba ulang. */
+    /** Reconnect now (e.g. after pairing changed), without waiting for the retry delay. */
     static void kickNow() { ConnService s = self; if (s != null) s.kick(); }
 
     private void kick() {
@@ -141,7 +141,7 @@ public class ConnService extends Service {
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(1, note(s));
     }
 
-    /** {"t":"b","l":persen,"c":1 bila mengisi}; null bila tidak terbaca. */
+    /** {"t":"b","l":percent,"c":1 if charging}; null if unreadable. */
     private String battery() {
         Intent b = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         if (b == null) return null;
@@ -162,17 +162,17 @@ public class ConnService extends Service {
                 w = new Ws("/ctl");
                 ctl = w; ctlWs = w; got = true; backoff = 1000;
                 lastRx = System.currentTimeMillis(); sawPong = false;
-                NotifService.resync();   // kirim ulang notifikasi aktif ke PC
+                NotifService.resync();   // resend active notifications to the PC
                 setStatus("Tersambung ke PC (" + Net.active + ")", 2);
                 final Ws mine = w;
                 Thread ping = new Thread(() -> {
                     try {
                         String sentBat = "";
                         while (!mine.closed) {
-                            String bat = battery();   // level baterai menumpang di siklus ping; PC lama mengabaikan jenis pesan yang tidak dikenal
+                            String bat = battery();   // battery level piggybacks on the ping cycle; older PCs ignore unknown message types
                             if (bat != null && !bat.equals(sentBat)) { mine.sendText(bat); sentBat = bat; }
                             Thread.sleep(10000);
-                            if (sawPong && System.currentTimeMillis() - lastRx > 30000) { mine.close(); break; }   // PC diam 30 dtk = putus
+                            if (sawPong && System.currentTimeMillis() - lastRx > 30000) { mine.close(); break; }   // PC silent for 30s = disconnected
                             mine.sendText("ping");
                         }
                     } catch (Exception e) { mine.close(); }
@@ -192,7 +192,7 @@ public class ConnService extends Service {
                 if (w != null) w.close();
                 if (ctl == w) ctl = null;
                 if (ctlWs == w) ctlWs = null;
-                if (cam != null && cam.running()) cam.stop();   // putus dari PC = kamera ikut mati
+                if (cam != null && cam.running()) cam.stop();   // disconnected from PC = stop camera too
             }
             if (stopping) break;
             pause(got ? 1000 : backoff);
@@ -244,7 +244,7 @@ public class ConnService extends Service {
         return android.net.Uri.parse("tel:" + norm.toString());
     }
 
-    /** Teks dari PC: masuk clipboard HP dan tampil di notifikasi (cadangan bila Android menolak penulisan dari latar). */
+    /** Text from PC: put into phone clipboard and show in a notification (fallback if Android blocks background writes). */
     private void fromPc(String b64) {
         final String t;
         try {
@@ -320,7 +320,7 @@ public class ConnService extends Service {
             }
             return;
         }
-        if (m.startsWith("reply ")) {   // reply <base64 key> <base64 teks>; key notifikasi Android memuat "|" jadi dikodekan
+        if (m.startsWith("reply ")) {   // reply <base64 key> <base64 text>; Android notification keys contain "|" so they are encoded
             String[] q = m.split(" ", 3);
             if (q.length == 3) {
                 try {

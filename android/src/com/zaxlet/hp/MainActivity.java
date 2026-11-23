@@ -20,7 +20,7 @@ import java.io.*;
 import java.util.ArrayList;
 import javax.net.ssl.HttpsURLConnection;
 
-/** Layar utama: status sambungan, daftar izin agar tetap hidup di latar, pasangkan, kirim file/teks ke PC, ambil file dari Shelf. Juga penerima menu Bagikan. */
+/** Main screen: connection status, permission list to stay alive in background, pair, send files/text to PC, fetch files from Shelf. Also Share menu receiver. */
 public class MainActivity extends Activity {
     private static final class Check { View dot; TextView label; Button act; boolean ok; }
 
@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
         small(toggle);
         head.addView(toggle, new LinearLayout.LayoutParams(-2, -2));
         sc.addView(head);
-        LinearLayout info = new LinearLayout(this);   // teks alamat di kiri, QR kecil di kanan (di bawah tombol Matikan)
+        LinearLayout info = new LinearLayout(this);   // address text on the left, small QR on the right (below the Stop button)
         info.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout txt = new LinearLayout(this);
         txt.setOrientation(LinearLayout.VERTICAL);
@@ -67,10 +67,10 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams xp = new LinearLayout.LayoutParams(0, -2, 1f);
         xp.rightMargin = Ui.dp(this, 8);
         info.addView(txt, xp);
-        info.addView(small(Ui.button(this, "QR", false, v -> startActivity(new Intent(this, ScanActivity.class)))), new LinearLayout.LayoutParams(-2, -2));   // pasangkan: pindai QR dari ZaxLet
+        info.addView(small(Ui.button(this, "QR", false, v -> startActivity(new Intent(this, ScanActivity.class)))), new LinearLayout.LayoutParams(-2, -2));   // pair: scan QR from ZaxLet
         sc.addView(info, Ui.gap(this, 6));
 
-        // ---- aksi (paling sering dipakai: tepat di bawah status) ----
+        // ---- actions (most frequently used: right below status) ----
         LinearLayout ac = Ui.card(root, "Kirim & ambil");
         LinearLayout r1 = new LinearLayout(this);
         r1.addView(Ui.button(this, "Kirim file", false, v -> pickFiles()), new LinearLayout.LayoutParams(0, -2, 1f));
@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
         audNote = Ui.text(this, "", 12, Ui.DIM, false);
         ac.addView(audNote, Ui.gap(this, 4));
 
-        // ---- izin agar tetap hidup (diset sekali, jadi di paling bawah) ----
+        // ---- permissions to stay alive (set once, so at the very bottom) ----
         LinearLayout kc = Ui.card(root, "Agar tetap hidup di latar");
         cNotif = check(kc, "Akses notifikasi", v -> notifAccess());
         cBattery = check(kc, "Bebas hemat baterai", v -> batteryOpt());
@@ -120,7 +120,7 @@ public class MainActivity extends Activity {
         handle(getIntent());
     }
 
-    /** Tombol kecil (tinggi 44dp, selebar teksnya) untuk slot sempit di samping teks atau kolom isian. */
+    /** Small button (44dp height, wraps text width) for narrow slots next to text or input fields. */
     private Button small(Button b) {
         b.setTextSize(14); b.setMinWidth(0); b.setMinimumWidth(0);
         b.setMinHeight(Ui.dp(this, 44)); b.setMinimumHeight(Ui.dp(this, 44));
@@ -202,7 +202,7 @@ public class MainActivity extends Activity {
         mark(cPost, Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
     }
 
-    /** Android 13+ memblokir akses notifikasi untuk APK sideload ("setelan terbatas"); jelaskan jalan keluarnya. */
+    /** Android 13+ blocks notification access for sideloaded APKs ("restricted settings"); explain the workaround. */
     private void notifAccess() {
         final Intent listener = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
         if (Build.VERSION.SDK_INT < 33) { startActivity(listener); return; }
@@ -214,7 +214,7 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    /** Layar autostart bawaan pabrikan; tidak ada API resmi, jadi coba beberapa dan jatuh ke Info aplikasi. */
+    /** Manufacturer's built-in autostart screen; no official API, so try several and fall back to App Info. */
     private void autostart() {
         String[][] c = {
             {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
@@ -236,14 +236,14 @@ public class MainActivity extends Activity {
         else if (Intent.ACTION_SEND.equals(a)) {
             Uri u = i.getParcelableExtra(Intent.EXTRA_STREAM);
             if (u != null) { ArrayList<Uri> l = new ArrayList<>(); l.add(u); upload(l); }
-            else { CharSequence t = i.getCharSequenceExtra(Intent.EXTRA_TEXT); if (t != null) sendText(t.toString(), null); }   // Bagikan teks dari aplikasi lain
+            else { CharSequence t = i.getCharSequenceExtra(Intent.EXTRA_TEXT); if (t != null) sendText(t.toString(), null); }   // Share text from another app
         } else if (Intent.ACTION_SEND_MULTIPLE.equals(a)) {
             ArrayList<Uri> l = i.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
             if (l != null) upload(l);
         }
     }
 
-    /** Teks ke clipboard PC lewat kanal kontrol. Bingkai di PC dibatasi 64 KB, jadi JSON-nya dijaga di bawah itu. */
+    /** Text to PC clipboard via control channel. PC frame limit is 64 KB, so keep the JSON below that. */
     private void sendText(String s, Runnable onSent) {
         if (s == null || s.trim().isEmpty()) { toast("Teks kosong"); return; }
         if (!ConnService.connected()) { toast("Belum tersambung ke PC: aktifkan layanan latar belakang"); return; }
@@ -267,8 +267,8 @@ public class MainActivity extends Activity {
         }, "zaxlet-text").start();
     }
 
-    /** Buka Google Lens untuk memindai QR dari ZaxLet PC; ketuk hasilnya (zaxlet://pair) dan aplikasi ini terbuka sendiri. Cadangan: aplikasi kamera. */
-    /** Kamera bawaan hanya menyalin tautan: saat layar ini kembali fokus dan clipboard berisi tautan pasangan baru, pasangkan otomatis. */
+    /** Open Google Lens to scan QR from ZaxLet PC; tap the result (zaxlet://pair) and this app opens automatically. Fallback: camera app. */
+    /** Built-in camera only copies the link: when this screen regains focus and clipboard has a new pair link, pair automatically. */
     @Override public void onWindowFocusChanged(boolean focus) {
         super.onWindowFocusChanged(focus);
         if (!focus) return;
@@ -313,7 +313,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Audio (dan opsional layar) HP -> PC: izin rekam audio, lalu dialog rekam layar Android; hasilnya diteruskan ke AudioService. */
+    /** Phone audio (and optional screen) -> PC: audio record permission, then Android screen capture dialog; result is forwarded to AudioService. */
     private void toggleAudio(boolean video) {
         if (AudioService.alive) { startService(new Intent(this, AudioService.class).setAction("STOP")); ui.postDelayed(this::refresh, 400); return; }
         if (!Net.paired()) { toast("Pasangkan dulu dengan ZaxLet di PC"); return; }

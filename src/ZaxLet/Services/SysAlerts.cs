@@ -6,8 +6,8 @@ using WF = System.Windows.Forms;
 namespace ZaxLet;
 
 /// <summary>
-/// Peringatan lembut di pill untuk suhu CPU/GPU tinggi (> 90 °C), baterai laptop rendah (<= 15%), dan baterai penuh (100%).
-/// Memakai histeresis agar tiap episode hanya memperingatkan sekali sampai kondisi kembali aman.
+/// Gentle pill alerts for high CPU/GPU temperature (> 90 °C), low laptop battery (<= 15%), and full battery (100%).
+/// Uses hysteresis so each episode only alerts once until conditions return to safe levels.
 /// </summary>
 public sealed class SysAlerts
 {

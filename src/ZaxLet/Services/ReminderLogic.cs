@@ -12,7 +12,7 @@ public sealed class ReminderItem
     public DateTime DueAt { get; set; }
 }
 
-/// <summary>Logika murni pengingat berlabel (tanpa UI/timer) untuk parsing dan evaluasi jatuh tempo.</summary>
+/// <summary>Pure labeled-reminder logic (no UI/timer) for parsing and due evaluation.</summary>
 public static class ReminderLogic
 {
     static readonly Regex ClockRx = new(@"^(\d{1,2})[:.](\d{2})$", RegexOptions.Compiled);

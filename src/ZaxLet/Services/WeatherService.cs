@@ -7,8 +7,8 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Cuaca dari open-meteo.com (tanpa kunci). Mati bawaannya: yang dikirim hanya koordinat lokasi di Pengaturan. Diperbarui tiap 30 menit
-/// hanya selama menyala; peringatan hujan muncul di pill paling sering tiap 3 jam.
+/// Weather from open-meteo.com (no API key). Off by default: only the location coordinates in Settings are sent. Updated every 30 minutes
+/// only while enabled; rain alerts appear in the pill at most once every 3 hours.
 /// </summary>
 public sealed class WeatherService
 {
@@ -23,13 +23,13 @@ public sealed class WeatherService
 
     WeatherService() { _t.Tick += async (_, _) => await Refresh(); }
 
-    /// <summary>Mulai atau hentikan sesuai Pengaturan (dipanggil saat mulai dan tiap Pengaturan berubah).</summary>
+    /// <summary>Start or stop according to Settings (called at startup and whenever Settings change).</summary>
     public void Apply()
     {
         _t.Stop();
         if (!Settings.Cur.WeatherOn) { if (Current != null) { Current = null; Changed?.Invoke(); } return; }
         _t.Start();
-        if (Current == null || DateTime.Now - _lastAt > TimeSpan.FromMinutes(5)) _ = Refresh();   // Pengaturan lain yang berubah tidak memicu permintaan baru
+        if (Current == null || DateTime.Now - _lastAt > TimeSpan.FromMinutes(5)) _ = Refresh();   // changes to other Settings do not trigger a new request
     }
 
     async Task Refresh()
@@ -51,6 +51,6 @@ public sealed class WeatherService
                 IslandWindow.Instance?.Alert(L.F("Kemungkinan hujan {0}% dalam 2 jam ke depan", now.RainNext2h), 10);
             }
         }
-        catch (Exception ex) { App.Log(ex); }   // jaringan putus: tampilan terakhir dipertahankan
+        catch (Exception ex) { App.Log(ex); }   // network down: keep last displayed weather
     }
 }

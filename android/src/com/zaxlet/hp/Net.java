@@ -13,11 +13,11 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.*;
 
-/** Pengaturan pasangan + koneksi TLS ke PC. Sertifikat PC dipin lewat sidik jari SHA-256 dari tautan pasangan. */
+/** Pairing settings + TLS connection to PC. PC certificate is pinned via SHA-256 fingerprint from the pairing link. */
 final class Net {
     static SharedPreferences sp;
     static Context app;
-    static volatile String active;   // host yang terakhir berhasil (LAN diutamakan, lalu Tailscale)
+    static volatile String active;   // last successful host (LAN preferred, then Tailscale)
 
     static void init(Context c) {
         app = c.getApplicationContext();
@@ -40,7 +40,7 @@ final class Net {
             return true;
         } catch (Exception e) { return false; }
     }
-    /** Paket yang notifikasinya boleh diteruskan ke PC. Bawaan kosong: semua mati sampai dinyalakan manual di layar Notifikasi ke PC. */
+    /** Packages whose notifications may be forwarded to the PC. Empty by default: all off until manually enabled on the Phone-to-PC Notifications screen. */
     static java.util.Set<String> allowed() { return new java.util.HashSet<>(sp.getStringSet("allowed", new java.util.HashSet<String>())); }
     static void setAllowed(String pkg, boolean on) {
         java.util.Set<String> s = allowed();
@@ -71,7 +71,7 @@ final class Net {
 
     static int port() { try { return Integer.parseInt(get("tp")); } catch (Exception e) { return 47891; } }
 
-    /** HP tersambung ke hotspot laptop (Wi-Fi): gateway-nya adalah laptop itu sendiri, tanpa perlu pairing ulang. Null bila bukan Wi-Fi. */
+    /** Phone is connected to the laptop's hotspot (Wi-Fi): the gateway is the laptop itself, no re-pairing needed. Null if not Wi-Fi. */
     static String gateway() {
         try {
             ConnectivityManager cm = (ConnectivityManager) app.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -85,8 +85,8 @@ final class Net {
     }
 
     /**
-     * HP yang membagi hotspot/USB tethering ke laptop: IP laptop tidak tetap, jadi pindai subnet antarmuka tether (bukan jaringan internet HP)
-     * dan kembalikan host yang membuka port ZaxLet. Kosong bila tidak sedang membagi tethering, jadi tidak memperlambat sambungan biasa.
+     * Phone sharing hotspot/USB tethering to the laptop: the laptop's IP is not fixed, so scan the tether interface subnet (not the phone's internet network)
+     * and return hosts with the ZaxLet port open. Empty if not currently tethering, so it does not slow down normal connections.
      */
     static java.util.List<String> tetherHosts() {
         java.util.List<String> found = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -116,22 +116,22 @@ final class Net {
         return found;
     }
 
-    /** Soket TLS ke PC: host yang terakhir berhasil, gateway hotspot laptop, LAN, laptop di hotspot HP (pindai), lalu Tailscale. */
+    /** TLS socket to PC: last successful host, laptop hotspot gateway, LAN, laptop on phone hotspot (scan), then Tailscale. */
     static SSLSocket connect() throws Exception {
         String gw = gateway();
-        String[] order = { active, "127.0.0.1", gw, get("lan"), "*tether*", get("ts") };   // 127.0.0.1 = terowongan USB (adb reverse), bebas jitter Wi-Fi; gagal seketika bila tidak ada
-        StringBuilder why = new StringBuilder();   // semua alamat yang gagal, bukan hanya yang terakhir
+        String[] order = { active, "127.0.0.1", gw, get("lan"), "*tether*", get("ts") };   // 127.0.0.1 = USB tunnel (adb reverse), free of Wi-Fi jitter; fails immediately if absent
+        StringBuilder why = new StringBuilder();   // all failed addresses, not just the last one
         SSLSocketFactory f = factory();
         java.util.LinkedList<String> hosts = new java.util.LinkedList<>(java.util.Arrays.asList(order));
         while (!hosts.isEmpty()) {
             String h = hosts.removeFirst();
-            if ("*tether*".equals(h)) { hosts.addAll(0, tetherHosts()); continue; }   // pindai hanya bila alamat sebelumnya gagal
+            if ("*tether*".equals(h)) { hosts.addAll(0, tetherHosts()); continue; }   // scan only if previous addresses failed
             if (h == null || h.isEmpty() || why.indexOf(h + ":") >= 0) continue;
             try {
                 Socket raw = new Socket();
                 raw.setKeepAlive(true);
-                raw.setTcpNoDelay(true);   // tanpa ini Nagle + delayed ACK menahan paket kecil (audio/kamera) puluhan ms
-                raw.connect(new InetSocketAddress(h, port()), h.equals(gw) || h.equals("127.0.0.1") ? 600 : 2500);   // gateway biasanya router: jangan menunggu lama bila bukan laptop
+                raw.setTcpNoDelay(true);   // without this, Nagle + delayed ACK hold small packets (audio/camera) for tens of ms
+                raw.connect(new InetSocketAddress(h, port()), h.equals(gw) || h.equals("127.0.0.1") ? 600 : 2500);   // gateway is usually a router: don't wait long if it's not the laptop
                 SSLSocket s = (SSLSocket) f.createSocket(raw, h, port(), true);
                 s.setSoTimeout(0);
                 s.startHandshake();
@@ -145,7 +145,7 @@ final class Net {
         throw new IOException(why.length() == 0 ? "tidak ada alamat" : why.toString());
     }
 
-    /** Koneksi HTTPS satu permintaan (unggah/unduh) lewat host yang aktif. */
+    /** Single-request HTTPS connection (upload/download) via the active host. */
     static HttpsURLConnection http(String path, String method) throws Exception {
         String host = active;
         if (host == null) { connect().close(); host = active; }
@@ -154,7 +154,7 @@ final class Net {
         URL url = new URL("https://" + host + ":" + port() + path + sep + "t=" + get("t") + "&d=" + id() + "&dn=" + java.net.URLEncoder.encode(name(), "UTF-8"));
         HttpsURLConnection c = (HttpsURLConnection) url.openConnection();
         c.setSSLSocketFactory(factory());
-        c.setHostnameVerifier((h, s) -> true);   // identitas dipastikan oleh sidik jari, bukan nama host
+        c.setHostnameVerifier((h, s) -> true);   // identity is verified by fingerprint, not hostname
         c.setConnectTimeout(4000);
         c.setReadTimeout(30000);
         c.setRequestMethod(method);

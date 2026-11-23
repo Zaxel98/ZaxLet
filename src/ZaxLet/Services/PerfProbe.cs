@@ -8,10 +8,10 @@ using System.Runtime.InteropServices;
 namespace ZaxLet;
 
 /// <summary>
-/// Pembaca sensor untuk overlay performa, tanpa driver dan tanpa admin. Hanya hidup selama overlay tampil:
-/// CPU/clock/suhu dari penghitung kinerja Windows (PDH), RAM dari GlobalMemoryStatusEx, GPU NVIDIA dari satu proses
-/// <c>nvidia-smi -lms</c> yang terus mengalir (bukan proses baru tiap detik); tanpa NVIDIA: beban GPU dan VRAM dari penghitung "GPU Engine"/"GPU Adapter Memory".
-/// Yang tidak tersedia tanpa driver (tegangan, FPS) sengaja tidak ditawarkan.
+/// Sensor reader for the performance overlay, driverless and without admin. Alive only while the overlay is shown:
+/// CPU/clock/temp from Windows performance counters (PDH), RAM from GlobalMemoryStatusEx, NVIDIA GPU from a single
+/// streaming <c>nvidia-smi -lms</c> process (not a new process every second); without NVIDIA: GPU load and VRAM from "GPU Engine"/"GPU Adapter Memory" counters.
+/// Metrics unavailable without a driver (voltage, FPS) are intentionally not offered.
 /// </summary>
 public sealed class PerfProbe : IDisposable
 {
@@ -29,7 +29,7 @@ public sealed class PerfProbe : IDisposable
     DateTime _voltAt;
     static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromMilliseconds(700) };
 
-    /// <summary>items = metrik yang dipilih: FPS (sesi ETW) dan tegangan (LibreHardwareMonitor) hanya disentuh bila dipilih.</summary>
+    /// <summary>items = selected metrics: FPS (ETW session) and voltages (LibreHardwareMonitor) are only touched when selected.</summary>
     public PerfProbe(HashSet<string> items = null)
     {
         _wantFps = items?.Contains("fps") == true;
@@ -46,7 +46,7 @@ public sealed class PerfProbe : IDisposable
         _dWrite = _q.Add(@"\PhysicalDisk(_Total)\Disk Write Bytes/sec");
         StartSmi();
         if (_smi == null) AddGpuFallback();
-        _q.Collect();   // penghitung laju baru bernilai pada pembacaan kedua
+        _q.Collect();   // rate counters only have a value on the second read
     }
 
     void AddGpuFallback()
@@ -67,10 +67,10 @@ public sealed class PerfProbe : IDisposable
             _smi.OutputDataReceived += (_, e) => { if (PerfFormat.ParseSmi(e.Data) is { } s) { _last = s; _lastAt = DateTime.Now; } };
             _smi.BeginOutputReadLine();
         }
-        catch { _smi = null; }   // tanpa nvidia-smi (Intel/AMD): jalur penghitung Windows
+        catch { _smi = null; }   // no nvidia-smi (Intel/AMD): Windows counter path
     }
 
-    // nvidia-smi -lms tidak pernah berhenti sendiri: bila ZaxLet mati mendadak (crash, dimatikan paksa) prosesnya akan menggantung. Job object membuatnya ikut mati bersama kita.
+    // nvidia-smi -lms never exits on its own: if ZaxLet dies abruptly (crash, force kill) the process would linger. A job object makes it exit with us.
     [DllImport("kernel32.dll")] static extern IntPtr CreateJobObjectW(IntPtr attrs, string name);
     [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr job, int cls, byte[] info, int len);
     [DllImport("kernel32.dll")] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr proc);
@@ -83,7 +83,7 @@ public sealed class PerfProbe : IDisposable
             if (_job == IntPtr.Zero)
             {
                 _job = CreateJobObjectW(IntPtr.Zero, null);
-                var info = new byte[144];   // JOBOBJECT_EXTENDED_LIMIT_INFORMATION (x64); LimitFlags ada di offset 16
+                var info = new byte[144];   // JOBOBJECT_EXTENDED_LIMIT_INFORMATION (x64); LimitFlags is at offset 16
                 BitConverter.GetBytes(0x2000).CopyTo(info, 16);   // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
                 SetInformationJobObject(_job, 9, info, info.Length);
             }
@@ -92,8 +92,8 @@ public sealed class PerfProbe : IDisposable
         catch { }
     }
 
-    // LibreHardwareMonitor (Remote Web Server di port 8085) sebagai sumber tegangan: tegangan CPU butuh driver tingkat kernel yang tidak boleh ada di ZaxLet,
-    // sedangkan LHM sudah membawanya. Gagal/tidak berjalan = "butuh LHM", bukan angka karangan.
+    // LibreHardwareMonitor (Remote Web Server on port 8085) as voltage source: CPU voltage requires a kernel-level driver that ZaxLet must not bundle,
+    // whereas LHM already ships one. Failing/not running = "butuh LHM", never made-up numbers.
     async System.Threading.Tasks.Task FetchVolts()
     {
         try
@@ -112,7 +112,7 @@ public sealed class PerfProbe : IDisposable
 
     double? First(int idx) { var l = _q.Read(idx); return l.Count > 0 ? l[0].Value : null; }
 
-    /// <summary>Nilai siap tampil per kunci metrik (<see cref="PerfFormat.Metrics"/>); kunci yang tidak tersedia di PC ini tidak ada.</summary>
+    /// <summary>Display-ready values per metric key (<see cref="PerfFormat.Metrics"/>); keys unavailable on this PC are omitted.</summary>
     public Dictionary<string, string> Read()
     {
         var v = new Dictionary<string, string>();
@@ -125,7 +125,7 @@ public sealed class PerfProbe : IDisposable
         foreach (var (_, x) in _q.Read(_tzHp)) { var c = x / 10 - 273.15; if (c is > 15 and < 120 && (t == null || c > t)) t = c; }
         if (t == null) foreach (var (_, x) in _q.Read(_tz)) { var c = x - 273.15; if (c is > 15 and < 120 && (t == null || c > t)) t = c; }
         if (t != null) v["cputemp"] = $"{t:0}°C";
-        if (First(_cpuPwr) is { } mw && mw > 0) v["cpupwr"] = $"{mw / 1000:0.#} W";   // Energy Meter (RAPL) dalam miliwatt; tidak ada di semua PC
+        if (First(_cpuPwr) is { } mw && mw > 0) v["cpupwr"] = $"{mw / 1000:0.#} W";   // Energy Meter (RAPL) in milliwatts; not present on all PCs
         if (_wantFps)
             v["fps"] = FpsSource.Read() is { } fps ? $"{fps:0}" : FpsSource.Available ? "–" : "butuh izin";
         if (_wantVolt)
@@ -135,7 +135,7 @@ public sealed class PerfProbe : IDisposable
             v["gpuvolt"] = _gpuV is { } gv ? $"{gv:0.000} V" : "butuh LHM";
         }
         double? busiest = null;
-        foreach (var (name, x) in _q.Read(_cores)) if (!name.Contains("_Total") && (busiest == null || x > busiest)) busiest = x;   // "0,3" = grup prosesor 0, inti 3
+        foreach (var (name, x) in _q.Read(_cores)) if (!name.Contains("_Total") && (busiest == null || x > busiest)) busiest = x;   // "0,3" = processor group 0, core 3
         if (busiest != null) v["cpucore"] = $"inti {Math.Min(100, busiest.Value):0}%";
         if (First(_dRead) is { } dr && First(_dWrite) is { } dw) v["disk"] = $"R {PerfFormat.Rate(dr / 1024)} W {PerfFormat.Rate(dw / 1024)}";
         NetMeter.Sample();
@@ -161,7 +161,7 @@ public sealed class PerfProbe : IDisposable
         }
         else if (_gpuFallback)
         {
-            var perEngine = new Dictionary<string, double>();   // jumlahkan semua proses per mesin, seperti Task Manager
+            var perEngine = new Dictionary<string, double>();   // sum all processes per engine, like Task Manager
             foreach (var (name, x) in _q.Read(_gEng))
             {
                 int a = name.IndexOf("_luid_", StringComparison.Ordinal);

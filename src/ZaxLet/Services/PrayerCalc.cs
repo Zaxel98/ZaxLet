@@ -3,7 +3,7 @@ using System;
 namespace ZaxLet;
 
 /// <summary>
-/// Waktu sholat dihitung lokal (algoritma PrayTimes.org). Default Kemenag RI: Subuh 20°, Isya 18°, Asr Syafi'i, ihtiyat +2 menit.
+/// Prayer times calculated locally (PrayTimes.org algorithm). Kemenag RI default: Subuh 20°, Isya 18°, Asr Shafi'i, ihtiyat +2 minutes.
 /// </summary>
 public static class PrayerCalc
 {
@@ -61,7 +61,7 @@ public static class PrayerCalc
             return Angle(ang, t, false);
         }
 
-        // dua putaran: perkiraan awal lalu diperhalus
+        // two passes: initial estimate then refined
         double fajr = 5, rise = 6, dhuhr = 12, asr = 13, set = 18, isha = 18;
         for (int i = 0; i < 2; i++)
         {

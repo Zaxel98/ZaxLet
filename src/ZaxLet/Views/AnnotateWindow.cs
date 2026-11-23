@@ -14,18 +14,18 @@ using WF = System.Windows.Forms;
 
 namespace ZaxLet;
 
-/// <summary>Jendela anotasi cepat setelah tangkapan area layar: Enter/Simpan menyimpan beranotasi, Esc tetap menyimpan asli.</summary>
+/// <summary>Quick annotation window after an area screenshot: Enter/Save saves with annotations, Esc saves the original.</summary>
 public sealed class AnnotateWindow : Window
 {
     enum Tool { Pen, Arrow, Box, Highlighter }
 
     static readonly Color[] Palette =
     {
-        Color.FromRgb(0xEF, 0x44, 0x44), // Merah
-        Color.FromRgb(0xFA, 0xCC, 0x15), // Kuning
-        Color.FromRgb(0x34, 0xD3, 0x99), // Hijau
-        Color.FromRgb(0x60, 0xA5, 0xFA), // Biru
-        Color.FromRgb(0xFF, 0xFF, 0xFF), // Putih
+        Color.FromRgb(0xEF, 0x44, 0x44), // Red
+        Color.FromRgb(0xFA, 0xCC, 0x15), // Yellow
+        Color.FromRgb(0x34, 0xD3, 0x99), // Green
+        Color.FromRgb(0x60, 0xA5, 0xFA), // Blue
+        Color.FromRgb(0xFF, 0xFF, 0xFF), // White
     };
 
     public SD.Bitmap Result { get; private set; }
@@ -62,7 +62,7 @@ public sealed class AnnotateWindow : Window
 
         var scr = WF.Screen.FromRectangle(screenBounds);
         var wa = scr.WorkingArea;
-        // perkiraan skala DPI awal; disempurnakan saat SourceInitialized
+        // initial DPI scale estimate; refined on SourceInitialized
         double initScale = _dpiX / 96.0;
         double maxW = Math.Max(320, wa.Width / initScale * 0.85 - 24);
         double maxH = Math.Max(240, wa.Height / initScale * 0.78 - 72);

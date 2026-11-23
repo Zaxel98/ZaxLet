@@ -11,8 +11,8 @@ using System.Windows.Media;
 namespace ZaxLet;
 
 /// <summary>
-/// Popup pemilihan ukuran target kompresi gambar / PDF dari Shelf.
-/// Pilihan terakhir disimpan di field statis saja (tanpa mengubah Settings).
+/// Popup for selecting the target compression size for images / PDFs from Shelf.
+/// Last choice is stored in a static field only (without modifying Settings).
 /// </summary>
 public sealed class CompressPopup : Window
 {
@@ -63,7 +63,7 @@ public sealed class CompressPopup : Window
 
         var root = new StackPanel();
 
-        // Header: judul + nama file
+        // Header: title + file name
         var head = UI.Cols(-1, 0);
         var title = UI.T("Kompres file", 14, UI.Fg, true);
         head.Children.Add(title);
@@ -114,7 +114,7 @@ public sealed class CompressPopup : Window
         kbRow.Children.Add(kbUnit.At(0, 2));
         root.Children.Add(kbRow);
 
-        // Slider: Kurangi ukuran: N% (10-95%, step 5, default 70)
+        // Slider: Reduce size: N% (10-95%, step 5, default 70)
         _sliderLabel = UI.T("Kurangi ukuran: 70%", 12, UI.Fg);
         _sliderLabel.Margin = new Thickness(0, 0, 0, 4);
         root.Children.Add(_sliderLabel);

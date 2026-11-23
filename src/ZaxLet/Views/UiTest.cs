@@ -10,8 +10,8 @@ using System.Windows.Media.Imaging;
 namespace ZaxLet;
 
 /// <summary>
-/// Alat uji tampilan (<c>ZaxLet.exe --ui-test</c>): merender tiap halaman Pengaturan dan tiap langkah panduan ke PNG tanpa menampilkan jendela
-/// apa pun, dan mencatat pengecualian yang muncul saat membangun halaman. Keluaran di %ZAXLET_UI_OUT% (atau folder data\ui).
+/// UI test tool (<c>ZaxLet.exe --ui-test</c>): renders every Settings page and every guide step to PNG without showing any window,
+/// and logs any exceptions thrown while building pages. Output goes to %ZAXLET_UI_OUT% (or the data\ui folder).
 /// </summary>
 public static class UiTest
 {
@@ -20,7 +20,7 @@ public static class UiTest
         var dir = Environment.GetEnvironmentVariable("ZAXLET_UI_OUT") is { Length: > 0 } d ? d : Path.Combine(Settings.Dir, "ui");
         Directory.CreateDirectory(dir);
         var log = new StringBuilder();
-        SettingsView._hpGuideShown = true;   // jangan membuka jendela panduan saat uji
+        SettingsView._hpGuideShown = true;   // do not open the guide window during tests
 
         void Shot(FrameworkElement content, string name, double w, double h)
         {
@@ -50,8 +50,8 @@ public static class UiTest
             }
         }
 
-        // tab-tab yang sering berubah: dirender apa adanya
-        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: pakai isi data di folder data (salinan), bukan contoh
+        // frequently changing tabs: rendered as-is
+        if (Environment.GetEnvironmentVariable("ZAXLET_UI_KEEP") != "1")   // ZAXLET_UI_KEEP=1: use data folder contents (copy), not samples
         {
             ClipboardHistory.Items.Clear();
             ClipboardHistory.Items.Add(new ClipboardHistory.Item { Text = "git status && dotnet test --no-restore", At = DateTime.Now.AddMinutes(-2), Pinned = true });
@@ -116,7 +116,7 @@ public static class UiTest
         }
         catch (Exception ex) { log.AppendLine("GAGAL tab ai-big: " + ex); }
 
-        // island-idle.png dilewati: Pill berada di dalam IslandWindow (jendela nyata dengan animasi/ukuran dinamis)
+        // island-idle.png skipped: Pill lives inside IslandWindow (a real window with dynamic animation/sizing)
         log.AppendLine("skip island-idle: tidak dirender tanpa jendela nyata");
 
         try

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace ZaxLet;
 
-/// <summary>Unduhan selesai di folder Downloads: berkas sementara peramban (.crdownload, .part…) diabaikan; dilaporkan setelah ukurannya stabil.</summary>
+/// <summary>Completed downloads in the Downloads folder: temporary browser files (.crdownload, .part…) are ignored; reported once size stabilizes.</summary>
 public sealed class DownloadWatch
 {
     [DllImport("shell32.dll")] static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid id, uint flags, IntPtr token, out IntPtr path);
@@ -43,7 +43,7 @@ public sealed class DownloadWatch
             _fw.Created += (_, e) => _ = Check(e.FullPath);
             _fw.Renamed += (_, e) => _ = Check(e.FullPath);
         }
-        catch (Exception) { /* folder tidak bisa diawasi: fitur ini diam saja */ }
+        catch (Exception) { /* folder cannot be watched: feature stays silent */ }
     }
 
     async Task Check(string path)
@@ -65,7 +65,7 @@ public sealed class DownloadWatch
                     if (len != last) { last = len; stall = 0; }
                     else stall++;
                 }
-                catch (IOException) { last = -1; stall++; }   // masih dikunci penulisnya
+                catch (IOException) { last = -1; stall++; }   // still locked by writer
                 catch { return; }
             }
         }

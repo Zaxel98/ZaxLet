@@ -14,7 +14,7 @@ using System.Windows.Threading;
 namespace ZaxLet;
 
 /// <summary>
-/// Jendela penampil layar HP dengan kontrol mouse dan keyboard kembali ke HP lewat /scr/ws.
+/// Phone screen viewer window with mouse and keyboard control back to the phone via /scr/ws.
 /// </summary>
 public sealed class ScreenWindow : Window
 {

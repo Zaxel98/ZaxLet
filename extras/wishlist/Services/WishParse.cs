@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 
 namespace ZaxLet;
 
-/// <summary>Pembaca halaman produk untuk Wishlist: tanpa jaringan dan tanpa WPF, jadi bisa dites mandiri. Longgar dan tidak pernah melempar: yang tidak ketemu dikembalikan kosong.</summary>
+/// <summary>Product page parser for Wishlist: no network and no WPF, so it can be tested standalone. Lenient and never throws: missing fields are returned empty.</summary>
 public static class WishParse
 {
     static readonly Regex MetaTag = new(@"<meta\s[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -20,7 +20,7 @@ public static class WishParse
         return m.Success ? WebUtility.HtmlDecode(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value).Trim() : "";
     }
 
-    /// <summary>Judul, alamat gambar (bisa relatif), dan harga siap tampil ("IDR 149,000") dari HTML sebuah halaman produk.</summary>
+    /// <summary>Title, image URL (may be relative), and display-ready price ("IDR 149,000") from a product page's HTML.</summary>
     public static (string Title, string Image, string Price) Meta(string html)
     {
         var meta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -43,19 +43,19 @@ public static class WishParse
         return (title, image, Price(amount, cur));
     }
 
-    /// <summary>"149000.00" atau "149.000" jadi "IDR 149,000"; teks yang bukan angka dikembalikan apa adanya.</summary>
+    /// <summary>"149000.00" or "149.000" becomes "IDR 149,000"; non-numeric text is returned as-is.</summary>
     public static string Price(string amount, string cur)
     {
         amount = (amount ?? "").Trim();
         if (amount == "") return "";
-        var a = Regex.IsMatch(amount, @"^\d{1,3}(\.\d{3})+$") ? amount.Replace(".", "") : amount;   // titik sebagai pemisah ribuan (gaya Indonesia)
+        var a = Regex.IsMatch(amount, @"^\d{1,3}(\.\d{3})+$") ? amount.Replace(".", "") : amount;   // dot as thousands separator (Indonesian style)
         var shown = double.TryParse(a, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n.ToString("N0", CultureInfo.InvariantCulture) : amount;
         return (cur ?? "").Trim() == "" ? shown : cur.Trim().ToUpperInvariant() + " " + shown;
     }
 
     static readonly Regex RupiahText = new(@"(?:Rp\.?|IDR)\s*([\d][\d.,]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>Harga dari teks yang disalin dari halaman toko ("Rp149.000", "IDR 149,000", atau angka saja); kosong bila tidak ada angka harga.</summary>
+    /// <summary>Price from text copied from a store page ("Rp149.000", "IDR 149,000", or plain digits); empty if no price number is present.</summary>
     public static string PriceFromText(string text)
     {
         text = (text ?? "").Trim();
@@ -64,7 +64,7 @@ public static class WishParse
         return amount == "" ? "" : Price(amount, "IDR");
     }
 
-    /// <summary>Nama toko dari domain link: toko yang dikenal diberi nama rapi, lainnya nama domainnya.</summary>
+    /// <summary>Store name from link domain: known stores get a clean name, others get the domain name.</summary>
     public static string Source(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return "";
@@ -76,13 +76,13 @@ public static class WishParse
         return label == "" ? host : char.ToUpperInvariant(label[0]) + label[1..];
     }
 
-    /// <summary>Judul cadangan dari bagian akhir link (Shopee dan Tokopedia menaruh nama produk di sana) bila halaman tidak bisa dibaca.</summary>
+    /// <summary>Fallback title from the end of the link (Shopee and Tokopedia put the product name there) if the page cannot be read.</summary>
     public static string SlugTitle(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return url;
         var seg = u.AbsolutePath.TrimEnd('/');
         seg = seg[(seg.LastIndexOf('/') + 1)..];
-        seg = Regex.Replace(seg, @"-i\.\d+\.\d+$", "");   // akhiran id Shopee
+        seg = Regex.Replace(seg, @"-i\.\d+\.\d+$", "");   // Shopee id suffix
         seg = WebUtility.UrlDecode(seg).Replace('-', ' ').Replace('_', ' ').Trim();
         return seg.Length >= 4 ? seg : u.Host;
     }

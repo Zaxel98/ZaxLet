@@ -1,6 +1,6 @@
-# Kemas ekstensi browser Wishlist (src\BrowserExtension) jadi dist\extension\zaxlet-wishlist.xpi.
-# .xpi/.zip/.jar pada dasarnya sama: arsip zip dengan manifest.json di akar. Firefox rilis hanya memasang .xpi yang sudah DITANDATANGANI
-# (addons.mozilla.org, jalur "On your own"/unlisted, gratis); tanpa tanda tangan ia hanya bisa dimuat sementara lewat about:debugging.
+# Package the Wishlist browser extension (src\BrowserExtension) into dist\extension\zaxlet-wishlist.xpi.
+# .xpi/.zip/.jar are essentially the same: a zip archive with manifest.json at the root. Release Firefox only installs SIGNED .xpi files
+# (addons.mozilla.org, "On your own"/unlisted channel, free); without a signature it can only be loaded temporarily via about:debugging.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $src = Join-Path $root 'src\BrowserExtension'
@@ -11,7 +11,7 @@ $xpi = Join-Path $out 'zaxlet-wishlist.xpi'
 Remove-Item $xpi -ErrorAction SilentlyContinue
 $za = [System.IO.Compression.ZipFile]::Open($xpi, 'Create')
 foreach ($f in Get-ChildItem $src -File) {
-    # nama entri = nama berkas saja (tanpa folder, tanpa backslash): syarat Firefox
+    # entry name = filename only (no folder, no backslash): Firefox requirement
     [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($za, $f.FullName, $f.Name, 'Optimal')
 }
 $za.Dispose()

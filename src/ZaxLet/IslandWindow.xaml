@@ -6,7 +6,7 @@
         ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize" ShowActivated="False"
         UseLayoutRounding="True" SnapsToDevicePixels="True">
     <Grid>
-        <!-- Pill: bentuk "notch" dengan bahu cekung di atas (digambar di kode), isi di atasnya -->
+        <!-- Pill: "notch" shape with concave top shoulders (drawn in code), content on top -->
         <Grid x:Name="Pill" Background="Transparent" HorizontalAlignment="Center" VerticalAlignment="Top"
               Width="220" Height="36" AllowDrop="True">
             <Path x:Name="Shape" Fill="Black" Margin="-12,0,-12,0"/>
@@ -26,7 +26,7 @@
                     <StackPanel x:Name="ZoneR" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
                 <StackPanel Grid.Row="1" Margin="18,0,18,0" VerticalAlignment="Top">
-                    <!-- notifikasi HP: satu baris per notifikasi (terbaru di atas), digulir bila lebih banyak dari batas -->
+                    <!-- phone notifications: one row per notification (newest on top), scrolled when exceeding the limit -->
                     <Grid x:Name="NotifHost" Visibility="Collapsed">
                         <ScrollViewer x:Name="NotifScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Focusable="False" Background="Transparent">
                             <StackPanel x:Name="NotifRows"/>

@@ -8,32 +8,32 @@ using System.Windows.Media.Imaging;
 
 namespace ZaxLet;
 
-/// <summary>Satu notifikasi dari HP (diterima lewat kanal kontrol). Key unik per notifikasi di HP; pembaruan memakai Key yang sama.</summary>
+/// <summary>A single notification from the phone (received over the control channel). Key is unique per notification on the phone; updates reuse the same Key.</summary>
 public sealed class PhoneNotif
 {
     public string Key, Pkg, App, Title, Text, Device;
     public bool Ongoing, CanReply;
     public int Prog, ProgMax;
-    public List<(string Sender, string Text)> Msgs = new();   // pesan percakapan, lama ke baru (notifikasi chat memuat beberapa pesan terakhir)
+    public List<(string Sender, string Text)> Msgs = new();   // conversation messages, oldest to newest (chat notifications carry the last few messages)
     public DateTime Time = DateTime.Now;
 }
 
 /// <summary>
-/// Notifikasi HP -> pill idle. Notifikasi "berjalan" (mis. Gojek: status pengiriman) memakai Key yang sama, jadi diperbarui di tempat
-/// dan tampil lagi di pill setiap isinya berubah. Pengguna memilih aplikasi mana yang boleh tampil.
+/// Phone notifications -> idle pill. "Ongoing" notifications (e.g. Gojek delivery status) reuse the same Key, so they update in place
+/// and reappear in the pill whenever their content changes. Users choose which apps are allowed to show.
 /// </summary>
 public static class PhoneNotifs
 {
     public static readonly Dictionary<string, PhoneNotif> Active = new();
-    public static readonly Dictionary<string, string> Apps = new();            // pkg -> nama aplikasi (untuk daftar pengaturan)
-    static readonly Dictionary<string, string> Dismissed = new();                // key -> isi saat disilang; tampil lagi bila HP mengirim isi baru
+    public static readonly Dictionary<string, string> Apps = new();            // pkg -> app name (for settings list)
+    static readonly Dictionary<string, string> Dismissed = new();                // key -> content when dismissed; reappears if phone sends new content
     static readonly Dictionary<string, ImageSource> Icons = new();
     static bool _inCall, _callPaused, _sawPaused;
     static PhoneNotifs() => MediaService.I.Changed += () => Ui(OnMediaChanged);
-    public static int Received;                                                 // diagnosis: jumlah pesan notifikasi dari HP
+    public static int Received;                                                 // diagnostics: count of notification messages from phone
     public static string LastPkg = ""; public static DateTime LastAt;
-    public static event Action<PhoneNotif> Posted;                              // perlu ditampilkan di pill (UI thread)
-    public static event Action Changed;                                         // daftar berubah (UI thread)
+    public static event Action<PhoneNotif> Posted;                              // needs to be shown in pill (UI thread)
+    public static event Action Changed;                                         // list changed (UI thread)
 
     public static ImageSource IconOf(string pkg) { lock (Icons) return Icons.GetValueOrDefault(pkg); }
 
@@ -52,7 +52,7 @@ public static class PhoneNotifs
         {
             using var doc = JsonDocument.Parse(json);
             var r = doc.RootElement;
-            if (r.TryGetProperty("t", out var tt) && tt.GetString() == "b")   // baterai HP: bukan notifikasi, jangan dihitung
+            if (r.TryGetProperty("t", out var tt) && tt.GetString() == "b")   // phone battery: not a notification, don't count
             {
                 dev.BatPct = r.GetProperty("l").GetInt32(); dev.BatCharging = r.GetProperty("c").GetInt32() == 1;
                 return;
@@ -60,7 +60,7 @@ public static class PhoneNotifs
             Received++; LastAt = DateTime.Now; LastPkg = r.TryGetProperty("pkg", out var lp) ? lp.GetString() : "";
             switch (r.GetProperty("t").GetString())
             {
-                case "i":   // ikon aplikasi (sekali per paket)
+                case "i":   // app icon (once per package)
                 {
                     var pkg = r.GetProperty("pkg").GetString();
                     lock (Apps) { Apps[pkg] = r.GetProperty("app").GetString(); }
@@ -91,7 +91,7 @@ public static class PhoneNotifs
                     {
                         if (Dismissed.TryGetValue(n.Key, out var gone))
                         {
-                            if (gone == n.Title + "\n" + n.Text) break;   // sudah disilang dan isinya sama (mis. HP mengirim ulang saat tersambung kembali)
+                            if (gone == n.Title + "\n" + n.Text) break;   // already dismissed with same content (e.g. phone resent on reconnect)
                             Dismissed.Remove(n.Key);
                         }
                         changed = !Active.TryGetValue(n.Key, out var old) || old.Title != n.Title || old.Text != n.Text || old.Prog != n.Prog;
@@ -102,10 +102,10 @@ public static class PhoneNotifs
                     Notify(show ? n : null, true);
                     break;
                 }
-                case "x":   // teks dari HP -> clipboard PC
+                case "x":   // text from phone -> PC clipboard
                     PhoneText.FromPhone(Str(r, "text"), dev.Name);
                     break;
-                case "c":   // status panggilan di HP (mulai/selesai)
+                case "c":   // phone call status (started/ended)
                     if (r.TryGetProperty("on", out var on) && (on.ValueKind == JsonValueKind.True || on.ValueKind == JsonValueKind.False))
                     {
                         var active = on.GetBoolean();
@@ -154,7 +154,7 @@ public static class PhoneNotifs
         if (!_callPaused) return;
         if (!MediaService.I.HasSession) { _callPaused = false; return; }
         if (!MediaService.I.Playing) _sawPaused = true;
-        else if (_sawPaused) _callPaused = false;   // pengguna mengubah pemutaran sendiri: jangan lanjutkan otomatis
+        else if (_sawPaused) _callPaused = false;   // user changed playback manually: do not auto-resume
     }
 
     static void Notify(PhoneNotif show, bool listChanged)
@@ -166,10 +166,10 @@ public static class PhoneNotifs
         });
     }
 
-    /// <summary>Contoh notifikasi untuk uji tampilan (teks panjang agar running text terlihat).</summary>
+    /// <summary>Sample notification for UI testing (long text so marquee scrolling is visible).</summary>
     public static void Test() => Notify(new PhoneNotif { Key = "test", Pkg = "test", App = "Contoh", Title = "Gojek", Text = "Driver sedang menuju lokasi pengantaran, perkiraan tiba 3 menit lagi. Mohon siapkan pesanan Anda.", Device = "Uji" }, false);
 
-    /// <summary>Uji tampilan banyak baris (flag --demo-notifs): n notifikasi dengan key berbeda.</summary>
+    /// <summary>Multi-row display test (--demo-notifs flag): n notifications with distinct keys.</summary>
     public static void Demo(int n)
     {
         for (int i = 1; i <= 2; i++)
@@ -184,7 +184,7 @@ public static class PhoneNotifs
         Notify(null, true);
     }
 
-    /// <summary>Kotak masuk tab Komunikasi, terbaru dulu: chat yang bisa dibalas, ditambah notifikasi biasa dari aplikasi yang diizinkan (yang "berjalan" seperti status pengiriman tidak ikut).</summary>
+    /// <summary>Comms tab inbox, newest first: replyable chats plus regular notifications from allowed apps ("ongoing" ones like delivery status are excluded).</summary>
     public static bool Listed(PhoneNotif n) => n.CanReply || (!n.Ongoing && Enabled(n.Pkg));
 
     public static List<PhoneNotif> Inbox(string pkg = null)
@@ -192,7 +192,7 @@ public static class PhoneNotifs
         lock (Active) return Active.Values.Where(n => Listed(n) && (pkg == null || n.Pkg == pkg)).OrderByDescending(n => n.Time).ToList();
     }
 
-    /// <summary>Hapus percakapan dari daftar (tombol silang). Muncul lagi hanya bila pesannya berubah.</summary>
+    /// <summary>Remove conversation from list (close button). Reappears only if its message changes.</summary>
     public static void Dismiss(string key)
     {
         lock (Active)
@@ -202,7 +202,7 @@ public static class PhoneNotifs
         Notify(null, true);
     }
 
-    /// <summary>Kirim balasan ke HP: aplikasi HP menjalankan aksi balas (RemoteInput) milik notifikasi itu.</summary>
+    /// <summary>Send reply to phone: the phone app runs that notification's reply action (RemoteInput).</summary>
     public static int Reply(string key, string text) =>
-        ShareServer.I.Command("reply " + Convert.ToBase64String(Encoding.UTF8.GetBytes(key)) + " " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text)));   // key memuat "|": dikodekan
+        ShareServer.I.Command("reply " + Convert.ToBase64String(Encoding.UTF8.GetBytes(key)) + " " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text)));   // key contains "|": encoded
 }

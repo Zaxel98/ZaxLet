@@ -10,15 +10,15 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Fitur tambahan yang butuh unduhan eksternal. Pemasang tetap kecil: tidak ada yang diunduh sampai pengguna menekan tombol di
-/// Pengaturan > Addon. Setiap unduhan diperiksa sidik jarinya (SHA-256) sebelum dipasang ke %LOCALAPPDATA%\ZaxLet.
+/// Optional features that require external downloads. Keeps the installer small: nothing is downloaded until the user clicks a button in
+/// Settings > Addons. Every download has its checksum (SHA-256) verified before being installed to %LOCALAPPDATA%\ZaxLet.
 /// </summary>
 public sealed class Addon
 {
     public string Id, Name, Desc, Size;
     public Func<bool> Installed;
-    public Func<string> Detail;                // keterangan tambahan (mis. terdeteksi di PATH)
-    public Func<Action, Task> Install;         // parameter: pemanggil progres (thread latar)
+    public Func<string> Detail;                // extra detail (e.g. detected on PATH)
+    public Func<Action, Task> Install;         // parameter: progress callback (background thread)
     public Action Remove;
     public Func<string> Progress = () => "";
     public bool Busy;
@@ -51,7 +51,7 @@ public static class Addons
     };
 }
 
-/// <summary>ffmpeg dari gyan.dev (build "essentials", yang juga ditautkan situs resmi ffmpeg.org). Hash dibaca dari berkas .sha256 di server yang sama.</summary>
+/// <summary>ffmpeg from gyan.dev ("essentials" build, also linked from the official ffmpeg.org site). Hash is read from the .sha256 file on the same server.</summary>
 public static class FfmpegPack
 {
     const string Url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";

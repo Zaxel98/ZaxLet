@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 namespace ZaxLet;
 
 /// <summary>
-/// Lokasi untuk jadwal sholat tanpa mengetik koordinat: dari IP (otomatis), dari sensor lokasi Windows (minta izin),
-/// atau cari nama kota (Open-Meteo geocoding, tanpa kunci API). Hasil disimpan di Settings agar tetap jalan saat offline.
+/// Location for prayer times without typing coordinates: from IP (automatic), from Windows location sensor (asks permission),
+/// or search by city name (Open-Meteo geocoding, no API key). Results are saved in Settings to keep working offline.
 /// </summary>
 public static class LocationService
 {
@@ -15,7 +15,7 @@ public static class LocationService
     public static string Status = "";
     public static event Action Changed;
 
-    /// <summary>Terapkan mode lokasi aktif. Mode otomatis dibatasi sekali per 6 jam kecuali force.</summary>
+    /// <summary>Apply active location mode. Automatic mode is rate-limited to once every 6 hours unless forced.</summary>
     public static async Task RefreshAsync(bool force = false)
     {
         var s = Settings.Cur;
@@ -44,7 +44,7 @@ public static class LocationService
             var access = await Windows.Devices.Geolocation.Geolocator.RequestAccessAsync();
             if (access != Windows.Devices.Geolocation.GeolocationAccessStatus.Allowed)
             {
-                if (userAction)   // pilihan/tombol pengguna: langsung buka halaman izin Windows, tidak hanya mundur diam-diam ke IP
+                if (userAction)   // user choice/button: open Windows permission page directly, don't just fall back silently to IP
                 {
                     try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:privacy-location") { UseShellExecute = true }); } catch { }
                     System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => IslandWindow.Instance?.Alert(L.T("Nyalakan Lokasi dan \"Izinkan aplikasi desktop mengakses lokasi\" di jendela Windows yang terbuka, lalu tekan Deteksi sekarang."), 12, null, false));
@@ -61,13 +61,13 @@ public static class LocationService
         catch { return false; }
     }
 
-    // nama kota terdekat dari koordinat (untuk label saja); gagal = null
+    // nearest city name from coordinates (for label only); failure = null
     static async Task<string> ReverseName(double lat, double lon)
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, FormattableString.Invariant($"https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat={lat}&lon={lon}"));
-            req.Headers.UserAgent.ParseAdd("ZaxLetApp/1.0");   // kebijakan Nominatim: wajib identifikasi aplikasi
+            req.Headers.UserAgent.ParseAdd("ZaxLetApp/1.0");   // Nominatim policy: app identification required
             using var res = await Http.SendAsync(req);
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
             if (!doc.RootElement.TryGetProperty("address", out var a)) return null;
@@ -78,7 +78,7 @@ public static class LocationService
         catch { return null; }
     }
 
-    /// <summary>Cari kota dari nama; true bila ketemu dan diterapkan.</summary>
+    /// <summary>Search city by name; true if found and applied.</summary>
     public static async Task<bool> SearchAsync(string name)
     {
         try

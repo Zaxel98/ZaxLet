@@ -44,7 +44,7 @@ static class Log
     }
 }
 
-// Semua metode PreserveSig: HRESULT dikembalikan apa adanya (callee managed memilih kodenya sendiri).
+// All PreserveSig methods: HRESULT is returned as-is (managed callee chooses its own code).
 [ComImport, Guid("2CD2D921-C447-44A7-A13C-4ADABFC247E3"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 public interface IMFAttributes
 {
@@ -286,7 +286,7 @@ public interface IMFMediaEventQueue
     [PreserveSig] int Shutdown();
 }
 
-// ---- antarmuka yang diimplementasikan objek managed (dipanggil Frame Server) ----
+// ---- interfaces implemented by managed objects (called by Frame Server) ----
 [ComImport, Guid("7FEE9E9A-4A89-47A6-899C-B6A53A70FB67"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 public interface IMFActivate
 {
@@ -423,7 +423,7 @@ static class MF
     public static void Up() { if (_up) return; _up = true; MFStartup(0x00020070, 0); }
 }
 
-/// <summary>IMFAttributes yang meneruskan ke penyimpanan atribut MF; dasar untuk activator, source dan stream.</summary>
+/// <summary>IMFAttributes forwarding to an MF attribute store; base for activator, source, and stream.</summary>
 public abstract class AttrBase : IMFAttributes
 {
     protected readonly IMFAttributes A;
